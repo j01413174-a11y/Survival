@@ -1,4 +1,5 @@
 import express, {type NextFunction, type Request, type Response} from 'express';
+import {readFile} from 'fs/promises';
 import path from 'path';
 import dotenv from 'dotenv';
 import {GoogleGenAI} from '@google/genai';
@@ -96,9 +97,10 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
+    const indexHtml = await readFile(path.join(distPath, 'index.html'), 'utf8');
     app.use(express.static(distPath));
     app.get('*', pageLimiter, (_req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      res.type('html').send(indexHtml);
     });
   }
 
