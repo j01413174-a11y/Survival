@@ -1,4 +1,4 @@
-import express from 'express';
+import express, {type NextFunction, type Request, type Response} from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
 import {GoogleGenAI} from '@google/genai';
@@ -28,15 +28,41 @@ function buildOraclePrompt(gameState: any) {
       `;
 }
 
+function createRateLimiter(maxRequests: number, windowMs: number) {
+  const requests = new Map<string, {count: number; resetAt: number}>();
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    const now = Date.now();
+    const key = req.ip || 'unknown';
+    const current = requests.get(key);
+
+    if (!current || current.resetAt <= now) {
+      requests.set(key, {count: 1, resetAt: now + windowMs});
+      next();
+      return;
+    }
+
+    if (current.count >= maxRequests) {
+      res.status(429).json({error: 'Too many requests'});
+      return;
+    }
+
+    current.count += 1;
+    next();
+  };
+}
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT || 3000);
   const key = process.env.GEMINI_API_KEY;
   const ai = key && key !== 'MY_GEMINI_API_KEY' ? new GoogleGenAI({apiKey: key}) : null;
+  const apiLimiter = createRateLimiter(30, 60_000);
+  const pageLimiter = createRateLimiter(240, 60_000);
 
-  app.use(express.json());
+  app.use(express.json({limit: '10kb'}));
 
-  app.post('/api/oracle-guidance', async (req, res) => {
+  app.post('/api/oracle-guidance', apiLimiter, async (req, res) => {
     try {
       if (!ai) {
         return res.status(503).json({error: 'Gemini API key is not configured'});
@@ -71,7 +97,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
+    app.get('*', pageLimiter, (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
