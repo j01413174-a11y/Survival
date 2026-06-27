@@ -7,7 +7,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 const PORT = 3000;
 
 // Initialize Google GenAI on the server
@@ -21,20 +21,296 @@ const ai = new GoogleGenAI({
   }
 });
 
+// --- Procedural Fallbacks when Gemini API is Busy (e.g. 503), Unavailable, or Missing Key ---
+
+function getProceduralGuidance(gameState: any) {
+  const day = gameState?.day || 1;
+  const lvl = gameState?.lvl || 1;
+  const hp = gameState?.hp || 100;
+
+  const advices = [
+    `The shadows grow longer on Day ${day}. Seek shelter before the wave of doom breaches your defenses.`,
+    `A resonance of gold hums beneath the Celestial Plain... Mine the deposits to trade with the NFT Exchange.`,
+    `The elements whisper of a coming storm. Gather wood and stone to build secure fortifications.`,
+    `Your level ${lvl} essence is strong, but a dark shadow hovers. Keep your healing pots ready.`,
+    `The local wildlife acts strangely. A swarm may be preparing to strike in the coming waves.`,
+    `Magic flows through the ley lines. Use your spellbook to reveal unseen deposits or summon a resource bounty.`,
+    `As your Health stands at ${hp}%, remember that a Healing Sanctuary spell can mend the deepest of wounds.`
+  ];
+
+  const events = [
+    { event: "A meteor shower of iron ore", type: "meteor" },
+    { event: "A sudden swarm of glowing golden rabbits", type: "swarm" },
+    { event: "A violent atmospheric mana storm", type: "storm" },
+    { event: "The planetary blessing of fast recovery", type: "blessing" },
+    { event: "A crawling eclipse of the void", type: "curse" }
+  ];
+
+  const selectedAdvice = advices[Math.floor(Math.random() * advices.length)];
+  const selectedEvent = events[Math.floor(Math.random() * events.length)];
+
+  return {
+    message: selectedAdvice + " (Guided by the Inner Oracle)",
+    event: selectedEvent.event,
+    eventType: selectedEvent.type
+  };
+}
+
+function getProceduralWorldEvent(gameState: any) {
+  const plLvl = gameState?.pl?.lvl || gameState?.lvl || 1;
+
+  const events = [
+    {
+      title: "Sol-4 Iron Meteor Shower",
+      narrative: "A cascade of burning metal enters the upper atmosphere, raining blazing iron deposits onto the plains!",
+      durationSeconds: 45,
+      effect: {
+        type: "meteor",
+        description: "+20% speed but small debris fire hazard.",
+        statModifiers: {
+          speedBoost: 1.2,
+          dmgBoost: 1.0,
+          manaRegen: 0,
+          healthDrain: 0.2
+        },
+        spawnResource: "iron_ore"
+      },
+      choices: [
+        {
+          id: "meteor_choice_1",
+          text: "Channel the Asteroid Core",
+          requirement: plLvl >= 3 ? "None" : "Requires Level 3",
+          isMet: plLvl >= 3,
+          outcomeDescription: "You channel the raw cosmic heat of the falling rocks, materializing cosmic crystals at the cost of some burns.",
+          reward: {
+            item: "crystal",
+            qty: 3,
+            xp: 50,
+            hpChange: -15
+          }
+        },
+        {
+          id: "meteor_choice_2",
+          text: "Gather fallen fragments",
+          requirement: "None",
+          isMet: true,
+          outcomeDescription: "You play it safe, gathering pieces of wood to insulate against heat while collecting iron chunks.",
+          reward: {
+            item: "iron_bar",
+            qty: 1,
+            xp: 15,
+            hpChange: 0
+          }
+        }
+      ]
+    },
+    {
+      title: "Twilight Void Eclipse",
+      narrative: "A pitch-black moon blocks out the local suns, unleashing dark energies that weaken monsters but drain the life of the living.",
+      durationSeconds: 60,
+      effect: {
+        type: "void_eclipse",
+        description: "-20% speed, but +50% weapon damage as dark cosmic energy infuses your weapon.",
+        statModifiers: {
+          speedBoost: 0.8,
+          dmgBoost: 1.5,
+          manaRegen: 1.0,
+          healthDrain: 0.5
+        },
+        spawnResource: "void_crystal"
+      },
+      choices: [
+        {
+          id: "void_choice_1",
+          text: "Absorb the Twilight Energy",
+          requirement: plLvl >= 5 ? "None" : "Requires Level 5",
+          isMet: plLvl >= 5,
+          outcomeDescription: "You embrace the shadow. It burns your life force but rewards you with a pure void crystal.",
+          reward: {
+            item: "void_crystal",
+            qty: 1,
+            xp: 80,
+            hpChange: -30
+          }
+        },
+        {
+          id: "void_choice_2",
+          text: "Offer Sacrificial Shards",
+          requirement: "None",
+          isMet: true,
+          outcomeDescription: "You burn small ritual magic essences to purify your immediate surroundings, calming the shadows.",
+          reward: {
+            item: "magic_essence",
+            qty: 2,
+            xp: 30,
+            hpChange: 15
+          }
+        }
+      ]
+    },
+    {
+      title: "Aetherial Mana Storm",
+      narrative: "Glowing aurora waves wash over the sector, overloading the local ley-lines and offering limitless spell power!",
+      durationSeconds: 50,
+      effect: {
+        type: "mana_storm",
+        description: "+3.0 Mana Regen, +15% run speed.",
+        statModifiers: {
+          speedBoost: 1.15,
+          dmgBoost: 1.0,
+          manaRegen: 3.0,
+          healthDrain: 0
+        },
+        spawnResource: "crystal"
+      },
+      choices: [
+        {
+          id: "mana_choice_1",
+          text: "Siphon the Ley Lines",
+          requirement: "None",
+          isMet: true,
+          outcomeDescription: "You weave an energy siphon, draining the air's latent power into raw mana crystals.",
+          reward: {
+            item: "mana_crystal",
+            qty: 2,
+            xp: 40,
+            hpChange: 0
+          }
+        },
+        {
+          id: "mana_choice_2",
+          text: "Fortify Core Mana",
+          requirement: "None",
+          isMet: true,
+          outcomeDescription: "You channel the raw magical winds directly to heal your soul and solidify essence.",
+          reward: {
+            item: "magic_essence",
+            qty: 3,
+            xp: 25,
+            hpChange: 20
+          }
+        }
+      ]
+    }
+  ];
+
+  const selectedEvent = events[Math.floor(Math.random() * events.length)];
+  return {
+    ...selectedEvent,
+    title: selectedEvent.title + " 🌟"
+  };
+}
+
+function getProceduralSpellResult(spellName: string, gameState: any) {
+  const currentBiomeName = gameState?.currentBiome?.n || "Forest";
+  const plX = gameState?.pl?.x ? Math.floor(gameState.pl.x / 32) : 40;
+  const plY = gameState?.pl?.y ? Math.floor(gameState.pl.y / 32) : 40;
+
+  if (spellName === "Reveal Map") {
+    const scoutedNodes = [
+      { type: "void_crystal", tx: plX + 4, ty: plY - 3, description: "A deep pulsing purple crystal node detected nearby." },
+      { type: "gold", tx: plX - 5, ty: plY + 5, description: "A soft glittering gold deposit shining through the dirt." },
+      { type: "mithril", tx: plX + 7, ty: plY + 2, description: "A high-frequency silver-blue vein whispering in the ground." }
+    ];
+    return {
+      success: true,
+      message: "The cosmic leylines resonate! The local coordinates of rare deposits have been scryed and marked on your map. (Procedural scrying)",
+      scoutedNodes
+    };
+  }
+
+  if (spellName === "Resource Bounty") {
+    const spawnDrops = [];
+    const lowerBiome = currentBiomeName.toLowerCase();
+    if (lowerBiome.includes("desert")) {
+      spawnDrops.push({ item: "copper_ore", qty: 3, dx: -2, dy: 1 });
+      spawnDrops.push({ item: "gold_ore", qty: 2, dx: 1, dy: -2 });
+    } else if (lowerBiome.includes("frozen") || lowerBiome.includes("tundra")) {
+      spawnDrops.push({ item: "iron_ore", qty: 3, dx: -1, dy: -1 });
+      spawnDrops.push({ item: "crystal", qty: 2, dx: 2, dy: 1 });
+    } else if (lowerBiome.includes("celestial")) {
+      spawnDrops.push({ item: "magic_essence", qty: 2, dx: 0, dy: 2 });
+      spawnDrops.push({ item: "void_crystal", qty: 1, dx: -2, dy: -2 });
+      spawnDrops.push({ item: "crystal", qty: 2, dx: 1, dy: 1 });
+    } else {
+      spawnDrops.push({ item: "wood", qty: 4, dx: -1, dy: 1 });
+      spawnDrops.push({ item: "copper_ore", qty: 2, dx: 2, dy: -1 });
+      spawnDrops.push({ item: "berry", qty: 3, dx: 0, dy: -2 });
+    }
+    return {
+      success: true,
+      message: `Bounty of the ${currentBiomeName}! Raw elemental particles condense and drop directly from the sky. (Procedural condensation)`,
+      spawnDrops
+    };
+  }
+
+  if (spellName === "Healing Sanctuary") {
+    return {
+      success: true,
+      message: "A restorative circle of stellar rejuvenation envelopes you, healing your wounds and boosting your movement speed. (Procedural restore)",
+      restoration: {
+        healHP: 50,
+        foodBonus: 20,
+        buff: {
+          name: "Restorative Sanctuary",
+          speedMultiplier: 1.25,
+          defenseBonus: 5,
+          durationSeconds: 45
+        }
+      }
+    };
+  }
+
+  // Default: Heal
+  return {
+    success: true,
+    message: "A warm, radiant mending spell closes your physical wounds and restores vitality. (Procedural mending)",
+    restoration: {
+      healHP: 40,
+      foodBonus: 0
+    }
+  };
+}
+
+// Robust helper to query Gemini with retry and fallback models
+async function callGeminiWithFallback(params: { contents: any; config: any }) {
+  const modelsToTry = [
+    "gemini-3.5-flash",
+    "gemini-flash-latest",
+    "gemini-3.1-flash-lite"
+  ];
+
+  let lastError = null;
+  for (const modelName of modelsToTry) {
+    try {
+      console.warn(`Attempting Gemini API request with model: ${modelName}`);
+      const response = await ai.models.generateContent({
+        model: modelName,
+        contents: params.contents,
+        config: params.config
+      });
+      if (response && response.text) {
+        return response;
+      }
+    } catch (e: any) {
+      lastError = e;
+      console.warn(`Gemini model ${modelName} failed or busy: ${e.message || e}`);
+    }
+  }
+  throw lastError || new Error("All Gemini models failed to generate content.");
+}
+
 // API endpoint for Oracle guidance
 app.post("/api/gemini/guidance", async (req, res) => {
+  const { gameState } = req.body;
+  if (!gameState) {
+    return res.status(400).json({ error: "Missing gameState" });
+  }
+
   try {
     if (!apiKey) {
-      return res.status(500).json({
-        error: "GEMINI_API_KEY is not set on the server.",
-        message: "Celestial skies remain silent... Check Secrets settings.",
-        eventType: "silence"
-      });
-    }
-
-    const { gameState } = req.body;
-    if (!gameState) {
-      return res.status(400).json({ error: "Missing gameState" });
+      console.warn("GEMINI_API_KEY is not set on the server. Falling back to procedural guidance.");
+      return res.json(getProceduralGuidance(gameState));
     }
 
     const prompt = `
@@ -45,14 +321,13 @@ app.post("/api/gemini/guidance", async (req, res) => {
       - Day: ${gameState.day || 1}
       - Health: ${gameState.hp || 100}/${gameState.mhp || 100}
       - Inventory: ${JSON.stringify(gameState.inv || {})}
-
+ 
       Provide a short, cryptic, but helpful piece of advice or a "prophecy" (max 2 sentences).
       Also, suggest a "World Event" that should happen (e.g., "A meteor shower of iron", "A swarm of golden rabbits", "A sudden mana storm").
       Return the response in JSON format.
     `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+    const response = await callGeminiWithFallback({
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -74,32 +349,22 @@ app.post("/api/gemini/guidance", async (req, res) => {
     }
     throw new Error("No text returned from Gemini");
   } catch (error: any) {
-    console.error("Oracle API Error:", error);
-    return res.status(500).json({
-      error: error.message || "Failed to generate guidance",
-      message: "An echoing cosmic vibration interrupts your query... Try again later.",
-      eventType: "error"
-    });
+    console.warn("Oracle API (handled fallback):", error.message || error);
+    // Graceful procedural fallback to never fail the user's game experience
+    return res.json(getProceduralGuidance(gameState));
   }
 });
 
 // API endpoint for periodic World Events
 app.post("/api/gemini/world-event", async (req, res) => {
+  const { gameState } = req.body;
+
   try {
     if (!apiKey) {
-      return res.status(500).json({
-        error: "GEMINI_API_KEY is not set on the server.",
-        title: "Stellar Static",
-        narrative: "The planetary energy waves are calm for now. Keep gathering resources!",
-        effect: {
-          type: "none",
-          description: "No passive changes are currently active.",
-          statModifiers: {}
-        }
-      });
+      console.warn("GEMINI_API_KEY is not set on the server. Falling back to procedural world event.");
+      return res.json(getProceduralWorldEvent(gameState));
     }
 
-    const { gameState } = req.body;
     const prompt = `
       You are the "Planetary Overmind" in a magical fantasy survival RPG.
       Create a dynamic, engaging random narrative world event or cosmic challenge for the player based on the current situation:
@@ -115,8 +380,7 @@ app.post("/api/gemini/world-event", async (req, res) => {
       Return the response in JSON format.
     `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+    const response = await callGeminiWithFallback({
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -180,34 +444,23 @@ app.post("/api/gemini/world-event", async (req, res) => {
     }
     throw new Error("No text returned from Gemini");
   } catch (error: any) {
-    console.error("World Event API Error:", error);
-    return res.status(500).json({
-      error: error.message || "Failed to generate world event",
-      title: "Cosmic Whispers",
-      narrative: "A quiet harmonic hum fills the air, calming the native creatures.",
-      effect: {
-        type: "none",
-        description: "Standard planetary status.",
-        statModifiers: {}
-      }
-    });
+    console.warn("World Event API (handled fallback):", error.message || error);
+    // Graceful procedural fallback
+    return res.json(getProceduralWorldEvent(gameState));
   }
 });
 
 // API endpoint for Spellcasting
 app.post("/api/gemini/cast-spell", async (req, res) => {
+  const { spellName, gameState } = req.body;
+  if (!spellName || !gameState) {
+    return res.status(400).json({ error: "Missing spellName or gameState" });
+  }
+
   try {
     if (!apiKey) {
-      return res.status(500).json({
-        error: "GEMINI_API_KEY is not set on the server.",
-        message: "Your magic fizzles out... Stellar energies are blocked.",
-        success: false
-      });
-    }
-
-    const { spellName, gameState } = req.body;
-    if (!spellName || !gameState) {
-      return res.status(400).json({ error: "Missing spellName or gameState" });
+      console.warn("GEMINI_API_KEY is not set on the server. Falling back to procedural spell casting.");
+      return res.json(getProceduralSpellResult(spellName, gameState));
     }
 
     const currentBiomeName = gameState.currentBiome?.n || "Unknown Biome";
@@ -257,8 +510,7 @@ app.post("/api/gemini/cast-spell", async (req, res) => {
       Return the response in JSON format.
     `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+    const response = await callGeminiWithFallback({
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -326,12 +578,9 @@ app.post("/api/gemini/cast-spell", async (req, res) => {
     }
     throw new Error("No text returned from Gemini");
   } catch (error: any) {
-    console.error("Cast Spell API Error:", error);
-    return res.status(500).json({
-      error: error.message || "Failed to cast spell",
-      message: "The cosmic leylines fractured during casting... Mana was refunded.",
-      success: false
-    });
+    console.warn("Cast Spell API (handled fallback):", error.message || error);
+    // Graceful procedural fallback
+    return res.json(getProceduralSpellResult(spellName, gameState));
   }
 });
 

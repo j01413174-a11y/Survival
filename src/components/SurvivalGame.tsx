@@ -32,7 +32,9 @@ import {
   LogIn,
   LogOut,
   RefreshCw,
-  UserCheck
+  UserCheck,
+  Compass,
+  MapPin
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getOracleGuidance, generateWorldEvent, castSpell } from '../services/geminiService';
@@ -61,6 +63,80 @@ const TC: Record<number, string[]> = {
   7: ['#2a4020', '#344a28', '#1a2a14'], // Swamp
   8: ['#1a0a3a', '#2a1a4a', '#4a1a8a'], // Celestial
 };
+
+// --- LZW Compression & Safe Storage Utilities ---
+function lzw_encode(s: string): string {
+  if (!s) return "";
+  const dict = new Map<string, number>();
+  const out: number[] = [];
+  let phrase = s.charAt(0);
+  let code = 256;
+  for (let i = 1; i < s.length; i++) {
+    const currChar = s.charAt(i);
+    if (dict.has(phrase + currChar)) {
+      phrase += currChar;
+    } else {
+      out.push(phrase.length > 1 ? dict.get(phrase)! : phrase.charCodeAt(0));
+      dict.set(phrase + currChar, code);
+      code++;
+      phrase = currChar;
+    }
+  }
+  out.push(phrase.length > 1 ? dict.get(phrase)! : phrase.charCodeAt(0));
+  return out.map(x => String.fromCharCode(x)).join("");
+}
+
+function lzw_decode(s: string): string {
+  if (!s) return "";
+  const dict = new Map<number, string>();
+  let currChar = s.charAt(0);
+  let oldPhrase = currChar;
+  const out = [currChar];
+  let code = 256;
+  let phrase;
+  for (let i = 1; i < s.length; i++) {
+    const currCode = s.charCodeAt(i);
+    if (currCode < 256) {
+      phrase = s.charAt(i);
+    } else {
+      phrase = dict.has(currCode) ? dict.get(currCode)! : (oldPhrase + currChar);
+    }
+    out.push(phrase);
+    currChar = phrase.charAt(0);
+    dict.set(code, oldPhrase + currChar);
+    code++;
+    oldPhrase = phrase;
+  }
+  return out.join("");
+}
+
+function safeSetItem(key: string, value: string): void {
+  try {
+    const compressed = "lz:" + lzw_encode(value);
+    localStorage.setItem(key, compressed);
+  } catch (err) {
+    console.error("Failed to set item in localStorage, falling back to raw...", err);
+    try {
+      localStorage.setItem(key, value);
+    } catch (innerErr) {
+      console.error("Even raw storage failed! Storage quota exceeded completely.", innerErr);
+    }
+  }
+}
+
+function safeGetItem(key: string): string | null {
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+  if (raw.startsWith("lz:")) {
+    try {
+      return lzw_decode(raw.substring(3));
+    } catch (err) {
+      console.error("Failed to decode LZW-compressed save data", err);
+      return null;
+    }
+  }
+  return raw;
+}
 
 // --- Game Data ---
 const MAPS = [
@@ -111,7 +187,146 @@ const ET: Record<string, any> = {
   alpha_wolf: { n: 'Alpha Wolf', ico: '🐺', hp: 130, spd: 2.1, dmg: 24, acd: 50, xp: 55, lo: { meat: 2.0, leather: 1.5, alpha_pelt: 1.0 }, ran: false, boss: 1 },
 };
 
-const IT: Record<string, any> = {
+// --- Procedural NFT Item Generator (10,000 unique weapons & armor) ---
+export function getNFTItem(tokenId: number): any {
+  // A simple deterministic hash function from seed
+  const hash = (seed: number) => {
+    let x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+  };
+
+  const r1 = hash(tokenId * 17);
+  const r2 = hash(tokenId * 31);
+  const r3 = hash(tokenId * 79);
+  const r4 = hash(tokenId * 103);
+
+  // Rarity distribution:
+  // Mythic: top 0.5%
+  // Legendary: next 2.5%
+  // Epic: next 7%
+  // Rare: next 15%
+  // Uncommon: next 25%
+  // Common: rest 50%
+  const rarityRoll = r1;
+  let rarity: 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Legendary' | 'Mythic' = 'Common';
+  let rarityColor = '#94a3b8'; // zinc
+  let statMult = 1.0;
+
+  if (rarityRoll < 0.005) {
+    rarity = 'Mythic';
+    rarityColor = '#ef4444'; // Red
+    statMult = 3.0;
+  } else if (rarityRoll < 0.03) {
+    rarity = 'Legendary';
+    rarityColor = '#f97316'; // Orange
+    statMult = 2.2;
+  } else if (rarityRoll < 0.10) {
+    rarity = 'Epic';
+    rarityColor = '#a855f7'; // Purple
+    statMult = 1.7;
+  } else if (rarityRoll < 0.25) {
+    rarity = 'Rare';
+    rarityColor = '#3b82f6'; // Blue
+    statMult = 1.35;
+  } else if (rarityRoll < 0.50) {
+    rarity = 'Uncommon';
+    rarityColor = '#10b981'; // Green
+    statMult = 1.15;
+  }
+
+  // Categories: Weapons or Armors
+  const category = r2 < 0.45 ? 'weapon' : 'armor';
+
+  const prefixes = [
+    'Satoshi', 'Vitalik', 'Crypto', 'Web3', 'Bored', 'Hype', 'Ether', 'Solana',
+    'MetaMask', 'Ledger', 'Giga', 'Alpha', 'Cyber', 'Decentralized', 'Immutable',
+    'OpenSea', 'Phantom', 'Genesis', 'DAO', 'Polygon', 'SmartContract', 'Yield',
+    'Gasless', 'Altcoin', 'Bullish', 'Laser-Eye', 'Airdrop', 'Hodler', 'Node',
+    'Cosmological', 'Quantum', 'Glitch', 'Neo', 'Hyper', 'Defi', 'Pixel', 'Voxel'
+  ];
+
+  const suffixes = [
+    'Ape', 'Oracle', 'Node', 'Block', 'Contract', 'Shard', 'Ledger', 'Key',
+    'Vanguard', 'Harbinger', 'Glitch', 'Relic', 'Beacon', 'Matrix', 'Engine',
+    'Overlord', 'Sentinel', 'Reaper', 'Specter', 'Zealot', 'Cyberpunk', 'Hustler',
+    'Protocol', 'Validator', 'Foundry', 'Sovereign', 'Degen', 'Arbitrageur'
+  ];
+
+  const p = prefixes[Math.floor(r3 * prefixes.length)];
+  const sName = suffixes[Math.floor(r4 * suffixes.length)];
+
+  let item: any = {
+    id: `nft_${tokenId}`,
+    tokenId,
+    rarity,
+    rarityColor,
+    isNFT: true,
+  };
+
+  // Base types for weapons
+  const weaponTypes = [
+    { n: 'Blade', ico: '⚔️', type: 'melee', dmg: 25, spd: 25, rng: 50 },
+    { n: 'Katana', ico: '🗡️', type: 'melee', dmg: 30, spd: 20, rng: 52 },
+    { n: 'Bow', ico: '🏹', type: 'ranged', dmg: 22, spd: 32, rng: 240 },
+    { n: 'Scepter', ico: '🪄', type: 'magic', dmg: 35, spd: 45, rng: 280, mp: 15, fx: 'burn', col: '#ff5500' },
+    { n: 'Orb', ico: '🔮', type: 'magic', dmg: 45, spd: 50, rng: 300, mp: 25, fx: 'void', col: '#aa00ff' },
+  ];
+
+  // Base types for armors
+  const armorTypes = [
+    { n: 'Crown', ico: '👑', sl: 'head', def: 5, hpBonus: 12 },
+    { n: 'Visor', ico: '🪖', sl: 'head', def: 6, mpBonus: 15 },
+    { n: 'Plate', ico: '🛡️', sl: 'chest', def: 14 },
+    { n: 'Vest', ico: '🧥', sl: 'chest', def: 8, spdBonus: 0.15 },
+    { n: 'Leggings', ico: '👖', sl: 'legs', def: 8 },
+    { n: 'Greaves', ico: '👖', sl: 'legs', def: 11 },
+    { n: 'Boots', ico: '🥾', sl: 'feet', def: 5, spdBonus: 0.25 },
+    { n: 'Ring', ico: '💍', sl: 'ring', def: 1, hpBonus: 15, mpBonus: 15 },
+  ];
+
+  if (category === 'weapon') {
+    const base = weaponTypes[Math.floor(r2 * weaponTypes.length)];
+    item.n = `${p}'s NFT ${base.n} #${tokenId}`;
+    item.ico = base.ico;
+    item.t = 'weapon';
+    item.type = base.type;
+    item.dmg = Math.round(base.dmg * statMult);
+    item.spd = Math.round(base.spd);
+    item.rng = base.rng;
+    if (base.mp !== undefined) {
+      item.mp = base.mp;
+      item.fx = base.fx;
+      item.col = base.col;
+    }
+  } else {
+    const base = armorTypes[Math.floor(r2 * armorTypes.length)];
+    item.n = `${p}'s NFT ${base.n} #${tokenId}`;
+    item.ico = base.ico;
+    item.t = 'armor';
+    item.sl = base.sl;
+    item.def = Math.round(base.def * statMult);
+    if (base.hpBonus) item.hpBonus = Math.round(base.hpBonus * statMult);
+    if (base.mpBonus) item.mpBonus = Math.round(base.mpBonus * statMult);
+    if (base.spdBonus) item.spdBonus = Number((base.spdBonus * statMult).toFixed(2));
+  }
+
+  // Price calculation in gold_coins
+  const priceRanges: Record<string, [number, number]> = {
+    Common: [60, 120],
+    Uncommon: [180, 300],
+    Rare: [500, 1000],
+    Epic: [1800, 3500],
+    Legendary: [6000, 12000],
+    Mythic: [25000, 55000],
+  };
+  const range = priceRanges[rarity];
+  const offset = hash(tokenId * 199);
+  item.price = Math.round(range[0] + offset * (range[1] - range[0]));
+
+  return item;
+}
+
+const baseIT: Record<string, any> = {
   wood: { ico: '🪵', n: 'Wood', t: 'mat' },
   stone: { ico: '🪨', n: 'Stone', t: 'mat' },
   iron_ore: { ico: '⚙️', n: 'Iron Ore', t: 'mat' },
@@ -139,6 +354,8 @@ const IT: Record<string, any> = {
   torch: { ico: '🔦', n: 'Torch', t: 'tool' },
   mana_crystal: { ico: '🧿', n: 'Mana Crystal', t: 'mat' },
   void_essence: { ico: '🌀', n: 'Void Essence', t: 'mat' },
+  silk: { ico: '🕸️', n: 'Silk', t: 'mat' },
+  dragon_scale: { ico: '🛡️', n: 'Dragon Scale', t: 'mat' },
   
    cooked_meat: { ico: '🍗', n: 'Cooked Meat', t: 'food', hu: 45, hp: 10 },
   raw_fish: { ico: '🐟', n: 'Raw Fish', t: 'food', hu: 15, hp: 5 },
@@ -157,6 +374,7 @@ const IT: Record<string, any> = {
   copper_bar: { ico: '🟫', n: 'Copper Bar', t: 'mat' },
   gold_bar: { ico: '⭐', n: 'Gold Bar', t: 'mat' },
   mithril_bar: { ico: '💠', n: 'Mithril Bar', t: 'mat' },
+  gold_coins: { ico: '🪙', n: 'Gold Coins', t: 'currency' },
 
   leather_vest: { ico: '🧥', n: 'Leather Vest', t: 'armor', sl: 'chest', def: 5 },
   iron_chest: { ico: '🛡️', n: 'Iron Chest', t: 'armor', sl: 'chest', def: 14 },
@@ -214,7 +432,36 @@ const IT: Record<string, any> = {
   health_ring: { ico: '💍', n: 'Vitality Ring', t: 'armor', sl: 'ring', def: 1, hpBonus: 20 },
   stamina_ring: { ico: '💍', n: 'Stamina Ring', t: 'armor', sl: 'ring', def: 0, spdBonus: 0.3 },
   mana_ring: { ico: '💍', n: 'Arcane Ring', t: 'armor', sl: 'ring', def: 1, mpBonus: 30 },
+
+  dragon_scale_chest: { ico: '🛡️', n: 'Dragon Chest', t: 'armor', sl: 'chest', def: 35 },
+  dragon_scale_helmet: { ico: '🪖', n: 'Dragon Helmet', t: 'armor', sl: 'head', def: 18 },
+  dragon_scale_greaves: { ico: '👖', n: 'Dragon Greaves', t: 'armor', sl: 'legs', def: 24 },
+  dragon_scale_boots: { ico: '🥾', n: 'Dragon Boots', t: 'armor', sl: 'feet', def: 14, spdBonus: 0.5 },
+
+  celestial_blade: { id: 'celestial_blade', n: 'Celestial Blade', ico: '⚔️', dmg: 75, spd: 15, rng: 65, type: 'melee', mp: 0 },
+  void_reaver_bow: { id: 'void_reaver_bow', n: 'Void Reaver Bow', ico: '🏹', dmg: 65, spd: 18, rng: 320, type: 'ranged', mp: 0 },
+  harbinger_staff: { id: 'harbinger_staff', n: 'Harbinger Staff', ico: '🪄', dmg: 95, spd: 42, rng: 380, type: 'magic', mp: 35, fx: 'void', col: '#ff00aa' },
 };
+
+export const IT = new Proxy(baseIT, {
+  get(target, prop) {
+    if (typeof prop === 'string' && prop.startsWith('nft_')) {
+      if (!(prop in target)) {
+        const tokenId = parseInt(prop.replace('nft_', ''), 10);
+        if (!isNaN(tokenId) && tokenId >= 1 && tokenId <= 10000) {
+          target[prop] = getNFTItem(tokenId);
+        }
+      }
+    }
+    return target[prop as string];
+  },
+  has(target, prop) {
+    if (typeof prop === 'string' && prop.startsWith('nft_')) {
+      return true;
+    }
+    return prop in target;
+  }
+});
 
 const RC = [
   { n: 'Cooked Magma Cod', out: 'cooked_magma_cod', cnt: 1, cat: 'Food', c: { magma_cod: 1 }, req: 'campfire' },
@@ -271,6 +518,15 @@ const RC = [
   { n: 'Campfire', out: 'campfire', cnt: 1, cat: 'Structures', c: { wood: 3, stone: 1 } },
   { n: 'Workbench', out: 'workbench', cnt: 1, cat: 'Structures', c: { wood: 5, stone: 2 } },
   { n: 'Forge', out: 'forge', cnt: 1, cat: 'Structures', c: { stone: 6, iron_bar: 3, coal: 2 } },
+
+  // --- High-tier Equipment from Dangerous Biomes ---
+  { n: 'Dragon Chestplate', out: 'dragon_scale_chest', cnt: 1, cat: 'Armor', c: { dragon_scale: 6, mithril_bar: 3 }, req: 'forge' },
+  { n: 'Dragon Helmet', out: 'dragon_scale_helmet', cnt: 1, cat: 'Armor', c: { dragon_scale: 4, mithril_bar: 2 }, req: 'forge' },
+  { n: 'Dragon Greaves', out: 'dragon_scale_greaves', cnt: 1, cat: 'Armor', c: { dragon_scale: 5, mithril_bar: 3 }, req: 'forge' },
+  { n: 'Dragon Boots', out: 'dragon_scale_boots', cnt: 1, cat: 'Armor', c: { dragon_scale: 3, mithril_bar: 2 }, req: 'forge' },
+  { n: 'Celestial Blade', out: 'celestial_blade', cnt: 1, cat: 'Weapons', c: { celestial_shard: 5, mithril_bar: 4, magic_essence: 10 }, req: 'magic_altar' },
+  { n: 'Void Reaver Bow', out: 'void_reaver_bow', cnt: 1, cat: 'Weapons', c: { void_crystal: 5, silk: 6 }, req: 'magic_altar' },
+  { n: 'Harbinger Staff', out: 'harbinger_staff', cnt: 1, cat: 'Weapons', c: { void_crystal: 6, celestial_shard: 3, magic_essence: 15 }, req: 'magic_altar' },
 ];
 
 // --- Helper Functions ---
@@ -410,6 +666,11 @@ export default function SurvivalGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<any>(null);
   const [showInv, setShowInv] = useState(false);
+  const [showNFTMarket, setShowNFTMarket] = useState(false);
+  const [nftSearchToken, setNftSearchToken] = useState<string>('');
+  const [nftRarityFilter, setNftRarityFilter] = useState<string>('All');
+  const [nftTypeFilter, setNftTypeFilter] = useState<string>('All');
+  const [nftPage, setNftPage] = useState<number>(0);
   const [invCategory, setInvCategory] = useState<'all' | 'weapon' | 'armor' | 'food' | 'mat'>('all');
   const [selectedInvItem, setSelectedInvItem] = useState<string | null>(null);
   const [showCraft, setShowCraft] = useState(false);
@@ -438,6 +699,7 @@ export default function SurvivalGame() {
   const [logs, setLogs] = useState<{ msg: string; col: string }[]>([]);
   const [compMode, setCompMode] = useState<'guard' | 'attack'>('guard');
   const [hotSlot, setHotSlot] = useState(0);
+  const [draggedOverSlot, setDraggedOverSlot] = useState<number | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const [showDeathScreen, setShowDeathScreen] = useState(false);
 
@@ -445,6 +707,20 @@ export default function SurvivalGame() {
   const [isStatusCollapsed, setIsStatusCollapsed] = useState(false);
   const [isEquipCollapsed, setIsEquipCollapsed] = useState(true); // default to true to keep screen clean!
   const [isAutoCollapsed, setIsAutoCollapsed] = useState(true); // default to true to keep screen clean!
+
+  // --- Minimap States & Refs ---
+  const [minimapMode, setMinimapMode] = useState<'local' | 'world'>('local');
+  const [minimapZoom, setMinimapZoom] = useState<number>(1.2);
+  const [isMinimapCollapsed, setIsMinimapCollapsed] = useState<boolean>(false);
+  const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  const minimapModeRef = useRef<'local' | 'world'>('local');
+  const minimapZoomRef = useRef<number>(1.2);
+  const isMinimapCollapsedRef = useRef<boolean>(false);
+
+  useEffect(() => { minimapModeRef.current = minimapMode; }, [minimapMode]);
+  useEffect(() => { minimapZoomRef.current = minimapZoom; }, [minimapZoom]);
+  useEffect(() => { isMinimapCollapsedRef.current = isMinimapCollapsed; }, [isMinimapCollapsed]);
 
   // --- Save / Load & Backup System States ---
   const [showSaveMenu, setShowSaveMenu] = useState(false);
@@ -518,7 +794,7 @@ export default function SurvivalGame() {
     const ids = ['1', '2', '3', 'autosave'];
     const meta: Record<string, any> = {};
     for (const id of ids) {
-      const raw = localStorage.getItem(`wild_survival_save_${id}`);
+      const raw = safeGetItem(`wild_survival_save_${id}`);
       if (raw) {
         try {
           meta[id] = JSON.parse(raw);
@@ -539,7 +815,11 @@ export default function SurvivalGame() {
   // Shared loader function
   const loadGameDataStr = useCallback((jsonStr: string) => {
     try {
-      const data = JSON.parse(jsonStr);
+      let activeStr = jsonStr;
+      if (jsonStr && jsonStr.startsWith("lz:")) {
+        activeStr = lzw_decode(jsonStr.substring(3));
+      }
+      const data = JSON.parse(activeStr);
       if (!data || !data.pl) {
         addLog("Invalid save slot format!", "#f87171");
         setImportError("Error: The provided save string is corrupt or invalid.");
@@ -579,6 +859,7 @@ export default function SurvivalGame() {
         alchemy: { lvl: 1, xp: 0, xpNext: 100 },
         hunting: { lvl: 1, xp: 0, xpNext: 100 }
       };
+      s.pl.discoveredChunks = data.pl.discoveredChunks || {};
 
       // 2. Restore World Objects
       s.objs = data.objs || [];
@@ -647,7 +928,8 @@ export default function SurvivalGame() {
           lvl: s.pl.lvl,
           xpNext: s.pl.xpNext,
           def: s.pl.def,
-          skills: s.pl.skills
+          skills: s.pl.skills,
+          discoveredChunks: s.pl.discoveredChunks || {}
         },
         objs: s.objs,
         companions: s.companions.map((c: any) => ({
@@ -669,7 +951,7 @@ export default function SurvivalGame() {
         timestamp: Date.now()
       };
 
-      localStorage.setItem(`wild_survival_save_${slotId}`, JSON.stringify(saveData));
+      safeSetItem(`wild_survival_save_${slotId}`, JSON.stringify(saveData));
       addLog(`Saved game in Slot ${slotId.toUpperCase()}!`, '#4df8aa');
       loadSlotMetadata();
     } catch (err) {
@@ -680,7 +962,7 @@ export default function SurvivalGame() {
 
   // Load progress
   const loadGame = useCallback((slotId: string) => {
-    const raw = localStorage.getItem(`wild_survival_save_${slotId}`);
+    const raw = safeGetItem(`wild_survival_save_${slotId}`);
     if (!raw) {
       addLog(`No save data in Slot ${slotId.toUpperCase()}`, "#f87171");
       return;
@@ -709,7 +991,11 @@ export default function SurvivalGame() {
         try {
           const data = doc.data();
           if (data && data.saveData) {
-            cloudData[doc.id] = JSON.parse(data.saveData);
+            let activeStr = data.saveData;
+            if (activeStr && activeStr.startsWith("lz:")) {
+              activeStr = lzw_decode(activeStr.substring(3));
+            }
+            cloudData[doc.id] = JSON.parse(activeStr);
           }
         } catch (e) {
           console.error("Failed to parse cloud save", doc.id, e);
@@ -719,6 +1005,7 @@ export default function SurvivalGame() {
     } catch (err) {
       console.error("Failed to fetch cloud saves:", err);
       addLog("Failed to fetch cloud saves", "#f87171");
+      handleFirestoreError(err, OperationType.LIST, `users/${userId}/saves`);
     } finally {
       setIsCloudSyncing(false);
     }
@@ -731,15 +1018,35 @@ export default function SurvivalGame() {
       setUser(currentUser);
       if (currentUser) {
         addLog(`Welcome back, ${currentUser.displayName || 'Survivor'}!`, '#60a5fa');
-        // Ensure user document exists/updates in Firestore
+        // Ensure user document exists/updates in Firestore using robust creation/update check
         const userDocRef = doc(db, "users", currentUser.uid);
-        setDoc(userDocRef, {
-          uid: currentUser.uid,
-          email: currentUser.email || "",
-          displayName: currentUser.displayName || "Survivor",
-          createdAt: new Date().toISOString()
-        }, { merge: true }).catch(err => {
-          console.error("Failed to sync user to Firestore", err);
+        getDoc(userDocRef).then((docSnap) => {
+          if (!docSnap.exists()) {
+            // Document does not exist: perform clean creation
+            setDoc(userDocRef, {
+              uid: currentUser.uid,
+              email: currentUser.email || "",
+              displayName: currentUser.displayName || "Survivor",
+              createdAt: new Date().toISOString()
+            }).catch(err => {
+              console.error("Failed to sync user to Firestore (create):", err);
+              handleFirestoreError(err, OperationType.CREATE, `users/${currentUser?.uid}`);
+            });
+          } else {
+            // Document exists: update only if displayName changed
+            const existingData = docSnap.data();
+            if (existingData && existingData.displayName !== currentUser.displayName) {
+              setDoc(userDocRef, {
+                displayName: currentUser.displayName || "Survivor"
+              }, { merge: true }).catch(err => {
+                console.error("Failed to sync user to Firestore (update):", err);
+                handleFirestoreError(err, OperationType.UPDATE, `users/${currentUser?.uid}`);
+              });
+            }
+          }
+        }).catch(err => {
+          console.error("Failed to get user profile on sync:", err);
+          handleFirestoreError(err, OperationType.GET, `users/${currentUser?.uid}`);
         });
 
         fetchCloudSaves(currentUser.uid);
@@ -854,7 +1161,7 @@ export default function SurvivalGame() {
 
   // Export save data as file download
   const exportSaveToFile = useCallback((slotId: string) => {
-    const raw = localStorage.getItem(`wild_survival_save_${slotId}`);
+    const raw = safeGetItem(`wild_survival_save_${slotId}`);
     if (!raw) {
       addLog(`Nothing to export in Slot ${slotId.toUpperCase()}!`, "#f87171");
       return;
@@ -916,7 +1223,8 @@ export default function SurvivalGame() {
           lvl: s.pl.lvl,
           xpNext: s.pl.xpNext,
           def: s.pl.def,
-          skills: s.pl.skills
+          skills: s.pl.skills,
+          discoveredChunks: s.pl.discoveredChunks || {}
         },
         objs: s.objs,
         companions: s.companions.map((c: any) => ({
@@ -938,7 +1246,7 @@ export default function SurvivalGame() {
         timestamp: Date.now()
       };
 
-      localStorage.setItem('wild_survival_save_autosave', JSON.stringify(saveData));
+      safeSetItem('wild_survival_save_autosave', JSON.stringify(saveData));
       addLog("💾 Autosaved progress", "#38bdf8");
       loadSlotMetadata();
       if (auth.currentUser) {
@@ -984,7 +1292,8 @@ export default function SurvivalGame() {
         combat: { lvl: 1, xp: 0, xpNext: 100 },
         alchemy: { lvl: 1, xp: 0, xpNext: 100 },
         hunting: { lvl: 1, xp: 0, xpNext: 100 }
-      }
+      },
+      discoveredChunks: {}
     };
 
     const world: number[][] = [];
@@ -1088,65 +1397,47 @@ export default function SurvivalGame() {
                       rockSubtype = 'celestial';
                       rockHp = 8;
                     }
-                  } else if (M.n.includes('Mountain') || M.n.includes('Ruins')) {
-                    if (oreRand < 0.2) {
+                  } else {
+                    // Unified rich, map-wide ore generation so that all raw items for crafting are available for the entire map
+                    if (oreRand < 0.08) {
                       rockIco = '🪐';
                       rockSubtype = 'mithril';
                       rockHp = 8;
-                    } else if (oreRand < 0.5) {
-                      rockIco = '⚙️';
-                      rockSubtype = 'iron';
-                      rockHp = 5;
-                    } else if (oreRand < 0.7) {
-                      rockIco = '🪙';
-                      rockSubtype = 'copper';
-                      rockHp = 4;
-                    } else if (oreRand < 0.9) {
-                      rockIco = '🖤';
-                      rockSubtype = 'coal';
-                      rockHp = 4;
-                    }
-                  } else if (M.n.includes('Desert') || M.n.includes('Coastal')) {
-                    if (oreRand < 0.3) {
+                    } else if (oreRand < 0.16) {
+                      rockIco = '✨';
+                      rockSubtype = 'celestial';
+                      rockHp = 8;
+                    } else if (oreRand < 0.24) {
+                      rockIco = '🔮';
+                      rockSubtype = 'void_crystal';
+                      rockHp = 6;
+                    } else if (oreRand < 0.35) {
                       rockIco = '💛';
                       rockSubtype = 'gold';
                       rockHp = 6;
-                    } else if (oreRand < 0.6) {
+                    } else if (oreRand < 0.46) {
+                      rockIco = '💎';
+                      rockSubtype = 'crystal';
+                      rockHp = 5;
+                    } else if (oreRand < 0.56) {
+                      rockIco = '🟡';
+                      rockSubtype = 'sulfur';
+                      rockHp = 3;
+                    } else if (oreRand < 0.70) {
+                      rockIco = '⚙️';
+                      rockSubtype = 'iron';
+                      rockHp = 5;
+                    } else if (oreRand < 0.84) {
                       rockIco = '🪙';
                       rockSubtype = 'copper';
                       rockHp = 4;
-                    } else if (oreRand < 0.8) {
-                      rockIco = '🟡';
-                      rockSubtype = 'sulfur';
-                      rockHp = 3;
-                    }
-                  } else if (M.n.includes('Volcanic') || M.n.includes('Scorched')) {
-                    if (oreRand < 0.4) {
-                      rockIco = '🟡';
-                      rockSubtype = 'sulfur';
-                      rockHp = 3;
-                    } else if (oreRand < 0.8) {
+                    } else if (oreRand < 0.94) {
                       rockIco = '🖤';
                       rockSubtype = 'coal';
                       rockHp = 4;
                     } else {
-                      rockIco = '⚙️';
-                      rockSubtype = 'iron';
-                      rockHp = 5;
-                    }
-                  } else {
-                    // Forest/Plains standard rock
-                    if (oreRand < 0.2) {
-                      rockIco = '🪙';
-                      rockSubtype = 'copper';
-                      rockHp = 4;
-                    } else if (oreRand < 0.4) {
-                      rockIco = '⚙️';
-                      rockSubtype = 'iron';
-                      rockHp = 5;
-                    } else if (oreRand < 0.5) {
-                      rockIco = '🖤';
-                      rockSubtype = 'coal';
+                      rockIco = '🪨';
+                      rockSubtype = 'stone';
                       rockHp = 4;
                     }
                   }
@@ -1173,6 +1464,13 @@ export default function SurvivalGame() {
                       objs.push({ type: 'drop', tx: wx, ty: wy, item: k, qty: 1 + Math.floor(rng() * 2) });
                     }
                   }
+                  // Universal map-wide raw crafting material drops (small chance) so all crafting resources are available map-wide
+                  const universalDrops = ['wood', 'fiber', 'stone', 'iron_ore', 'copper_ore', 'gold_ore', 'mithril_ore', 'coal', 'sulfur', 'crystal', 'magic_essence', 'dragon_scale', 'alpha_pelt', 'leather', 'silk', 'bone', 'venom', 'mushroom', 'herb'];
+                  universalDrops.forEach(item => {
+                    if (rng() < 0.003) { // 0.3% chance per tile per item to ensure a healthy but balanced scatter of items
+                      objs.push({ type: 'drop', tx: wx, ty: wy, item, qty: 1 + Math.floor(rng() * 2) });
+                    }
+                  });
                   // Occasionally spawn tracking clues / footprints on land
                   if (rng() < 0.02) {
                     objs.push({
@@ -1250,6 +1548,229 @@ export default function SurvivalGame() {
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
 
+    const discoverMapAroundPlayer = (s: any) => {
+      if (!s || !s.pl) return;
+      const tx = Math.floor(s.pl.x / TZ);
+      const ty = Math.floor(s.pl.y / TZ);
+      const cx = Math.floor(tx / 10);
+      const cy = Math.floor(ty / 10);
+      
+      if (!s.pl.discoveredChunks) {
+        s.pl.discoveredChunks = {};
+      }
+      
+      let changed = false;
+      for (let dy = -3; dy <= 3; dy++) {
+        for (let dx = -3; dx <= 3; dx++) {
+          const ncx = cx + dx;
+          const ncy = cy + dy;
+          if (ncx >= 0 && ncx < 40 && ncy >= 0 && ncy < 40) {
+            const key = `${ncx}_${ncy}`;
+            if (!s.pl.discoveredChunks[key]) {
+              s.pl.discoveredChunks[key] = true;
+              changed = true;
+            }
+          }
+        }
+      }
+      return changed;
+    };
+
+    const drawMinimap = (s: any) => {
+      const canvas = minimapCanvasRef.current;
+      if (!canvas) return;
+      const mctx = canvas.getContext('2d');
+      if (!mctx) return;
+
+      mctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const isWorldMode = minimapModeRef.current === 'world';
+      const zoom = minimapZoomRef.current;
+
+      const ptx = Math.floor(s.pl.x / TZ);
+      const pty = Math.floor(s.pl.y / TZ);
+
+      if (isWorldMode) {
+        const chunkCount = 40;
+        const cellSize = canvas.width / chunkCount;
+        const revealAll = s.activeSpells?.revealMapTimer > 0;
+
+        for (let cy = 0; cy < chunkCount; cy++) {
+          for (let cx = 0; cx < chunkCount; cx++) {
+            const isDiscovered = revealAll || (s.pl.discoveredChunks && s.pl.discoveredChunks[`${cx}_${cy}`]);
+            
+            if (isDiscovered) {
+              const ty = cy * 10 + 5;
+              const tx = cx * 10 + 5;
+              const tile = s.world[ty]?.[tx] ?? 0;
+              const tc = TC[tile] || TC[0];
+              mctx.fillStyle = tc[0];
+            } else {
+              mctx.fillStyle = '#0f172a';
+            }
+            mctx.fillRect(cx * cellSize, cy * cellSize, cellSize, cellSize);
+
+            if (cx % 8 === 0 || cy % 8 === 0) {
+              mctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+              if (cx % 8 === 0) mctx.fillRect(cx * cellSize, cy * cellSize, 1, cellSize);
+              if (cy % 8 === 0) mctx.fillRect(cx * cellSize, cy * cellSize, cellSize, 1);
+            }
+          }
+        }
+
+        const currentZoneC = Math.floor(ptx / ZW);
+        const currentZoneR = Math.floor(pty / ZH);
+        mctx.strokeStyle = 'rgba(34, 211, 238, 0.4)';
+        mctx.lineWidth = 1.5;
+        mctx.strokeRect(currentZoneC * 8 * cellSize, currentZoneR * 8 * cellSize, 8 * cellSize, 8 * cellSize);
+
+        const px = (s.pl.x / (WW * TZ)) * canvas.width;
+        const py = (s.pl.y / (WH * TZ)) * canvas.height;
+
+        const pulse = 1 + Math.sin(s.ticks * 0.1) * 0.3;
+        mctx.fillStyle = 'rgba(34, 197, 94, 0.3)';
+        mctx.beginPath();
+        mctx.arc(px, py, 6 * pulse, 0, Math.PI * 2);
+        mctx.fill();
+
+        mctx.fillStyle = '#22c55e';
+        mctx.beginPath();
+        mctx.arc(px, py, 3, 0, Math.PI * 2);
+        mctx.fill();
+        mctx.strokeStyle = '#ffffff';
+        mctx.lineWidth = 0.75;
+        mctx.stroke();
+
+      } else {
+        const range = Math.round(18 / zoom);
+        const size = range * 2 + 1;
+        const tileSize = canvas.width / size;
+        const revealAll = s.activeSpells?.revealMapTimer > 0;
+
+        for (let dy = -range; dy <= range; dy++) {
+          for (let dx = -range; dx <= range; dx++) {
+            const tx = ptx + dx;
+            const ty = pty + dy;
+
+            const cx = Math.floor(tx / 10);
+            const cy = Math.floor(ty / 10);
+
+            const canvasX = (dx + range) * tileSize;
+            const canvasY = (dy + range) * tileSize;
+
+            if (tx >= 0 && tx < WW && ty >= 0 && ty < WH) {
+              const isDiscovered = revealAll || (s.pl.discoveredChunks && s.pl.discoveredChunks[`${cx}_${cy}`]);
+              
+              if (isDiscovered) {
+                const tile = s.world[ty][tx];
+                const tc = TC[tile] || TC[0];
+                mctx.fillStyle = tc[0];
+                mctx.fillRect(canvasX, canvasY, tileSize + 0.5, tileSize + 0.5);
+              } else {
+                mctx.fillStyle = '#090d16';
+                mctx.fillRect(canvasX, canvasY, tileSize + 0.5, tileSize + 0.5);
+              }
+            } else {
+              mctx.fillStyle = '#020408';
+              mctx.fillRect(canvasX, canvasY, tileSize + 0.5, tileSize + 0.5);
+            }
+          }
+        }
+
+        for (const o of s.objs) {
+          const dx = o.tx - ptx;
+          const dy = o.ty - pty;
+          if (Math.abs(dx) <= range && Math.abs(dy) <= range) {
+            const canvasX = (dx + range) * tileSize + tileSize / 2;
+            const canvasY = (dy + range) * tileSize + tileSize / 2;
+
+            if (o.type === 'campfire' || o.type === 'workbench' || o.type === 'forge') {
+              mctx.fillStyle = '#f97316';
+              mctx.beginPath();
+              mctx.arc(canvasX, canvasY, 2.5, 0, Math.PI * 2);
+              mctx.fill();
+            } else if (o.type === 'rock') {
+              mctx.fillStyle = '#94a3b8';
+              mctx.beginPath();
+              mctx.arc(canvasX, canvasY, 1.5, 0, Math.PI * 2);
+              mctx.fill();
+            } else if (o.type === 'tree') {
+              mctx.fillStyle = '#15803d';
+              mctx.beginPath();
+              mctx.arc(canvasX, canvasY, 1.5, 0, Math.PI * 2);
+              mctx.fill();
+            } else if (o.type === 'portal') {
+              const p = 1 + Math.sin(s.ticks * 0.15) * 0.4;
+              mctx.fillStyle = 'rgba(168, 85, 247, 0.4)';
+              mctx.beginPath();
+              mctx.arc(canvasX, canvasY, 4 * p, 0, Math.PI * 2);
+              mctx.fill();
+              mctx.fillStyle = '#a855f7';
+              mctx.beginPath();
+              mctx.arc(canvasX, canvasY, 2, 0, Math.PI * 2);
+              mctx.fill();
+            }
+          }
+        }
+
+        if (s.enemies) {
+          for (const e of s.enemies) {
+            const etx = Math.floor(e.x / TZ);
+            const ety = Math.floor(e.y / TZ);
+            const dx = etx - ptx;
+            const dy = ety - pty;
+            if (Math.abs(dx) <= range && Math.abs(dy) <= range) {
+              const canvasX = (dx + range) * tileSize + tileSize / 2;
+              const canvasY = (dy + range) * tileSize + tileSize / 2;
+              
+              mctx.fillStyle = '#ef4444';
+              mctx.beginPath();
+              mctx.arc(canvasX, canvasY, 2.5, 0, Math.PI * 2);
+              mctx.fill();
+              if (e.hp > 150) {
+                mctx.strokeStyle = '#eab308';
+                mctx.lineWidth = 1;
+                mctx.stroke();
+              }
+            }
+          }
+        }
+
+        const centerX = range * tileSize + tileSize / 2;
+        const centerY = range * tileSize + tileSize / 2;
+
+        const pulse = 1 + Math.sin(s.ticks * 0.1) * 0.3;
+        mctx.fillStyle = 'rgba(34, 197, 94, 0.3)';
+        mctx.beginPath();
+        mctx.arc(centerX, centerY, 7 * pulse, 0, Math.PI * 2);
+        mctx.fill();
+
+        mctx.fillStyle = '#22c55e';
+        mctx.beginPath();
+        mctx.arc(centerX, centerY, 3.5, 0, Math.PI * 2);
+        mctx.fill();
+        mctx.strokeStyle = '#ffffff';
+        mctx.lineWidth = 1;
+        mctx.stroke();
+      }
+
+      mctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      mctx.lineWidth = 0.5;
+      mctx.beginPath();
+      mctx.moveTo(canvas.width / 2, 0);
+      mctx.lineTo(canvas.width / 2, canvas.height);
+      mctx.moveTo(0, canvas.height / 2);
+      mctx.lineTo(canvas.width, canvas.height / 2);
+      mctx.stroke();
+
+      mctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+      mctx.lineWidth = 1;
+      mctx.beginPath();
+      mctx.arc(canvas.width / 2, canvas.height / 2, canvas.width / 3, 0, Math.PI * 2);
+      mctx.arc(canvas.width / 2, canvas.height / 2, canvas.width / 2 - 2, 0, Math.PI * 2);
+      mctx.stroke();
+    };
+
     const loop = () => {
       const s = stateRef.current;
       if (!s) return;
@@ -1259,6 +1780,10 @@ export default function SurvivalGame() {
         s.ticks++;
         s.dayTime = (s.ticks % 18000) / 18000;
         if (s.ticks % 18000 === 0) s.day++;
+
+        if (s.ticks % 10 === 0) {
+          discoverMapAroundPlayer(s);
+        }
 
         // Tick active magic spell durations
         if (s.activeSpells) {
@@ -1454,15 +1979,13 @@ export default function SurvivalGame() {
       }
 
       let isSprinting = false;
-      if (s.pl.isGridMoving && keysRef.current['Shift'] && s.pl.sta > 2) {
+      if (s.pl.isGridMoving && keysRef.current['Shift']) {
         isSprinting = true;
       }
 
-      if (isSprinting) {
-        s.pl.sta = Math.max(0, s.pl.sta - 0.45); // Drain stamina on sprint
-      } else {
-        s.pl.sta = Math.min(100, s.pl.sta + 0.25); // Passively regenerate stamina
-      }
+      // Keep hunger and stamina full as they have been removed from depletion mechanics
+      s.pl.sta = 100;
+      s.pl.hu = 100;
 
       if (s.pl.isGridMoving) {
         let eventSpeedMult = 1.0;
@@ -1481,29 +2004,9 @@ export default function SurvivalGame() {
           s.pl.x = s.pl.targetX;
           s.pl.y = s.pl.targetY;
           s.pl.isGridMoving = false;
-
-          // Step action drains hunger
-          s.pl.hu = Math.max(0, s.pl.hu - 1);
-          if (s.pl.hu <= 0) {
-            s.pl.hp = Math.max(0, s.pl.hp - 2);
-            if (s.pl.hp <= 0 && !showDeathScreen) {
-              setShowDeathScreen(true);
-            }
-          }
         } else {
           s.pl.x += (diffX / d) * speed;
           s.pl.y += (diffY / d) * speed;
-        }
-      }
-
-      // Background hunger and health starvation decay over time
-      if (s.ticks % 200 === 0) {
-        s.pl.hu = Math.max(0, s.pl.hu - 1);
-        if (s.pl.hu <= 0) {
-          s.pl.hp = Math.max(0, s.pl.hp - 1);
-          if (s.pl.hp <= 0 && !showDeathScreen) {
-            setShowDeathScreen(true);
-          }
         }
       }
 
@@ -1524,10 +2027,17 @@ export default function SurvivalGame() {
         if (et) {
           const ang = Math.random() * Math.PI * 2;
           const dist = 400 + Math.random() * 200;
+          const spawnX = Math.max(0, Math.min(WW * TZ - 1, s.pl.x + Math.cos(ang) * dist));
+          const spawnY = Math.max(0, Math.min(WH * TZ - 1, s.pl.y + Math.sin(ang) * dist));
+          const spawnZc = Math.floor(spawnX / (ZW * TZ));
+          const spawnZr = Math.floor(spawnY / (ZH * TZ));
           s.enemies.push({
-            x: s.pl.x + Math.cos(ang) * dist,
-            y: s.pl.y + Math.sin(ang) * dist,
-            hp: et.hp, mhp: et.hp, eid, spd: et.spd, dmg: et.dmg, acd: et.acd, cd: 0, ran: et.ran
+            id: Math.random(),
+            x: spawnX,
+            y: spawnY,
+            hp: et.hp, mhp: et.hp, eid, spd: et.spd, dmg: et.dmg, acd: et.acd, cd: 0, ran: et.ran,
+            spawnZc,
+            spawnZr
           });
         }
       }
@@ -1535,6 +2045,12 @@ export default function SurvivalGame() {
       // Enemy AI
       for (let i = s.enemies.length - 1; i >= 0; i--) {
         const e = s.enemies[i];
+
+        // Ensure spawn biome boundaries are initialized
+        if (e.spawnZc === undefined || e.spawnZr === undefined) {
+          e.spawnZc = Math.max(0, Math.min(ZCOLS - 1, Math.floor(e.x / (ZW * TZ))));
+          e.spawnZr = Math.max(0, Math.min(ZROWS - 1, Math.floor(e.y / (ZH * TZ))));
+        }
 
         // Apply Status Effects
         if (e.slowTicks > 0) {
@@ -1566,6 +2082,34 @@ export default function SurvivalGame() {
           }
         }
 
+        const playerZc = Math.max(0, Math.min(ZCOLS - 1, Math.floor(s.pl.x / (ZW * TZ))));
+        const playerZr = Math.max(0, Math.min(ZROWS - 1, Math.floor(s.pl.y / (ZH * TZ))));
+        const isPlayerInSameBiome = e.spawnZc === playerZc && e.spawnZr === playerZr;
+
+        // Custom aggro ranges: higher for boss/elite/chief types, standard for standard hostiles
+        const aggroRange = (e.eid === 'dragon' || e.eid === 'celestial_guardian' || e.eid === 'orc_chief' || e.eid === 'goblin_chief' || e.eid === 'bandit_chief') ? 320 : 240;
+        const isPlayerWithinRange = d < aggroRange;
+        const isProvoked = e.hp < e.mhp;
+
+        // Enemy actively aggros only if player is inside the same biome and is close or the enemy is provoked
+        const isAggroedHostile = shouldChase && isPlayerInSameBiome && (isPlayerWithinRange || isProvoked);
+        e.isAggro = isAggroedHostile;
+
+        // Helper to check valid tile moves restricted within the spawned biome boundaries
+        const minTileX = e.spawnZc * ZW;
+        const maxTileX = (e.spawnZc + 1) * ZW - 1;
+        const minTileY = e.spawnZr * ZH;
+        const maxTileY = (e.spawnZr + 1) * ZH - 1;
+
+        const canMoveTo = (tx: number, ty: number, allowLava: boolean = true) => {
+          if (tx < minTileX || tx > maxTileX || ty < minTileY || ty > maxTileY) return false;
+          if (tx < 0 || tx >= WW || ty < 0 || ty >= WH) return false;
+          const t = s.world[ty][tx];
+          if (t === TW) return false; // Water is impassable
+          if (!allowLava && t === TLV) return false; // Lava impassable for general idle wandering
+          return true;
+        };
+
         if (shouldFlee) {
           // Run AWAY from player
           const ang = Math.atan2(e.y - s.pl.y, e.x - s.pl.x);
@@ -1573,9 +2117,29 @@ export default function SurvivalGame() {
           const ny = e.y + Math.sin(ang) * (spd * 1.3);
           const etx = Math.floor(nx / TZ);
           const ety = Math.floor(ny / TZ);
-          if (etx >= 0 && etx < WW && ety >= 0 && ety < WH && s.world[ety][etx] !== TW) {
+          if (canMoveTo(etx, ety, true)) {
             e.x = nx;
             e.y = ny;
+          } else {
+            // Slider / wall-sliding check so they slide along boundaries smoothly
+            for (let offset = 0.5; offset <= 2.0; offset += 0.5) {
+              const leftAng = ang + offset;
+              const lx = e.x + Math.cos(leftAng) * (spd * 1.3);
+              const ly = e.y + Math.sin(leftAng) * (spd * 1.3);
+              if (canMoveTo(Math.floor(lx / TZ), Math.floor(ly / TZ), true)) {
+                e.x = lx;
+                e.y = ly;
+                break;
+              }
+              const rightAng = ang - offset;
+              const rx = e.x + Math.cos(rightAng) * (spd * 1.3);
+              const ry = e.y + Math.sin(rightAng) * (spd * 1.3);
+              if (canMoveTo(Math.floor(rx / TZ), Math.floor(ry / TZ), true)) {
+                e.x = rx;
+                e.y = ry;
+                break;
+              }
+            }
           }
           if (s.ticks % 10 === 0) {
             s.parts.push({
@@ -1584,19 +2148,39 @@ export default function SurvivalGame() {
               life: 6, maxLife: 12, col: 'rgba(255,255,255,0.4)', sz: 1.5
             });
           }
-        } else if (shouldChase && d < 400) {
+        } else if (isAggroedHostile) {
           const ang = Math.atan2(s.pl.y - e.y, s.pl.x - e.x);
           if (d > 30) {
-            const nx = e.x + Math.cos(ang) * spd;
-            const ny = e.y + Math.sin(ang) * spd;
+            const nx = e.x + Math.cos(ang) * (spd * 1.15); // Aggro sprint boost
+            const ny = e.y + Math.sin(ang) * (spd * 1.15);
             const etx = Math.floor(nx / TZ);
             const ety = Math.floor(ny / TZ);
-            if (etx >= 0 && etx < WW && ety >= 0 && ety < WH && s.world[ety][etx] !== TW) {
+            if (canMoveTo(etx, ety, true)) {
               e.x = nx;
               e.y = ny;
+            } else {
+              // Sliding along biome limits or obstacles
+              for (let offset = 0.5; offset <= 1.5; offset += 0.5) {
+                const leftAng = ang + offset;
+                const lx = e.x + Math.cos(leftAng) * spd;
+                const ly = e.y + Math.sin(leftAng) * spd;
+                if (canMoveTo(Math.floor(lx / TZ), Math.floor(ly / TZ), true)) {
+                  e.x = lx;
+                  e.y = ly;
+                  break;
+                }
+                const rightAng = ang - offset;
+                const rx = e.x + Math.cos(rightAng) * spd;
+                const ry = e.y + Math.sin(rightAng) * spd;
+                if (canMoveTo(Math.floor(rx / TZ), Math.floor(ry / TZ), true)) {
+                  e.x = rx;
+                  e.y = ry;
+                  break;
+                }
+              }
             }
 
-            // Spawn gentle walk puff trails
+            // Spawn aggressive dust/smoke puffs
             if (s.ticks % 20 === 0) {
               s.parts.push({
                 x: e.x + (Math.random() - 0.5) * 8,
@@ -1605,44 +2189,56 @@ export default function SurvivalGame() {
                 vy: -Math.sin(ang) * 0.3 + (Math.random() - 0.5) * 0.2,
                 life: 8 + Math.floor(Math.random() * 8),
                 maxLife: 16,
-                col: s.world[ety]?.[etx] === TLV ? '#ff5500' : 'rgba(255, 255, 255, 0.2)',
-                sz: 1 + Math.random() * 2
+                col: s.world[ety]?.[etx] === TLV ? '#ff5500' : 'rgba(239, 68, 68, 0.4)',
+                sz: 1.2 + Math.random() * 2
               });
             }
           }
         } else {
-          // Idle wandering for passive/neutral animals or enemies far away
+          // Idle wandering inside biome limits
           if (!e.wanderAng) e.wanderAng = Math.random() * Math.PI * 2;
-          if (s.ticks % 180 === 0) e.wanderAng = Math.random() * Math.PI * 2;
           
-          const isMoving = (s.ticks % 300) < 180;
-          if (isMoving) {
-            const nx = e.x + Math.cos(e.wanderAng) * (spd * 0.4);
-            const ny = e.y + Math.sin(e.wanderAng) * (spd * 0.4);
+          if (!e.wanderTimer) e.wanderTimer = 60 + Math.floor(Math.random() * 120);
+          e.wanderTimer--;
+
+          if (e.wanderTimer <= 0) {
+            e.wanderAng = Math.random() * Math.PI * 2;
+            e.wanderTimer = 80 + Math.floor(Math.random() * 140);
+            e.isWanderingPause = Math.random() < 0.45; // 45% chance to pause/sniff/graze
+          }
+
+          if (!e.isWanderingPause) {
+            const nx = e.x + Math.cos(e.wanderAng) * (spd * 0.45);
+            const ny = e.y + Math.sin(e.wanderAng) * (spd * 0.45);
             const etx = Math.floor(nx / TZ);
             const ety = Math.floor(ny / TZ);
-            if (etx >= 0 && etx < WW && ety >= 0 && ety < WH && s.world[ety][etx] !== TW && s.world[ety][etx] !== TLV) {
+            if (canMoveTo(etx, ety, false)) { // restrict general wandering from entering lava
               e.x = nx;
               e.y = ny;
+            } else {
+              // Immediately pick a new direction when bouncing off bounds/obstacle
+              e.wanderAng = Math.random() * Math.PI * 2;
+              e.wanderTimer = 30 + Math.floor(Math.random() * 60);
             }
           }
         }
-          // Attack player
-          if (d < 40 && e.cd <= 0 && s.pl.ifr <= 0) {
-            let finalDef = s.pl.def;
-            if (s.activeSpells?.healingSanctuaryTimer > 0) {
-              finalDef += 5;
-            }
-            const dmg = Math.max(1, e.dmg - finalDef);
-            s.pl.hp -= dmg;
-            s.pl.ifr = 40;
-            e.cd = e.acd;
-            addLog(`Hit by ${ET[e.eid].n}! -${dmg} HP`, '#f44');
-            if (s.pl.hp <= 0) {
-              s.pl.hp = 0;
-              setShowDeathScreen(true);
-            }
+
+        // Attack player
+        if (d < 40 && e.cd <= 0 && s.pl.ifr <= 0) {
+          let finalDef = s.pl.def;
+          if (s.activeSpells?.healingSanctuaryTimer > 0) {
+            finalDef += 5;
           }
+          const dmg = Math.max(1, e.dmg - finalDef);
+          s.pl.hp -= dmg;
+          s.pl.ifr = 40;
+          e.cd = e.acd;
+          addLog(`Hit by ${ET[e.eid].n}! -${dmg} HP`, '#f44');
+          if (s.pl.hp <= 0) {
+            s.pl.hp = 0;
+            setShowDeathScreen(true);
+          }
+        }
         if (e.cd > 0) e.cd--;
       }
 
@@ -1931,7 +2527,7 @@ export default function SurvivalGame() {
           // Check structure requirement
           let isNear = true;
           if (r.req) {
-            isNear = s.objs.some((o: any) => o.type === r.req && Math.abs(o.tx - pTileX) <= 3 && Math.abs(o.ty - pTileY) <= 3);
+            isNear = s.objs.some((o: any) => o.type === r.req);
           }
           if (!isNear) continue;
           
@@ -2136,8 +2732,9 @@ export default function SurvivalGame() {
         ctx.fillStyle = '#ff4757';
         ctx.fillRect(ex - 15, ey - 25 + bob, 30 * (e.hp / e.mhp), 4);
 
-        // Render Active Status Effects above head
+        // Render Active Status Effects and Aggro Indicator above head
         let statusStr = '';
+        if (e.isAggro) statusStr += '😡';
         if (e.slowTicks > 0) statusStr += '🧊';
         if (e.burnTicks > 0) statusStr += '🔥';
         if (statusStr) {
@@ -2256,6 +2853,10 @@ export default function SurvivalGame() {
         ctx.arc(s.pl.x - s.cam.x, s.pl.y - s.cam.y, radius, 0, Math.PI * 2);
         ctx.fill();
         ctx.globalCompositeOperation = 'source-over';
+      }
+
+      if (minimapCanvasRef.current && !isMinimapCollapsedRef.current) {
+        drawMinimap(s);
       }
 
       frameId = requestAnimationFrame(loop);
@@ -2409,22 +3010,8 @@ export default function SurvivalGame() {
 
     const wp = getWeaponStats(s, s.pl.weapon);
 
-    // Stamina verification for physical attacks
-    if (wp.type === 'melee') {
-      const cost = s.pl.weapon === 'fists' ? 6 : 10;
-      if (s.pl.sta < cost) {
-        addLog("Too exhausted to swing!", "#f87171");
-        return;
-      }
-      s.pl.sta = Math.max(0, s.pl.sta - cost);
-    } else if (wp.type === 'ranged') {
-      const cost = 8;
-      if (s.pl.sta < cost) {
-        addLog("Too exhausted to draw bow!", "#f87171");
-        return;
-      }
-      s.pl.sta = Math.max(0, s.pl.sta - cost);
-    }
+    // Stamina verification has been removed as per instructions
+    s.pl.sta = 100;
 
     s.pl.atkcd = wp.spd;
 
@@ -2619,11 +3206,19 @@ export default function SurvivalGame() {
         s.pl.inv[k]--;
         addLog(`Used Mana Crystal: restored 40 MP 🔮`, '#c084fc');
       } else {
-        if (it.hp) s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + it.hp);
-        if (it.hu) s.pl.hu = Math.min(100, (s.pl.hu || 0) + it.hu);
-        if (it.mp) s.pl.mp = Math.min(s.pl.mmp, s.pl.mp + it.mp);
-        s.pl.inv[k]--;
-        addLog(`Used ${it.n}`, '#00ffaa');
+        if (it.t === 'food') {
+          // Eating food only heals your health (combining hp and hu values as a substantial direct heal)
+          const healAmount = (it.hp || 0) + (it.hu || 0);
+          s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + healAmount);
+          if (it.mp) s.pl.mp = Math.min(s.pl.mmp, s.pl.mp + it.mp);
+          s.pl.inv[k]--;
+          addLog(`Ate ${it.n}: Restored ${healAmount} HP! 💚`, '#00ffaa');
+        } else {
+          if (it.hp) s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + it.hp);
+          if (it.mp) s.pl.mp = Math.min(s.pl.mmp, s.pl.mp + it.mp);
+          s.pl.inv[k]--;
+          addLog(`Used ${it.n}`, '#00ffaa');
+        }
       }
     } else if (it.t === 'armor') {
       const slot = it.sl || 'chest';
@@ -2723,6 +3318,54 @@ export default function SurvivalGame() {
     addLog(`Assigned ${IT[itemKey]?.n || itemKey} to Hotbar Slot ${index + 1}`, '#10b981');
   };
 
+  const handleHotbarDrop = (e: React.DragEvent, targetIdx: number) => {
+    setDraggedOverSlot(null);
+    const itemKey = e.dataTransfer.getData("text/plain");
+    const sourceHotbarIdxStr = e.dataTransfer.getData("hotbar-index");
+
+    const s = stateRef.current;
+    if (!s || !s.pl) return;
+
+    if (itemKey) {
+      s.pl.hotbar[targetIdx] = itemKey;
+      setGameState({ ...s });
+      addLog(`Assigned ${IT[itemKey]?.n || itemKey} to Hotbar Slot ${targetIdx + 1}`, '#10b981');
+    } else if (sourceHotbarIdxStr !== "") {
+      const srcIdx = parseInt(sourceHotbarIdxStr, 10);
+      if (srcIdx >= 0 && srcIdx < s.pl.hotbar.length) {
+        const temp = s.pl.hotbar[targetIdx];
+        s.pl.hotbar[targetIdx] = s.pl.hotbar[srcIdx];
+        s.pl.hotbar[srcIdx] = temp;
+        setGameState({ ...s });
+        addLog(`Swapped Hotbar Slot ${srcIdx + 1} and Slot ${targetIdx + 1}`, '#10b981');
+      }
+    }
+  };
+
+  const handleHotbarClick = (idx: number) => {
+    const s = stateRef.current;
+    if (!s || !s.pl) return;
+
+    const item = s.pl.hotbar[idx];
+    if (hotSlot === idx) {
+      if (item && s.pl.inv[item] > 0) {
+        handleUse(item);
+      }
+    } else {
+      setHotSlot(idx);
+    }
+  };
+
+  const handleHotbarDoubleClick = (idx: number) => {
+    const s = stateRef.current;
+    if (!s || !s.pl) return;
+
+    const item = s.pl.hotbar[idx];
+    if (item && s.pl.inv[item] > 0) {
+      handleUse(item);
+    }
+  };
+
   const addSkillXPDirect = (s: any, skill: string, amount: number) => {
     if (!s || !s.pl) return;
     if (!s.pl.skills) {
@@ -2787,6 +3430,18 @@ export default function SurvivalGame() {
       const etx = Math.floor(e.x / TZ);
       const ety = Math.floor(e.y / TZ);
 
+      // Defeated enemies also drop Gold Coins!
+      const goldCoinsQty = Math.max(1, Math.round(et.xp * (0.8 + Math.random() * 0.6)));
+      if (etx >= 0 && etx < WW && ety >= 0 && ety < WH) {
+        s.objs.push({
+          type: 'drop',
+          tx: etx,
+          ty: ety,
+          item: 'gold_coins',
+          qty: goldCoinsQty
+        });
+      }
+
       Object.entries(et.lo).forEach(([itemKey, chance]: [string, any]) => {
         // Roll for drop chance (scale chance by 5% per hunting level for huntable targets)
         const modifiedChance = isHuntable ? chance * (1 + (huntingLvl - 1) * 0.05) : chance;
@@ -2826,11 +3481,6 @@ export default function SurvivalGame() {
       const o = s.objs[i];
       if (Math.abs(o.tx - px) + Math.abs(o.ty - py) <= 2) {
         if (o.type === 'tree') {
-          if (s.pl.sta < 5) {
-            addLog("Too tired to chop wood!", "#f87171");
-            return;
-          }
-          s.pl.sta = Math.max(0, s.pl.sta - 5);
           o.hp--;
           gainSkillXP('woodcutting', 3);
           if (o.hp <= 0) {
@@ -2886,11 +3536,6 @@ export default function SurvivalGame() {
           return;
         }
         if (o.type === 'rock') {
-          if (s.pl.sta < 5) {
-            addLog("Too tired to mine rock!", "#f87171");
-            return;
-          }
-          s.pl.sta = Math.max(0, s.pl.sta - 5);
           o.hp--;
           gainSkillXP('mining', 3);
           if (o.hp <= 0) {
@@ -3069,6 +3714,112 @@ export default function SurvivalGame() {
     setIsOracleLoading(false);
   };
 
+  const getFilteredNFTs = () => {
+    const searchId = parseInt(nftSearchToken.trim(), 10);
+    if (!isNaN(searchId) && searchId >= 1 && searchId <= 10000) {
+      return [getNFTItem(searchId)];
+    }
+
+    const items: any[] = [];
+    const itemsPerPage = 12;
+    const startIndex = nftPage * itemsPerPage;
+    
+    let matchedInPrePages = 0;
+    let count = 0;
+    
+    for (let id = 1; id <= 10000; id++) {
+      const item = getNFTItem(id);
+      const matchRarity = nftRarityFilter === 'All' || item.rarity === nftRarityFilter;
+      const matchType = nftTypeFilter === 'All' || item.t === nftTypeFilter.toLowerCase();
+      
+      if (matchRarity && matchType) {
+        if (matchedInPrePages < startIndex) {
+          matchedInPrePages++;
+        } else {
+          items.push(item);
+          count++;
+          if (count >= itemsPerPage) {
+            break;
+          }
+        }
+      }
+    }
+    return items;
+  };
+
+  const handleBuyNFT = (tokenId: number) => {
+    const s = stateRef.current;
+    if (!s) return;
+    const nft = getNFTItem(tokenId);
+    const cost = nft.price;
+    const currentCoins = s.pl.inv.gold_coins || 0;
+    if (currentCoins < cost) {
+      addLog(`Insufficient Gold Coins! Need 🪙${cost}`, '#ef4444');
+      return;
+    }
+    
+    // Deduct cost and add NFT to inventory
+    s.pl.inv.gold_coins = currentCoins - cost;
+    const nftKey = `nft_${tokenId}`;
+    s.pl.inv[nftKey] = (s.pl.inv[nftKey] || 0) + 1;
+    
+    addLog(`Successfully purchased ${nft.n} for 🪙${cost}! 🎉`, '#3b82f6');
+    setGameState({ ...s });
+  };
+
+  const handleSellItem = (itemKey: string, sellQty: number = 1) => {
+    const s = stateRef.current;
+    if (!s) return;
+    const qty = s.pl.inv[itemKey] || 0;
+    if (qty < sellQty) return;
+
+    // Define sell prices in Gold Coins per unit
+    const prices: Record<string, number> = {
+      wood: 1, stone: 1, fiber: 1, flint: 2, meat: 2, berry: 1, mushroom: 2,
+      cooked_meat: 5, iron_ore: 3, iron_bar: 8, steel_bar: 15,
+      copper_ore: 2, copper_bar: 5, gold_ore: 10, gold_bar: 25,
+      mithril_ore: 25, mithril_bar: 60, crystal: 15, magic_essence: 20,
+      void_crystal: 50, celestial_shard: 150, dragon_scale: 200, silk: 15,
+      mana_crystal: 30
+    };
+
+    let pricePerUnit = 0;
+    if (itemKey.startsWith('nft_')) {
+      const tokenId = parseInt(itemKey.replace('nft_', ''), 10);
+      const nft = getNFTItem(tokenId);
+      pricePerUnit = Math.round(nft.price * 0.7);
+    } else if (prices[itemKey] !== undefined) {
+      pricePerUnit = prices[itemKey];
+    } else {
+      // Default fallback based on type
+      const it = IT[itemKey];
+      if (it) {
+        if (it.t === 'weapon') {
+          pricePerUnit = Math.round((it.dmg || 10) * 1.5);
+        } else if (it.t === 'armor') {
+          pricePerUnit = Math.round((it.def || 5) * 2.0);
+        } else {
+          pricePerUnit = 2;
+        }
+      }
+    }
+
+    if (pricePerUnit <= 0) {
+      addLog(`This item cannot be sold.`, '#a1a1aa');
+      return;
+    }
+
+    const totalEarning = pricePerUnit * sellQty;
+    s.pl.inv[itemKey] -= sellQty;
+    if (s.pl.inv[itemKey] <= 0) {
+      delete s.pl.inv[itemKey];
+    }
+
+    s.pl.inv.gold_coins = (s.pl.inv.gold_coins || 0) + totalEarning;
+    addLog(`Sold ${sellQty}x ${IT[itemKey]?.n || itemKey} for 🪙${totalEarning} Gold Coins`, '#10b981');
+    setGameState({ ...s });
+  };
+
   const handleCastSpell = async (spellName: string, manaCost: number, paymentType: 'mp' | 'crystals' = 'mp') => {
     const s = stateRef.current;
     if (!s) return;
@@ -3201,11 +3952,9 @@ export default function SurvivalGame() {
 
     // Check structure requirement
     if (r.req) {
-      const pTileX = Math.floor(s.pl.x / TZ);
-      const pTileY = Math.floor(s.pl.y / TZ);
-      const isNear = s.objs.some((o: any) => o.type === r.req && Math.abs(o.tx - pTileX) <= 3 && Math.abs(o.ty - pTileY) <= 3);
+      const isNear = s.objs.some((o: any) => o.type === r.req);
       if (!isNear) {
-        addLog(`Must stand near a ${IT[r.req]?.n || r.req} 🔥 to craft this!`, '#ff4444');
+        addLog(`Must build a ${IT[r.req]?.n || r.req} 🛠️ somewhere on the entire map to craft this!`, '#ff4444');
         return;
       }
     }
@@ -3323,9 +4072,7 @@ export default function SurvivalGame() {
 
       let structureBonus = "";
       if (r.req) {
-        const pTileX = Math.floor(s.pl.x / TZ);
-        const pTileY = Math.floor(s.pl.y / TZ);
-        const isNear = s.objs.some((o: any) => o.type === r.req && Math.abs(o.tx - pTileX) <= 3 && Math.abs(o.ty - pTileY) <= 3);
+        const isNear = s.objs.some((o: any) => o.type === r.req);
         if (!isNear) {
           structureBonus = ` (Sparks flew, but your alchemical skill bypassed the ${IT[r.req]?.n || r.req} requirement!)`;
         }
@@ -3394,9 +4141,7 @@ export default function SurvivalGame() {
   const checkStationProximity = (r: any) => {
     if (!r.req) return true;
     if (!gameState) return false;
-    const pTileX = Math.floor(gameState.pl.x / TZ);
-    const pTileY = Math.floor(gameState.pl.y / TZ);
-    return gameState.objs.some((o: any) => o.type === r.req && Math.abs(o.tx - pTileX) <= 3 && Math.abs(o.ty - pTileY) <= 3);
+    return gameState.objs.some((o: any) => o.type === r.req);
   };
 
   const getAffordableMultiplier = (r: any) => {
@@ -3743,38 +4488,6 @@ export default function SurvivalGame() {
                 </div>
               </div>
 
-              {/* Hunger (HUN) */}
-              <div className="flex flex-col gap-1">
-                <div className="flex justify-between items-center text-[10px] font-bold font-mono">
-                  <span className="text-amber-400 flex items-center gap-1">🍗 HUNGER</span>
-                  <span className={`${(gameState?.pl.hu || 0) < 30 ? 'text-red-400 animate-pulse font-black' : 'text-amber-200'}`}>{Math.floor(gameState?.pl.hu || 0)}%</span>
-                </div>
-                <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5 p-0.5 shadow-inner">
-                  <motion.div 
-                    className="h-full bg-gradient-to-r from-orange-500 to-yellow-400 rounded-full"
-                    initial={{ width: '100%' }}
-                    animate={{ width: `${Math.max(0, Math.min(100, gameState?.pl.hu || 0))}%` }}
-                    transition={{ duration: 0.3 }}
-                  />
-                </div>
-              </div>
-
-              {/* Stamina (STA) */}
-              <div className="flex flex-col gap-1">
-                <div className="flex justify-between items-center text-[10px] font-bold font-mono">
-                  <span className="text-cyan-400 flex items-center gap-1">⚡ STAMINA</span>
-                  <span className="text-cyan-200">{Math.floor(gameState?.pl.sta || 0)}%</span>
-                </div>
-                <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5 p-0.5 shadow-inner">
-                  <motion.div 
-                    className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full"
-                    initial={{ width: '100%' }}
-                    animate={{ width: `${Math.max(0, Math.min(100, gameState?.pl.sta || 0))}%` }}
-                    transition={{ duration: 0.3 }}
-                  />
-                </div>
-              </div>
-
               {/* Mana (MP) */}
               <div className="flex flex-col gap-1">
                 <div className="flex justify-between items-center text-[10px] font-bold font-mono">
@@ -3992,42 +4705,6 @@ export default function SurvivalGame() {
           )}
 
           {/* Crisis Alerts Overlay */}
-          {gameState?.pl.hu < 30 && (
-            <motion.div 
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col gap-1.5 p-2.5 bg-red-950/80 border border-red-500/40 rounded-xl backdrop-blur-sm pointer-events-auto shadow-lg max-w-[250px]"
-            >
-              <div className="flex items-center gap-1.5 text-[10px] font-black text-red-400 uppercase tracking-wider font-mono">
-                <AlertCircle size={12} className="animate-bounce" />
-                <span>Starving! Eat Food:</span>
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {['cooked_meat', 'cooked_fish', 'celestial_fish', 'berry', 'mushroom'].map(foodKey => {
-                  const count = gameState?.pl.inv[foodKey] || 0;
-                  if (count > 0) {
-                    return (
-                      <button
-                        key={foodKey}
-                        onClick={() => {
-                          handleUse(foodKey);
-                          setGameState({ ...stateRef.current });
-                        }}
-                        className="px-2 py-1 bg-red-600/30 hover:bg-red-600/60 text-white rounded-lg text-[9px] font-bold flex items-center gap-1 border border-white/5 active:scale-95 transition-all cursor-pointer"
-                      >
-                        <span>{IT[foodKey]?.ico}</span>
-                        <span>x{count}</span>
-                      </button>
-                    );
-                  }
-                  return null;
-                })}
-                {!['cooked_meat', 'cooked_fish', 'celestial_fish', 'berry', 'mushroom'].some(f => (gameState?.pl.inv[f] || 0) > 0) && (
-                  <span className="text-[9px] text-red-300 italic">No food in inventory!</span>
-                )}
-              </div>
-            </motion.div>
-          )}
 
           {gameState?.pl.hp < gameState?.pl.mhp * 0.4 && (
             <motion.div 
@@ -4105,7 +4782,7 @@ export default function SurvivalGame() {
           </div>
 
           {/* Master Action & Management Menu Bar */}
-          <div className="mt-3 flex gap-1.5 sm:gap-2 pointer-events-auto">
+          <div className="mt-3 flex flex-wrap gap-1.5 sm:gap-2 justify-end max-w-[310px] sm:max-w-[460px] md:max-w-[600px] lg:max-w-none pointer-events-auto">
             <button 
               onClick={() => { setShowInv(true); setSelectedInvItem(null); setInvCategory('all'); }}
               className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-white/10 hover:border-yellow-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-yellow-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
@@ -4159,9 +4836,111 @@ export default function SurvivalGame() {
               <Globe size={11} className="text-emerald-400" />
               <span>WORLD</span>
             </button>
+            <button 
+              onClick={() => setShowNFTMarket(true)}
+              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-cyan-500/30 hover:border-cyan-400 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-cyan-400 hover:text-cyan-300 hover:scale-105 active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(6,182,212,0.15)] hover:shadow-[0_0_25px_rgba(6,182,212,0.3)] animate-pulse"
+            >
+              <Cpu size={11} className="text-cyan-400" />
+              <span>NFT SHOP</span>
+            </button>
           </div>
         </div>
       </div>
+
+      {/* --- MINIMAP OVERLAY PANEL --- */}
+      {!isMinimapCollapsed ? (
+        <div className="absolute top-[280px] sm:top-[220px] right-4 flex flex-col gap-2 p-3 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto w-[200px] select-none z-10">
+          <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-1">
+            <span className="text-[10px] font-extrabold tracking-wider text-cyan-400 uppercase flex items-center gap-1">
+              <Compass size={11} className="animate-spin text-cyan-400 [animation-duration:8s]" />
+              {minimapMode === 'local' ? 'RADAR FEED' : 'WORLD SCAN'}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setMinimapMode(prev => prev === 'local' ? 'world' : 'local')}
+                className="px-1.5 py-0.5 bg-zinc-900 border border-white/5 hover:border-cyan-500/30 hover:bg-zinc-800 text-[8px] rounded-md text-zinc-300 font-extrabold cursor-pointer transition-all uppercase"
+                title="Toggle Mode"
+              >
+                {minimapMode === 'local' ? 'WORLD' : 'LOCAL'}
+              </button>
+              <button 
+                onClick={() => setIsMinimapCollapsed(true)} 
+                className="p-0.5 bg-zinc-900 border border-white/5 hover:border-red-500/30 text-[9px] rounded-md text-zinc-400 hover:text-white cursor-pointer transition-all flex items-center justify-center"
+                title="Collapse Map"
+              >
+                <X size={10} />
+              </button>
+            </div>
+          </div>
+
+          {/* Canvas Container */}
+          <div className="relative w-[174px] h-[174px] mx-auto rounded-lg overflow-hidden bg-black/50 border border-white/5 shadow-inner flex items-center justify-center">
+            <canvas 
+              ref={minimapCanvasRef} 
+              width={174} 
+              height={174} 
+              className="w-[174px] h-[174px]"
+            />
+            
+            {/* Scope crosshair decorative rings overlay */}
+            <div className="absolute inset-0 pointer-events-none border border-cyan-500/5 rounded-full m-1 animate-pulse" />
+            <div className="absolute inset-0 pointer-events-none border border-white/5 rounded-full m-6" />
+          </div>
+
+          {/* Coordinates & Location info */}
+          <div className="flex flex-col gap-0.5 mt-1 font-mono text-[9px]">
+            <div className="flex items-center justify-between text-zinc-400">
+              <span>X: <span className="text-white font-bold">{gameState ? Math.floor(gameState.pl.x / TZ) : 0}</span></span>
+              <span>Y: <span className="text-white font-bold">{gameState ? Math.floor(gameState.pl.y / TZ) : 0}</span></span>
+              <span className="text-cyan-400/80 uppercase text-[8px] font-black">{minimapMode === 'local' ? `${Math.round(minimapZoom * 100)}%` : '5X5'}</span>
+            </div>
+            <div className="text-center font-bold text-yellow-400/90 truncate text-[9px] mt-1 border-t border-white/5 pt-1 flex items-center justify-center gap-1">
+              <MapPin size={8} className="text-yellow-400" />
+              <span>
+                {(() => {
+                  if (!gameState || !gameState.pl) return "Wilds";
+                  const zx = Math.floor(gameState.pl.x / (ZW * TZ));
+                  const zy = Math.floor(gameState.pl.y / (ZH * TZ));
+                  const boundedX = Math.max(0, Math.min(4, zx));
+                  const boundedY = Math.max(0, Math.min(4, zy));
+                  const idx = boundedY * ZCOLS + boundedX;
+                  return MAPS[idx]?.n || "Unknown Wilds";
+                })()}
+              </span>
+            </div>
+          </div>
+
+          {/* Local zoom controls */}
+          {minimapMode === 'local' && (
+            <div className="flex gap-1 justify-center mt-1">
+              <button
+                onClick={() => setMinimapZoom(prev => Math.max(0.6, prev - 0.2))}
+                className="flex-1 py-0.5 bg-zinc-900 border border-white/5 hover:border-cyan-500/30 text-[8px] rounded-md text-zinc-400 hover:text-white cursor-pointer flex items-center justify-center"
+                title="Zoom Out"
+              >
+                <Minus size={8} />
+              </button>
+              <button
+                onClick={() => setMinimapZoom(prev => Math.min(2.0, prev + 0.2))}
+                className="flex-1 py-0.5 bg-zinc-900 border border-white/5 hover:border-cyan-500/30 text-[8px] rounded-md text-zinc-400 hover:text-white cursor-pointer flex items-center justify-center"
+                title="Zoom In"
+              >
+                <Plus size={8} />
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="absolute top-[280px] sm:top-[220px] right-4 flex flex-col gap-2 p-2 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-lg pointer-events-auto select-none z-10">
+          <button 
+            onClick={() => setIsMinimapCollapsed(false)} 
+            className="px-2.5 py-1.5 bg-zinc-900 border border-white/10 hover:border-cyan-400 rounded-xl text-[9px] font-bold uppercase tracking-widest flex items-center gap-1 transition-all text-white cursor-pointer"
+          >
+            <Compass size={11} className="text-cyan-400 animate-pulse" />
+            <span>SHOW MAP</span>
+          </button>
+        </div>
+      )}
 
       {/* --- Logs --- */}
       <div className="absolute top-24 left-[276px] flex flex-col gap-1 pointer-events-none z-10 max-w-sm">
@@ -4325,42 +5104,103 @@ export default function SurvivalGame() {
       </div>
 
       {/* --- Controls --- */}
-      {/* Bottom Center: Hotbar (Always centered at the bottom, pointer enabled) */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto select-none flex flex-col items-center gap-1.5">
-        {gameState?.pl.hotbar[hotSlot] && (() => {
-          const key = gameState.pl.hotbar[hotSlot];
-          const stats = getWeaponStats(gameState, key);
-          return (
-            <div className="bg-black/80 border border-white/10 px-3 py-1.5 rounded-full text-xs backdrop-blur-md text-gray-300 font-mono tracking-tight flex items-center justify-center gap-2 shadow-lg max-w-sm whitespace-nowrap">
-              <span className="text-base">{stats.ico || IT[key]?.ico}</span>
-              <span className="font-bold text-white">{stats.n}</span>
-              <span className="opacity-40">|</span>
-              <span className="text-yellow-400 font-bold">Dmg: {stats.dmg}</span>
-              <span className="text-cyan-400 font-bold">Spd: {stats.spd}t</span>
-              {stats.vamp > 0 && (
-                <>
-                  <span className="opacity-40">|</span>
-                  <span className="text-red-400 font-bold flex items-center gap-0.5">🩸 {Math.round(stats.vamp * 100)}% Lifesteal</span>
-                </>
-              )}
-            </div>
-          );
-        })()}
+      {/* Bottom Center: Hotbar (Always centered at the bottom, pointer enabled, persistent floating design) */}
+      {(!showSkills && !showCraft && !showOracle && !showSaveMenu && !showWorldMenu && !showSpellbook && !showNFTMarket && !showDeathScreen) && (
+        <div 
+          className={`absolute left-1/2 -translate-x-1/2 pointer-events-auto select-none flex flex-col items-center gap-2 transition-all duration-300 ${
+            showInv 
+              ? 'bottom-6 z-[52] scale-105' 
+              : 'bottom-4 z-20'
+          }`}
+        >
+          {gameState?.pl.hotbar[hotSlot] && (() => {
+            const key = gameState.pl.hotbar[hotSlot];
+            const stats = getWeaponStats(gameState, key);
+            return (
+              <div className="bg-black/85 border border-white/10 px-3 py-1.5 rounded-full text-[11px] backdrop-blur-md text-gray-300 font-mono tracking-tight flex items-center justify-center gap-2 shadow-xl max-w-sm whitespace-nowrap animate-fadeIn">
+                <span className="text-base">{stats.ico || IT[key]?.ico}</span>
+                <span className="font-bold text-white">{stats.n}</span>
+                <span className="opacity-40">|</span>
+                <span className="text-yellow-400 font-bold">Dmg: {stats.dmg}</span>
+                <span className="text-cyan-400 font-bold">Spd: {stats.spd}t</span>
+                {stats.vamp > 0 && (
+                  <>
+                    <span className="opacity-40">|</span>
+                    <span className="text-red-400 font-bold flex items-center gap-0.5">🩸 {Math.round(stats.vamp * 100)}% Lifesteal</span>
+                  </>
+                )}
+              </div>
+            );
+          })()}
 
-        <div className="flex gap-1 bg-black/85 p-2 rounded-xl border border-white/10 shadow-[0_4px_24px_rgba(0,0,0,0.6)]">
-          {gameState?.pl.hotbar.map((item: string, i: number) => (
-            <button
-              key={i}
-              onClick={() => setHotSlot(i)}
-              className={`w-12 h-12 rounded-lg flex items-center justify-center relative transition-all ${hotSlot === i ? 'bg-green-500/20 border-green-500' : 'bg-white/5 border-white/10'} hover:bg-white/10 active:scale-95 cursor-pointer border`}
-            >
-              <span className="text-xl">{IT[item]?.ico || '?'}</span>
-              <span className="absolute bottom-1 right-1 text-[8px] text-green-400 font-bold">{gameState.pl.inv[item] || 0}</span>
-              <span className="absolute top-0.5 left-1 text-[6px] opacity-30">{i + 1}</span>
-            </button>
-          ))}
+          <div className={`flex flex-col items-center gap-1.5 bg-black/90 p-2.5 rounded-2xl border backdrop-blur-md transition-all duration-300 ${
+            showInv 
+              ? 'border-green-500/40 shadow-[0_0_24px_rgba(34,197,94,0.15)] bg-zinc-950/95' 
+              : 'border-white/10 shadow-[0_4px_24px_rgba(0,0,0,0.6)]'
+          }`}>
+            <div className="flex gap-1">
+              {gameState?.pl.hotbar.map((item: string, i: number) => {
+                const isDraggedOver = draggedOverSlot === i;
+                const hasQty = (gameState.pl.inv[item] || 0) > 0;
+                return (
+                  <button
+                    key={i}
+                    draggable={!!item}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("hotbar-index", String(i));
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (draggedOverSlot !== i) setDraggedOverSlot(i);
+                    }}
+                    onDragLeave={() => {
+                      setDraggedOverSlot(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      handleHotbarDrop(e, i);
+                    }}
+                    onClick={() => handleHotbarClick(i)}
+                    onDoubleClick={() => handleHotbarDoubleClick(i)}
+                    className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center relative transition-all duration-200 border cursor-pointer select-none group ${
+                      isDraggedOver 
+                        ? 'border-yellow-400 bg-yellow-500/30 scale-110 shadow-[0_0_12px_rgba(234,179,8,0.5)] z-10' 
+                        : hotSlot === i 
+                          ? 'bg-green-500/20 border-green-400 shadow-[0_0_10px_rgba(34,197,94,0.3)] scale-[1.03]' 
+                          : 'bg-white/[0.03] border-white/10 hover:bg-white/[0.08] hover:border-white/20 hover:scale-[1.02]'
+                    }`}
+                    title={item ? `${IT[item]?.n || item} (Slot ${i + 1}) - Drag to swap, click active to use/equip` : `Empty Slot ${i + 1}`}
+                  >
+                    {item ? (
+                      <>
+                        <span className={`text-xl transition-transform duration-200 ${hotSlot === i ? 'scale-110' : 'group-hover:scale-[1.08]'}`}>
+                          {IT[item]?.ico || '?'}
+                        </span>
+                        <span className={`absolute bottom-1 right-1 text-[8px] font-extrabold px-0.5 rounded leading-none ${
+                          hasQty ? 'text-green-400 bg-black/60' : 'text-red-400 bg-black/60 opacity-60 line-through'
+                        }`}>
+                          x{gameState.pl.inv[item] || 0}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-[10px] text-zinc-600/40">➕</span>
+                    )}
+                    <span className="absolute top-1 left-1.5 text-[7px] opacity-45 font-mono font-bold">{i + 1}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Quick access status / guide label */}
+            <span className="text-[7.5px] font-mono tracking-wider opacity-50 uppercase text-zinc-400 select-none">
+              {showInv 
+                ? '🖐️ Drag items onto slots • Drag slots to swap • Click active to use'
+                : '⚡ Click active slot again to instantly Use/Equip'
+              }
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Bottom Left Actions: Desktop-Only */}
       <div className="absolute bottom-4 left-4 z-20 pointer-events-auto select-none hidden md:flex gap-2">
@@ -4470,7 +5310,7 @@ export default function SurvivalGame() {
             
             <div className="flex-1 overflow-hidden flex flex-col md:flex-row p-4 sm:p-6 gap-6 font-mono">
               {/* Column 1: Character Stats & Equipped Gear */}
-              <div className="w-full md:w-1/4 flex flex-col gap-4 overflow-y-auto bg-zinc-950/60 border border-white/10 rounded-2xl p-4 shrink-0">
+              <div className="w-full md:w-1/4 flex flex-col gap-4 overflow-y-auto bg-zinc-950/60 border border-white/10 rounded-2xl p-4 pb-28 shrink-0">
                 <h3 className="text-xs font-bold tracking-widest text-cyan-400 uppercase border-b border-white/10 pb-2 flex items-center gap-1">
                   🛡️ CHARACTER & GEAR
                 </h3>
@@ -4616,7 +5456,7 @@ export default function SurvivalGame() {
                 </div>
 
                 {/* Items Grid */}
-                <div className="flex-1 overflow-y-auto pr-1">
+                <div className="flex-1 overflow-y-auto pr-1 pb-28">
                   {(() => {
                     const filtered = getFilteredItems();
                     if (filtered.length === 0) {
@@ -4639,12 +5479,21 @@ export default function SurvivalGame() {
                             <div 
                               key={k} 
                               onClick={() => setSelectedInvItem(k)}
-                              className={`relative bg-white/[0.02] border rounded-xl p-3 flex flex-col items-center gap-1.5 transition-all cursor-pointer group hover:bg-white/[0.05] ${
+                              draggable={true}
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData("text/plain", k);
+                                e.dataTransfer.effectAllowed = "move";
+                              }}
+                              className={`relative bg-white/[0.02] border rounded-xl p-3 flex flex-col items-center gap-1.5 transition-all cursor-grab active:cursor-grabbing group hover:bg-white/[0.05] ${
                                 isSelected 
                                   ? 'border-green-400 bg-green-500/10 shadow-[0_0_12px_rgba(34,197,94,0.15)] scale-[1.02]' 
-                                  : 'border-white/5'
+                                  : 'border-white/5 hover:border-white/10'
                               }`}
+                              title="Drag item down to Hotbar slot to assign it, or click to inspect details"
                             >
+                              <div className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-60 transition-opacity text-[8px] text-zinc-400 select-none">
+                                ☰
+                              </div>
                               <span className="text-3xl group-hover:scale-110 transition-transform">{IT[k]?.ico || '?'}</span>
                               <span className="text-[9px] opacity-70 text-center truncate w-full">{IT[k]?.n || k}</span>
                               
@@ -4666,7 +5515,7 @@ export default function SurvivalGame() {
               </div>
 
               {/* Column 3: Selected Item Details Panel */}
-              <div className="w-full md:w-1/3 xl:w-1/4 flex flex-col bg-zinc-950/60 border border-white/10 rounded-2xl p-4 overflow-y-auto shrink-0 animate-fadeIn">
+              <div className="w-full md:w-1/3 xl:w-1/4 flex flex-col bg-zinc-950/60 border border-white/10 rounded-2xl p-4 pb-28 overflow-y-auto shrink-0 animate-fadeIn">
                 <h3 className="text-xs font-bold tracking-widest text-yellow-500 uppercase border-b border-white/10 pb-2 flex items-center gap-1 mb-4">
                   ✨ ITEM DETAILS
                 </h3>
@@ -4754,17 +5603,18 @@ export default function SurvivalGame() {
                         {/* Consumable specific stats */}
                         {(it.t === 'food' || it.t === 'pot' || selectedInvItem === 'mana_crystal') && (
                           <div className="flex flex-col gap-1 text-[10px] border-t border-white/5 pt-2 mt-1">
-                            {it.hu && (
-                              <div className="flex justify-between">
-                                <span className="opacity-50">Hunger Recovered:</span>
-                                <span className="font-bold text-amber-400">+{it.hu}%</span>
-                              </div>
-                            )}
-                            {it.hp && (
+                            {it.t === 'food' ? (
                               <div className="flex justify-between">
                                 <span className="opacity-50">HP Restored:</span>
-                                <span className="font-bold text-rose-400">+{it.hp} HP</span>
+                                <span className="font-bold text-rose-400">+{ (it.hp || 0) + (it.hu || 0) } HP</span>
                               </div>
+                            ) : (
+                              it.hp && (
+                                <div className="flex justify-between">
+                                  <span className="opacity-50">HP Restored:</span>
+                                  <span className="font-bold text-rose-400">+{it.hp} HP</span>
+                                </div>
+                              )
                             )}
                             {it.mp && (
                               <div className="flex justify-between">
@@ -5189,30 +6039,47 @@ export default function SurvivalGame() {
                           return (
                             <div 
                               key={i} 
-                              className={`p-3 sm:p-4 rounded-xl border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 transition-all ${canForge ? 'bg-white/5 border-white/10 hover:border-yellow-500 shadow-inner' : 'border-white/5 bg-white/[0.01] opacity-75'}`}
+                              className={`p-3 sm:p-4 rounded-xl border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 transition-all duration-300 ${
+                                canForge 
+                                  ? 'bg-zinc-900/90 border-yellow-500/30 shadow-[0_4px_20px_rgba(234,179,8,0.06)] hover:border-yellow-400/80 hover:bg-zinc-900 scale-[1.01]' 
+                                  : 'bg-zinc-950/70 border-white/5 opacity-40 grayscale-[40%] hover:opacity-60 hover:grayscale-[20%]'
+                              }`}
                             >
-                              <div className="flex items-center gap-4 w-full">
-                                <div className="text-3xl bg-white/5 w-14 h-14 rounded-lg flex items-center justify-center shrink-0 border border-white/10 shadow-inner">
+                              <div className="flex items-start sm:items-center gap-4 w-full">
+                                <div className={`text-3xl w-14 h-14 rounded-lg flex items-center justify-center shrink-0 border shadow-inner transition-all duration-300 ${
+                                  canForge 
+                                    ? 'bg-white/5 border-yellow-500/30 text-white' 
+                                    : 'bg-zinc-900/50 border-white/5 text-zinc-500'
+                                }`}>
                                   {r.discovered ? (IT[r.out]?.ico || '❓') : '❓'}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="font-bold text-yellow-500 text-sm sm:text-base">
+                                    <span className={`font-bold text-sm sm:text-base ${canForge ? 'text-yellow-400' : 'text-zinc-400'}`}>
                                       {r.discovered ? r.n : 'Hidden Formula'}
                                     </span>
-                                    {!r.discovered && (
-                                      <span className="text-[8px] sm:text-[9px] bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-2 py-0.5 rounded-full uppercase font-sans tracking-wider">
-                                        Unlock in Lab
-                                      </span>
-                                    )}
-                                    {r.craftCount > 0 && (
-                                      <span className="text-[8px] sm:text-[9px] bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 px-1.5 py-0.5 rounded-md font-sans">
+                                    {r.discovered && r.craftCount > 0 && (
+                                      <span className="text-[8px] sm:text-[9px] bg-yellow-500/10 text-yellow-500 border border-yellow-500/25 px-1.5 py-0.5 rounded-md font-sans">
                                         Crafted {r.craftCount}x
                                       </span>
                                     )}
-                                    {r.discovered && maxQty > 0 && (
-                                      <span className="text-[8px] sm:text-[10px] bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded font-sans uppercase font-bold animate-pulse">
-                                        Can Craft {maxQty}x
+                                    
+                                    {/* Status Indicator Badge */}
+                                    {!r.discovered ? (
+                                      <span className="text-[8px] sm:text-[9px] bg-zinc-800 text-zinc-400 border border-zinc-700/50 px-2 py-0.5 rounded-full uppercase font-sans tracking-wider">
+                                        🔒 Lab Research
+                                      </span>
+                                    ) : !hasMats ? (
+                                      <span className="text-[8px] sm:text-[9px] bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full uppercase font-sans tracking-wider">
+                                        ❌ Out of Materials
+                                      </span>
+                                    ) : !isNear ? (
+                                      <span className="text-[8px] sm:text-[9px] bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2 py-0.5 rounded-full uppercase font-sans tracking-wider">
+                                        🚫 Station Needed
+                                      </span>
+                                    ) : (
+                                      <span className="text-[8px] sm:text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-sans uppercase font-bold animate-pulse">
+                                        ✨ Ready ({maxQty}x)
                                       </span>
                                     )}
                                   </div>
@@ -5220,29 +6087,38 @@ export default function SurvivalGame() {
                                     {r.discovered ? `Produces: ${IT[r.out]?.n || r.out}` : 'Combine components in alchemy Transmutation Lab to unlock formula!'}
                                   </p>
 
-                                  {/* Costs Palette */}
-                                  <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2.5">
+                                  {/* Required Ingredients */}
+                                  <div className="flex flex-wrap gap-1.5 mt-3">
                                     {Object.entries(r.c).map(([k, v]) => {
                                       const held = gameState?.pl?.inv[k] || 0;
                                       const cost = v as number;
                                       const sufficient = held >= cost;
                                       return (
-                                        <span 
+                                        <div 
                                           key={k} 
-                                          className={`text-[10px] flex items-center gap-1 leading-none ${sufficient ? 'text-green-400 font-bold' : 'text-red-400'}`}
+                                          className={`text-[10px] flex items-center gap-1.5 px-2 py-1 rounded-lg border transition-colors ${
+                                            sufficient 
+                                              ? 'bg-emerald-500/5 border-emerald-500/15 text-emerald-400 font-bold' 
+                                              : 'bg-red-500/5 border-red-500/15 text-red-400'
+                                          }`}
                                         >
-                                          <span>{sufficient ? '✓' : '✗'} {held}/{cost}</span>
-                                          <span>{IT[k]?.ico} {IT[k]?.n || k}</span>
-                                        </span>
+                                          <span className="text-xs select-none">{IT[k]?.ico || '❓'}</span>
+                                          <span className="truncate max-w-[80px] sm:max-w-[120px]">{IT[k]?.n || k}</span>
+                                          <span className="opacity-80 font-mono text-[9px]">({held}/{cost})</span>
+                                        </div>
                                       );
                                     })}
                                   </div>
 
-                                  {/* Proximity requirements */}
+                                  {/* Proximity / Station requirements */}
                                   {r.req && (
                                     <div className="mt-2 flex items-center gap-1.5 text-[10px]">
-                                      <span className={isNear ? 'text-green-400 flex items-center gap-1 font-bold' : 'text-red-400 flex items-center gap-1'}>
-                                        {isNear ? '✓ Station Near:' : '✗ Station Needed:'} {IT[r.req]?.n || r.req} {IT[r.req]?.ico}
+                                      <span className={`px-2 py-0.5 rounded border flex items-center gap-1.5 ${
+                                        isNear 
+                                          ? 'bg-emerald-500/5 border-emerald-500/15 text-emerald-400 font-bold' 
+                                          : 'bg-orange-500/5 border-orange-500/15 text-orange-400'
+                                      }`}>
+                                        {isNear ? '✓ Station Built (Map-wide):' : '✗ Station Needed (Map-wide):'} {IT[r.req]?.ico || '🏢'} {IT[r.req]?.n || r.req}
                                       </span>
                                     </div>
                                   )}
@@ -5256,7 +6132,11 @@ export default function SurvivalGame() {
                                     <button
                                       disabled={!canForge}
                                       onClick={() => canForge && craft(i, 1)}
-                                      className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-bold transition-all uppercase tracking-wider cursor-pointer ${canForge ? 'bg-yellow-500 hover:bg-yellow-400 text-black active:scale-95 shadow-md' : 'bg-white/5 border border-white/10 text-white/30 cursor-not-allowed'}`}
+                                      className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-bold transition-all uppercase tracking-wider cursor-pointer ${
+                                        canForge 
+                                          ? 'bg-yellow-500 hover:bg-yellow-400 text-black active:scale-95 shadow-md font-black' 
+                                          : 'bg-white/5 border border-white/10 text-white/30 cursor-not-allowed'
+                                      }`}
                                     >
                                       Craft 1x
                                     </button>
@@ -5288,7 +6168,7 @@ export default function SurvivalGame() {
                                     </button>
                                   </>
                                 ) : (
-                                  <div className="text-[10px] text-cyan-400 uppercase tracking-widest font-sans flex items-center gap-1 py-1.5 px-3 bg-cyan-500/10 rounded-lg border border-cyan-500/30">
+                                  <div className="text-[10px] text-cyan-400 uppercase tracking-widest font-sans flex items-center gap-1 py-1.5 px-3 bg-cyan-500/10 rounded-lg border border-cyan-500/30 shrink-0">
                                     <FlaskConical size={12} /> Research Only
                                   </div>
                                 )}
@@ -6162,6 +7042,347 @@ export default function SurvivalGame() {
                   })}
                 </div>
               )}
+            </div>
+          </motion.div>
+        )}
+
+        {showNFTMarket && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 overflow-y-auto"
+          >
+            <div className="max-w-6xl w-full bg-zinc-950 border border-cyan-500/30 rounded-3xl p-6 md:p-8 flex flex-col gap-6 max-h-[95vh] overflow-y-auto shadow-[0_0_50px_rgba(6,182,212,0.15)] text-white pointer-events-auto font-mono">
+              {/* Header */}
+              <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <Cpu size={22} className="text-cyan-400 animate-pulse" />
+                  <div>
+                    <h2 className="text-xl font-bold uppercase tracking-wider text-cyan-400">Survival NFT Exchange</h2>
+                    <p className="text-[10px] opacity-50 uppercase mt-0.5">Browse & Trade 10,000 unique procedurally-generated Web3 weapons and armor</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowNFTMarket(false)}
+                  className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Balance Bar */}
+              <div className="bg-cyan-950/20 border border-cyan-500/20 p-5 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">🪙</span>
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wider text-cyan-400">Your Trade Capital</div>
+                    <div className="text-xl font-black text-cyan-300 mt-0.5">
+                      {gameState?.pl.inv.gold_coins || 0} Gold Coins
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[10px] opacity-40 uppercase text-right max-w-xs leading-relaxed hidden md:block">
+                  Defeat high-tier monsters to collect Gold Coins or liquidate your excess survival resources at the Liquidity Desk on the right.
+                </p>
+              </div>
+
+              {/* Main Content: Split into Market and Liquidity */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                {/* Left 2 Columns: NFT Browse & Purchase */}
+                <div className="lg:col-span-2 flex flex-col gap-4">
+                  <div className="text-sm font-bold uppercase tracking-wider text-cyan-400 border-b border-white/10 pb-1 flex items-center gap-1.5">
+                    <Sparkles size={14} /> Catalog Terminal (1-10,000)
+                  </div>
+
+                  {/* Filters and Search ID */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
+                    {/* Search Token ID */}
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[9px] font-bold uppercase opacity-50">Token ID Search</label>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 opacity-30" size={13} />
+                        <input 
+                          type="number"
+                          placeholder="e.g. 777"
+                          min="1"
+                          max="10000"
+                          value={nftSearchToken}
+                          onChange={(e) => {
+                            setNftSearchToken(e.target.value);
+                            setNftPage(0); // reset page
+                          }}
+                          className="w-full bg-zinc-900 border border-white/10 rounded-xl py-1.5 pl-8 pr-3 text-xs text-white focus:outline-none focus:border-cyan-400 transition-all font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Filter Rarity */}
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[9px] font-bold uppercase opacity-50">Filter Rarity</label>
+                      <select 
+                        value={nftRarityFilter}
+                        onChange={(e) => {
+                          setNftRarityFilter(e.target.value);
+                          setNftPage(0);
+                        }}
+                        className="bg-zinc-900 border border-white/10 rounded-xl py-1.5 px-3 text-xs text-white focus:outline-none focus:border-cyan-400 transition-all cursor-pointer font-mono"
+                      >
+                        {['All', 'Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Mythic'].map((rar) => (
+                          <option key={rar} value={rar}>{rar.toUpperCase()}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Filter Type */}
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[9px] font-bold uppercase opacity-50">Filter Type</label>
+                      <select 
+                        value={nftTypeFilter}
+                        onChange={(e) => {
+                          setNftTypeFilter(e.target.value);
+                          setNftPage(0);
+                        }}
+                        className="bg-zinc-900 border border-white/10 rounded-xl py-1.5 px-3 text-xs text-white focus:outline-none focus:border-cyan-400 transition-all cursor-pointer font-mono"
+                      >
+                        {['All', 'Weapon', 'Armor'].map((t) => (
+                          <option key={t} value={t}>{t.toUpperCase()}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* NFT Grid */}
+                  {(() => {
+                    const filteredNFTs = getFilteredNFTs();
+                    if (filteredNFTs.length === 0) {
+                      return (
+                        <div className="flex flex-col items-center justify-center p-12 bg-white/[0.01] border border-white/5 rounded-2xl">
+                          <AlertCircle size={28} className="text-cyan-400/50 mb-2" />
+                          <p className="text-xs text-white/50 uppercase font-bold tracking-widest">No matching NFT assets found</p>
+                          <p className="text-[9px] text-white/30 uppercase mt-1">Try relaxing filters or broadening your Token ID range</p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="flex flex-col gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                          {filteredNFTs.map((item) => {
+                            const isWeapon = item.t === 'weapon';
+                            const playerCoins = gameState?.pl.inv.gold_coins || 0;
+                            const canAfford = playerCoins >= item.price;
+                            
+                            return (
+                              <div 
+                                key={item.id}
+                                style={{ boxShadow: `0 0 15px ${item.rarityColor}12` }}
+                                className="bg-zinc-900/60 border border-white/10 hover:border-white/20 rounded-2xl p-4 flex flex-col justify-between gap-3 relative overflow-hidden transition-all group hover:scale-[1.02]"
+                              >
+                                {/* Glow badge */}
+                                <div 
+                                  className="absolute top-0 right-0 w-24 h-24 blur-2xl opacity-10 rounded-full" 
+                                  style={{ backgroundColor: item.rarityColor }}
+                                />
+
+                                <div>
+                                  <div className="flex justify-between items-start">
+                                    <span className="text-2xl p-1 bg-white/5 rounded-xl">{item.ico}</span>
+                                    <span 
+                                      style={{ color: item.rarityColor, borderColor: `${item.rarityColor}33` }}
+                                      className="text-[8px] font-black uppercase border px-1.5 py-0.5 rounded tracking-widest bg-white/[0.01]"
+                                    >
+                                      {item.rarity}
+                                    </span>
+                                  </div>
+
+                                  <h3 className="text-xs font-bold text-white mt-3 truncate group-hover:text-cyan-300 transition-colors">
+                                    {item.n}
+                                  </h3>
+                                  <p className="text-[9px] opacity-40 mt-0.5">TOKEN ID: #{item.tokenId}</p>
+
+                                  {/* Stats details */}
+                                  <div className="mt-2.5 bg-black/40 p-2 rounded-xl text-[9px] flex flex-col gap-1 text-white/80">
+                                    {isWeapon ? (
+                                      <>
+                                        <div className="flex justify-between">
+                                          <span>⚔️ Base DMG:</span>
+                                          <span className="font-bold text-red-400">+{item.dmg}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span>⚡ Speed Cooldown:</span>
+                                          <span className="font-bold text-orange-400">{item.spd} ticks</span>
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <div className="flex justify-between">
+                                          <span>🛡️ Defense:</span>
+                                          <span className="font-bold text-blue-400">+{item.def}</span>
+                                        </div>
+                                        {item.hpBonus && (
+                                          <div className="flex justify-between">
+                                            <span>❤️ HP Max:</span>
+                                            <span className="font-bold text-green-400">+{item.hpBonus}</span>
+                                          </div>
+                                        )}
+                                        {item.mpBonus && (
+                                          <div className="flex justify-between">
+                                            <span>💙 MP Max:</span>
+                                            <span className="font-bold text-fuchsia-400">+{item.mpBonus}</span>
+                                          </div>
+                                        )}
+                                        {item.spdBonus && (
+                                          <div className="flex justify-between">
+                                            <span>🏃 Run Speed:</span>
+                                            <span className="font-bold text-teal-400">+{item.spdBonus}</span>
+                                          </div>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="border-t border-white/5 pt-2.5 flex flex-col gap-1.5">
+                                  <div className="flex justify-between items-center text-[10px]">
+                                    <span className="opacity-40">MINT PRICE:</span>
+                                    <span className="font-black text-yellow-400">🪙 {item.price} Coins</span>
+                                  </div>
+
+                                  <button
+                                    onClick={() => handleBuyNFT(item.tokenId)}
+                                    disabled={!canAfford}
+                                    className={`w-full py-1.5 rounded-xl text-[9px] font-bold uppercase tracking-widest cursor-pointer transition-all ${
+                                      canAfford 
+                                        ? 'bg-cyan-600 hover:bg-cyan-500 text-white hover:shadow-lg active:scale-95' 
+                                        : 'bg-zinc-800 text-zinc-600 border border-zinc-700/10 cursor-not-allowed'
+                                    }`}
+                                  >
+                                    {canAfford ? '🛒 Purchase' : '❌ Insufficient'}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Pagination (only show if not specific Token ID Search) */}
+                        {!nftSearchToken && (
+                          <div className="flex justify-between items-center bg-white/[0.02] border border-white/5 p-3 rounded-2xl text-[10px]">
+                            <button 
+                              disabled={nftPage === 0}
+                              onClick={() => setNftPage(prev => Math.max(0, prev - 1))}
+                              className="px-3 py-1.5 bg-zinc-900 border border-white/10 rounded-xl hover:border-cyan-400 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed text-white uppercase font-bold"
+                            >
+                              ◀ Prev Page
+                            </button>
+                            <span className="opacity-50 font-bold uppercase tracking-widest text-cyan-400">
+                              Block Page {nftPage + 1}
+                            </span>
+                            <button 
+                              disabled={filteredNFTs.length < 12}
+                              onClick={() => setNftPage(prev => prev + 1)}
+                              className="px-3 py-1.5 bg-zinc-900 border border-white/10 rounded-xl hover:border-cyan-400 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed text-white uppercase font-bold"
+                            >
+                              Next Page ▶
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Right 1 Column: Liquidity Desk (Sell Items) */}
+                <div className="bg-zinc-900/40 border border-white/5 p-5 rounded-2xl flex flex-col gap-4">
+                  <div className="text-sm font-bold uppercase tracking-wider text-cyan-400 border-b border-white/10 pb-1 flex items-center gap-1.5">
+                    <Backpack size={14} /> Liquidity & Swap Desk
+                  </div>
+                  <p className="text-[9px] opacity-40 uppercase leading-relaxed">
+                    Instantly liquidate your excess items, harvested materials, resources, or bought NFTs for solid Gold Coins to purchase new items.
+                  </p>
+
+                  <div className="flex flex-col gap-2.5 max-h-[50vh] overflow-y-auto pr-1">
+                    {(() => {
+                      const sellableItems = Object.entries(gameState?.pl.inv || {}).filter(([k, qty]) => {
+                        return k !== 'gold_coins' && (qty as number) > 0;
+                      });
+
+                      if (sellableItems.length === 0) {
+                        return (
+                          <div className="p-8 text-center bg-white/[0.01] border border-dashed border-white/5 rounded-xl text-white/30 text-[10px] uppercase font-bold tracking-widest">
+                            No sellable items in inventory
+                          </div>
+                        );
+                      }
+
+                      return sellableItems.map(([key, qty]: [string, any]) => {
+                        const itemInfo = IT[key];
+                        if (!itemInfo) return null;
+                        
+                        // Define sell values matching the backend handlers
+                        const prices: Record<string, number> = {
+                          wood: 1, stone: 1, fiber: 1, flint: 2, meat: 2, berry: 1, mushroom: 2,
+                          cooked_meat: 5, iron_ore: 3, iron_bar: 8, steel_bar: 15,
+                          copper_ore: 2, copper_bar: 5, gold_ore: 10, gold_bar: 25,
+                          mithril_ore: 25, mithril_bar: 60, crystal: 15, magic_essence: 20,
+                          void_crystal: 50, celestial_shard: 150, dragon_scale: 200, silk: 15,
+                          mana_crystal: 30
+                        };
+
+                        let pricePerUnit = 2;
+                        if (key.startsWith('nft_')) {
+                          pricePerUnit = Math.round(itemInfo.price * 0.7);
+                        } else if (prices[key] !== undefined) {
+                          pricePerUnit = prices[key];
+                        } else {
+                          if (itemInfo.t === 'weapon') {
+                            pricePerUnit = Math.round((itemInfo.dmg || 10) * 1.5);
+                          } else if (itemInfo.t === 'armor') {
+                            pricePerUnit = Math.round((itemInfo.def || 5) * 2.0);
+                          }
+                        }
+
+                        return (
+                          <div 
+                            key={key} 
+                            className="bg-black/40 border border-white/5 rounded-xl p-3 flex justify-between items-center gap-2 group hover:border-cyan-500/20 transition-all"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-xl">{itemInfo.ico}</span>
+                              <div className="flex flex-col">
+                                <span className="text-[11px] font-bold text-white truncate max-w-[120px]">{itemInfo.n}</span>
+                                <span className="text-[8px] opacity-40 uppercase">Held: {qty}x</span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              <span className="text-[9px] font-black text-yellow-400">🪙 {pricePerUnit} ea</span>
+                              <div className="flex gap-1">
+                                <button 
+                                  onClick={() => handleSellItem(key, 1)}
+                                  className="px-2 py-0.5 bg-white/5 hover:bg-cyan-500/10 text-cyan-400 border border-white/10 hover:border-cyan-400/40 rounded text-[8px] font-bold uppercase tracking-wider cursor-pointer transition-all active:scale-95"
+                                >
+                                  Sell 1
+                                </button>
+                                {qty > 1 && (
+                                  <button 
+                                    onClick={() => handleSellItem(key, qty)}
+                                    className="px-2 py-0.5 bg-white/5 hover:bg-yellow-500/10 text-yellow-400 border border-white/10 hover:border-yellow-400/40 rounded text-[8px] font-bold uppercase tracking-wider cursor-pointer transition-all active:scale-95"
+                                  >
+                                    All
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+
+              </div>
             </div>
           </motion.div>
         )}
