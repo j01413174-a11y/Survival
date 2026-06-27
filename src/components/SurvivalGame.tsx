@@ -22,10 +22,11 @@ import {
   CheckCircle2,
   AlertCircle,
   Download,
-  Upload
+  Upload,
+  Cpu
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { getOracleGuidance } from '../services/geminiService';
+import { getOracleGuidance, generateWorldEvent } from '../services/geminiService';
 
 // --- Constants & Types ---
 const TZ = 32;
@@ -182,6 +183,75 @@ const mkRng = (s: number) => {
 
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
 
+const getWeaponStats = (s: any, weaponKey: string) => {
+  const base = { ... (IT[weaponKey] || IT['fists']) };
+  if (!s || !s.pl) return base;
+  
+  const mods = s.pl.weaponMods?.[weaponKey];
+  if (!mods) return base;
+  
+  let namePrefix = mods.prefix || "";
+  let nameSuffix = mods.suffix || "";
+  let dmgMult = 1 + (mods.dmgBoost || 0);
+  let spdMult = 1 - (mods.spdBoost || 0);
+  let rngAdd = mods.rngAdd || 0;
+  let mpAdd = mods.mpAdd || 0;
+  let vamp = mods.vamp || 0;
+  
+  base.dmg = Math.round(base.dmg * dmgMult);
+  base.spd = Math.max(5, Math.round(base.spd * spdMult));
+  base.rng = base.rng + rngAdd;
+  if (base.mp !== undefined) {
+    base.mp = Math.max(0, base.mp + mpAdd);
+  }
+  base.n = (namePrefix + " " + base.n + " " + nameSuffix).trim();
+  base.vamp = vamp;
+  
+  return base;
+};
+
+const rollProceduralMod = (itemKey: string) => {
+  const prefixes = [
+    { prefix: "Gilded", dmgBoost: 0.15, spdBoost: 0.05, vamp: 0 },
+    { prefix: "Flaming", dmgBoost: 0.3, spdBoost: -0.1, col: "#ff4400" },
+    { prefix: "Swift", dmgBoost: -0.05, spdBoost: 0.25 },
+    { prefix: "Heavy", dmgBoost: 0.45, spdBoost: -0.15, rngAdd: -5 },
+    { prefix: "Vampiric", dmgBoost: 0.1, vamp: 0.15 },
+    { prefix: "Vengeful", dmgBoost: 0.2, spdBoost: 0.05 },
+    { prefix: "Ethereal", dmgBoost: 0.15, mpAdd: -2 },
+    { prefix: "Godly", dmgBoost: 0.35, spdBoost: 0.15, rngAdd: 10 }
+  ];
+
+  const suffixes = [
+    { suffix: "of Vampirism", vamp: 0.2 },
+    { suffix: "of Carnage", dmgBoost: 0.3 },
+    { suffix: "of the Swift", spdBoost: 0.2 },
+    { suffix: "of Light", rngAdd: 15 },
+    { suffix: "of the Void", dmgBoost: 0.25, mpAdd: 1 },
+    { suffix: "of Wrath", dmgBoost: 0.2, spdBoost: 0.1 }
+  ];
+
+  // 85% chance to roll a mod
+  if (Math.random() > 0.85) return null;
+
+  const pref = Math.random() < 0.7 ? prefixes[Math.floor(Math.random() * prefixes.length)] : null;
+  const suff = Math.random() < 0.5 ? suffixes[Math.floor(Math.random() * suffixes.length)] : null;
+
+  if (!pref && !suff) return null;
+
+  const mod: any = {
+    prefix: pref?.prefix || "",
+    suffix: suff?.suffix || "",
+    dmgBoost: (pref?.dmgBoost || 0) + (suff?.dmgBoost || 0),
+    spdBoost: (pref?.spdBoost || 0) + (suff?.spdBoost || 0),
+    rngAdd: (pref?.rngAdd || 0) + (suff?.rngAdd || 0),
+    mpAdd: (pref?.mpAdd || 0) + (suff?.mpAdd || 0),
+    vamp: (pref?.vamp || 0) + (suff?.vamp || 0)
+  };
+
+  return mod;
+};
+
 // --- Component ---
 export default function SurvivalGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -228,6 +298,25 @@ export default function SurvivalGame() {
   useEffect(() => {
     autosaveEnabledRef.current = autosaveEnabled;
   }, [autosaveEnabled]);
+
+  // --- Automation Cores States & Refs ---
+  const [autoAttack, setAutoAttack] = useState(false);
+  const [autoCollect, setAutoCollect] = useState(false);
+  const [autoHarvest, setAutoHarvest] = useState(false);
+
+  const autoAttackRef = useRef(false);
+  const autoCollectRef = useRef(false);
+  const autoHarvestRef = useRef(false);
+  const pausedRef = useRef(false);
+
+  useEffect(() => { autoAttackRef.current = autoAttack; }, [autoAttack]);
+  useEffect(() => { autoCollectRef.current = autoCollect; }, [autoCollect]);
+  useEffect(() => { autoHarvestRef.current = autoHarvest; }, [autoHarvest]);
+
+  // --- World Event states ---
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [narrativeEvent, setNarrativeEvent] = useState<any | null>(null);
+  const [eventChoiceOutcome, setEventChoiceOutcome] = useState<string | null>(null);
 
   // Load slot metadata upon opening
   const loadSlotMetadata = useCallback(() => {
@@ -629,10 +718,11 @@ export default function SurvivalGame() {
       const s = stateRef.current;
       if (!s) return;
 
-      // --- Update ---
-      s.ticks++;
-      s.dayTime = (s.ticks % 18000) / 18000;
-      if (s.ticks % 18000 === 0) s.day++;
+      if (!pausedRef.current) {
+        // --- Update ---
+        s.ticks++;
+        s.dayTime = (s.ticks % 18000) / 18000;
+        if (s.ticks % 18000 === 0) s.day++;
 
       // Periodic HUD state sync to React to render player bar modifications
       if (s.ticks % 15 === 0) {
@@ -662,7 +752,11 @@ export default function SurvivalGame() {
 
       // Mana Regen
       if (s.ticks % 60 === 0 && s.pl.mp < s.pl.mmp) {
-        s.pl.mp = Math.min(s.pl.mmp, s.pl.mp + 1 + Math.floor(s.pl.lvl / 5));
+        let eventManaRegen = 0;
+        if (s.activeEvent?.effect?.statModifiers?.manaRegen) {
+          eventManaRegen = Math.round(s.activeEvent.effect.statModifiers.manaRegen);
+        }
+        s.pl.mp = Math.min(s.pl.mmp, s.pl.mp + 1 + Math.floor(s.pl.lvl / 5) + eventManaRegen);
       }
 
       // Grid Movement execution
@@ -695,7 +789,11 @@ export default function SurvivalGame() {
       }
 
       if (s.pl.isGridMoving) {
-        const speed = s.pl.spd * (isSprinting ? 1.7 : 1);
+        let eventSpeedMult = 1.0;
+        if (s.activeEvent?.effect?.statModifiers?.speedBoost) {
+          eventSpeedMult = s.activeEvent.effect.statModifiers.speedBoost;
+        }
+        const speed = s.pl.spd * (isSprinting ? 1.7 : 1) * eventSpeedMult;
         const diffX = s.pl.targetX - s.pl.x;
         const diffY = s.pl.targetY - s.pl.y;
         const d = Math.hypot(diffX, diffY);
@@ -896,6 +994,13 @@ export default function SurvivalGame() {
           const e = s.enemies[j];
           if (dist(p, e) < 20) {
             e.hp -= p.dmg;
+            if (p.vamp && p.vamp > 0) {
+              const heal = Math.round(p.dmg * p.vamp);
+              if (heal > 0) {
+                s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + heal);
+                addLog(`🩸 Vampirism: +${heal} HP!`, '#ff3366');
+              }
+            }
             if (p.fx === 'slow') e.slowTicks = 180;
             if (p.fx === 'burn') e.burnTicks = 300;
             if (p.fx === 'void') {
@@ -916,6 +1021,86 @@ export default function SurvivalGame() {
           }
         }
       }
+
+      // --- Active World Event Handler ---
+      if (s.activeEvent) {
+        s.activeEvent.ticksLeft--;
+        
+        if (s.activeEvent.effect?.statModifiers?.healthDrain) {
+          if (s.ticks % 60 === 0) {
+            s.pl.hp = Math.max(0, s.pl.hp - s.activeEvent.effect.statModifiers.healthDrain);
+            if (s.pl.hp <= 0 && !showDeathScreen) {
+              setShowDeathScreen(true);
+            }
+          }
+        }
+
+        if (s.ticks % 180 === 0 && s.activeEvent.effect?.spawnResource && s.activeEvent.effect.spawnResource !== 'none') {
+          const px = Math.floor(s.pl.x / TZ);
+          const py = Math.floor(s.pl.y / TZ);
+          const rtx = px + Math.floor(Math.random() * 11) - 5;
+          const rty = py + Math.floor(Math.random() * 11) - 5;
+          if (rtx >= 0 && rtx < ZW && rty >= 0 && rty < ZH) {
+            if (s.world[rty][rtx] !== TW) {
+              s.objs.push({
+                type: 'drop',
+                tx: rtx,
+                ty: rty,
+                item: s.activeEvent.effect.spawnResource,
+                qty: 1 + Math.floor(Math.random() * 2)
+              });
+              addLog(`🌠 A meteor crashed nearby!`, '#38bdf8');
+            }
+          }
+        }
+
+        if (s.activeEvent.ticksLeft <= 0) {
+          addLog(`🌌 The world event "${s.activeEvent.title}" has subsided.`, '#38bdf8');
+          s.activeEvent = null;
+        }
+      }
+
+      // --- Trigger Random World Event (Periodic Gemini Challenge) ---
+      if (s.ticks > 0 && s.ticks % 4200 === 0 && !s.activeEvent) {
+        triggerWorldEvent();
+      }
+
+      // --- Automation Cores ---
+      if (autoAttackRef.current && s.pl.atkcd <= 0) {
+        const wp = getWeaponStats(s, s.pl.weapon);
+        let target = null;
+        let minDist = wp.rng;
+        for (const e of s.enemies) {
+          const d = dist(s.pl, e);
+          if (d < minDist) {
+            minDist = d;
+            target = e;
+          }
+        }
+        if (target) {
+          handleAttack();
+        }
+      }
+
+      if (autoHarvestRef.current && s.ticks % 35 === 0) {
+        handleGather();
+      }
+
+      if (autoCollectRef.current && s.ticks % 10 === 0) {
+        const px = Math.floor(s.pl.x / TZ);
+        const py = Math.floor(s.pl.y / TZ);
+        for (let i = s.objs.length - 1; i >= 0; i--) {
+          const o = s.objs[i];
+          if (o.type === 'drop') {
+            if (Math.abs(o.tx - px) + Math.abs(o.ty - py) <= 6) {
+              s.pl.inv[o.item] = (s.pl.inv[o.item] || 0) + o.qty;
+              addLog(`🧲 Vacuumed item: +${IT[o.item]?.n || o.item} x${o.qty}`, '#ccffaa');
+              s.objs.splice(i, 1);
+            }
+          }
+        }
+      }
+      } // End of if (!pausedRef.current)
 
       // --- Draw ---
       ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -1077,11 +1262,144 @@ export default function SurvivalGame() {
     setLogs(prev => [{ msg, col }, ...prev].slice(0, 5));
   };
 
+  const triggerWorldEvent = async () => {
+    const s = stateRef.current;
+    if (!s || s.activeEvent) return;
+
+    pausedRef.current = true;
+    addLog("🌌 A massive atmospheric disturbance has been detected...", "#f59e0b");
+    
+    try {
+      const eventData = await generateWorldEvent(s);
+      if (eventData && eventData.title) {
+        if (eventData.choices) {
+          eventData.choices = eventData.choices.map((c: any) => {
+            let isMet = true;
+            if (c.requirement && c.requirement !== "None" && c.requirement !== "none") {
+              const match = c.requirement.match(/Level\s*(\d+)/i);
+              if (match) {
+                const reqLvl = parseInt(match[1]);
+                if (s.pl.lvl < reqLvl) isMet = false;
+              }
+              const resMatch = c.requirement.match(/(\d+)\s*([a-zA-Z_]+)/i);
+              if (resMatch) {
+                const reqQty = parseInt(resMatch[1]);
+                const reqItem = resMatch[2].toLowerCase().replace(/s$/, "");
+                let mappedKey = reqItem;
+                if (reqItem === "crystal" || reqItem === "crystals") mappedKey = "crystal";
+                if (reqItem === "wood") mappedKey = "wood";
+                if (reqItem === "stone") mappedKey = "stone";
+                if (reqItem === "gem" || reqItem === "gems") mappedKey = "gem";
+                
+                if ((s.pl.inv[mappedKey] || 0) < reqQty) isMet = false;
+              }
+            }
+            return { ...c, isMet };
+          });
+        }
+        setNarrativeEvent(eventData);
+        setEventChoiceOutcome(null);
+        setShowEventModal(true);
+      } else {
+        pausedRef.current = false;
+      }
+    } catch (err) {
+      console.error(err);
+      pausedRef.current = false;
+    }
+  };
+
+  const handleSelectEventChoice = (choice: any) => {
+    const s = stateRef.current;
+    if (!s || !narrativeEvent) return;
+
+    if (choice.requirement && choice.requirement !== "None" && choice.requirement !== "none") {
+      const resMatch = choice.requirement.match(/(\d+)\s*([a-zA-Z_]+)/i);
+      if (resMatch) {
+        const reqQty = parseInt(resMatch[1]);
+        const reqItem = resMatch[2].toLowerCase().replace(/s$/, "");
+        let mappedKey = reqItem;
+        if (reqItem === "crystal" || reqItem === "crystals") mappedKey = "crystal";
+        if (reqItem === "wood") mappedKey = "wood";
+        if (reqItem === "stone") mappedKey = "stone";
+        if (reqItem === "gem" || reqItem === "gems") mappedKey = "gem";
+
+        if ((s.pl.inv[mappedKey] || 0) >= reqQty) {
+          s.pl.inv[mappedKey] -= reqQty;
+          addLog(`Paid ${reqQty}x ${IT[mappedKey]?.n || mappedKey} for the choice.`, '#f87171');
+        }
+      }
+    }
+
+    const rew = choice.reward;
+    let outcomeText = choice.outcomeDescription;
+
+    if (rew) {
+      let rewardLogs = [];
+      if (rew.item && rew.item !== "none" && rew.item !== "None") {
+        const q = rew.qty || 1;
+        s.pl.inv[rew.item] = (s.pl.inv[rew.item] || 0) + q;
+        rewardLogs.push(`+${IT[rew.item]?.n || rew.item} x${q}`);
+      }
+      if (rew.xp && rew.xp > 0) {
+        s.pl.xp += rew.xp;
+        rewardLogs.push(`+${rew.xp} XP`);
+        while (s.pl.xp >= s.pl.xpNext) {
+          s.pl.xp -= s.pl.xpNext;
+          s.pl.lvl++;
+          s.pl.xpNext = Math.floor(s.pl.xpNext * 1.5);
+          s.pl.mhp += 10;
+          s.pl.mmp += 10;
+          s.pl.hp = s.pl.mhp;
+          s.pl.mp = s.pl.mmp;
+          addLog(`✨ LEVEL UP! You reached level ${s.pl.lvl}!`, '#eab308');
+        }
+      }
+      if (rew.hpChange && rew.hpChange !== 0) {
+        if (rew.hpChange > 0) {
+          s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + rew.hpChange);
+          rewardLogs.push(`+${rew.hpChange} HP`);
+        } else {
+          s.pl.hp = Math.max(0, s.pl.hp - Math.abs(rew.hpChange));
+          rewardLogs.push(`${rew.hpChange} HP`);
+          if (s.pl.hp <= 0 && !showDeathScreen) {
+            setShowDeathScreen(true);
+          }
+        }
+      }
+
+      if (rewardLogs.length > 0) {
+        outcomeText += `\n\nRewards: ${rewardLogs.join(", ")}`;
+      }
+    }
+
+    setEventChoiceOutcome(outcomeText);
+
+    s.activeEvent = {
+      title: narrativeEvent.title,
+      effect: narrativeEvent.effect,
+      ticksLeft: (narrativeEvent.durationSeconds || 45) * 60,
+    };
+    
+    setGameState({ ...s });
+  };
+
+  const handleAcknowledgeEvent = () => {
+    const s = stateRef.current;
+    setShowEventModal(false);
+    setNarrativeEvent(null);
+    setEventChoiceOutcome(null);
+    pausedRef.current = false;
+    if (s && s.activeEvent) {
+      addLog(`🌌 Active World Event: "${s.activeEvent.title}" is now in effect!`, '#a855f7');
+    }
+  };
+
   const handleAttack = () => {
     const s = stateRef.current;
     if (!s || s.pl.atkcd > 0) return;
 
-    const wp = IT[s.pl.weapon] || IT['fists'];
+    const wp = getWeaponStats(s, s.pl.weapon);
 
     // Stamina verification for physical attacks
     if (wp.type === 'melee') {
@@ -1102,13 +1420,25 @@ export default function SurvivalGame() {
 
     s.pl.atkcd = wp.spd;
 
+    let eventDmgBoost = 1.0;
+    if (s.activeEvent?.effect?.statModifiers?.dmgBoost) {
+      eventDmgBoost = s.activeEvent.effect.statModifiers.dmgBoost;
+    }
+
     if (wp.type === 'melee') {
       const combatLvl = s.pl.skills?.combat?.lvl || 1;
-      const finalDmg = Math.round(wp.dmg * (1 + (combatLvl - 1) * 0.05));
+      const finalDmg = Math.round(wp.dmg * (1 + (combatLvl - 1) * 0.05) * eventDmgBoost);
       for (let i = s.enemies.length - 1; i >= 0; i--) {
         const e = s.enemies[i];
         if (dist(s.pl, e) < wp.rng) {
           e.hp -= finalDmg;
+          if (wp.vamp && wp.vamp > 0) {
+            const heal = Math.round(finalDmg * wp.vamp);
+            if (heal > 0) {
+              s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + heal);
+              addLog(`🩸 Vampirism: +${heal} HP!`, '#ff3366');
+            }
+          }
           if (e.hp <= 0) {
             const et = ET[e.eid];
             s.pl.xp += et.xp;
@@ -1163,7 +1493,7 @@ export default function SurvivalGame() {
         s.pl.mp -= manaCost;
         
         // Scale damage
-        const finalDmg = Math.round(wp.dmg * (1 + (wp.type === 'ranged' ? (combatLvl - 1) * 0.05 : (alchemyLvl - 1) * 0.05)));
+        const finalDmg = Math.round(wp.dmg * (1 + (wp.type === 'ranged' ? (combatLvl - 1) * 0.05 : (alchemyLvl - 1) * 0.05)) * eventDmgBoost);
         
         // Give some Alchemy XP if magic is cast
         if (wp.type === 'magic') {
@@ -1175,7 +1505,8 @@ export default function SurvivalGame() {
           vx: Math.cos(ang) * 8, vy: Math.sin(ang) * 8,
           dmg: finalDmg, rng: wp.rng, dist: 0, 
           col: wp.col || '#ffaa44',
-          fx: wp.fx
+          fx: wp.fx,
+          vamp: wp.vamp
         });
       } else {
         addLog("No target in range", "#888");
@@ -1508,6 +1839,18 @@ export default function SurvivalGame() {
 
     s.pl.inv[r.out] = (s.pl.inv[r.out] || 0) + actualQty;
     addLog(`Crafted ${r.n} x${actualQty}`, '#a8ff78');
+
+    // Roll dynamic stats/modifications for craftable weapons/tools
+    const itemTemplate = IT[r.out];
+    if (itemTemplate && (itemTemplate.type === 'melee' || itemTemplate.type === 'ranged' || itemTemplate.type === 'magic' || itemTemplate.t === 'tool')) {
+      if (!s.pl.weaponMods) s.pl.weaponMods = {};
+      const mod = rollProceduralMod(r.out);
+      if (mod) {
+        s.pl.weaponMods[r.out] = mod;
+        const name = `${mod.prefix} ${itemTemplate.n} ${mod.suffix}`.trim();
+        addLog(`✨ Procedural Forge: Crafted unique "${name}"!`, '#ffd700');
+      }
+    }
 
     // Update state
     setRecipes(prev => prev.map((rc, idx) => {
@@ -1954,6 +2297,154 @@ export default function SurvivalGame() {
         </AnimatePresence>
       </div>
 
+      {/* --- Automation Cores Control Center --- */}
+      <div className="absolute top-[190px] left-4 pointer-events-auto z-10 flex flex-col gap-1.5 bg-black/80 border border-white/10 p-3 rounded-2xl backdrop-blur-md shadow-2xl max-w-xs text-white">
+        <div className="flex items-center gap-1.5 mb-1 border-b border-white/10 pb-1.5">
+          <Cpu size={14} className="text-cyan-400 animate-pulse" />
+          <span className="text-[10px] font-bold tracking-widest uppercase text-cyan-400 font-sans">Automation Cores</span>
+        </div>
+        <div className="flex flex-col gap-1">
+          <button
+            onClick={() => setAutoAttack(prev => !prev)}
+            className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase font-mono flex items-center justify-between transition-all border cursor-pointer ${
+              autoAttack 
+                ? 'bg-red-500/20 border-red-500/50 text-red-300 shadow-[0_0_10px_rgba(239,68,68,0.2)]' 
+                : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
+            }`}
+          >
+            <span>⚔️ Combat Core</span>
+            <span className={autoAttack ? 'text-red-400 animate-pulse' : 'text-zinc-500'}>
+              {autoAttack ? 'ON' : 'OFF'}
+            </span>
+          </button>
+          <button
+            onClick={() => setAutoHarvest(prev => !prev)}
+            className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase font-mono flex items-center justify-between transition-all border cursor-pointer ${
+              autoHarvest 
+                ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300 shadow-[0_0_10px_rgba(234,179,8,0.2)]' 
+                : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
+            }`}
+          >
+            <span>🪵 Gathering Core</span>
+            <span className={autoHarvest ? 'text-yellow-400 animate-pulse' : 'text-zinc-500'}>
+              {autoHarvest ? 'ON' : 'OFF'}
+            </span>
+          </button>
+          <button
+            onClick={() => setAutoCollect(prev => !prev)}
+            className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase font-mono flex items-center justify-between transition-all border cursor-pointer ${
+              autoCollect 
+                ? 'bg-green-500/20 border-green-500/50 text-green-300 shadow-[0_0_10px_rgba(34,197,94,0.2)]' 
+                : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
+            }`}
+          >
+            <span>🧲 Vacuum Core</span>
+            <span className={autoCollect ? 'text-green-400 animate-pulse' : 'text-zinc-500'}>
+              {autoCollect ? 'ON' : 'OFF'}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* --- Active World Event Banner --- */}
+      {gameState?.activeEvent && (
+        <div className="absolute top-[190px] left-1/2 -translate-x-1/2 z-10 pointer-events-none select-none">
+          <div className="bg-gradient-to-r from-purple-950/90 via-black/85 to-purple-950/90 border border-purple-500/30 px-4 py-2 rounded-xl flex items-center gap-2.5 shadow-[0_0_25px_rgba(168,85,247,0.15)] animate-bounce">
+            <span className="text-lg">🌌</span>
+            <div className="flex flex-col">
+              <span className="text-[9px] text-purple-400 font-bold uppercase tracking-widest">Active World Event</span>
+              <span className="text-xs font-black text-white uppercase tracking-wider">{gameState.activeEvent.title}</span>
+            </div>
+            <div className="w-px h-6 bg-purple-500/20 mx-1" />
+            <div className="text-[10px] text-purple-300 font-mono font-bold">
+              {Math.ceil(gameState.activeEvent.ticksLeft / 60)}s left
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- World Event Narrative Challenge Modal --- */}
+      <AnimatePresence>
+        {showEventModal && narrativeEvent && (
+          <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 30 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 30 }}
+              className="bg-gradient-to-b from-zinc-900 to-black border border-purple-500/30 p-6 rounded-3xl max-w-xl w-full text-white shadow-[0_0_50px_rgba(168,85,247,0.15)] flex flex-col gap-5 relative overflow-hidden"
+            >
+              {/* Event Cosmic Backglow Decoration */}
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-40 bg-purple-500/10 blur-[100px] rounded-full pointer-events-none" />
+
+              <div className="flex items-center gap-3 border-b border-white/10 pb-3">
+                <span className="text-3xl">🌌</span>
+                <div className="flex flex-col">
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-purple-400 font-sans">Cosmic World Change Detected</span>
+                  <h2 className="text-xl font-black uppercase tracking-wider text-white">{narrativeEvent.title}</h2>
+                </div>
+              </div>
+
+              <div className="text-sm leading-relaxed text-zinc-300 italic font-serif">
+                "{narrativeEvent.narrative}"
+              </div>
+
+              {narrativeEvent.effect && (
+                <div className="bg-purple-950/25 border border-purple-500/20 rounded-xl p-3 text-xs text-purple-200 font-mono">
+                  <div className="font-bold uppercase tracking-wider text-purple-300 mb-1">Atmospheric Condition:</div>
+                  <div>{narrativeEvent.effect.description}</div>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2.5">
+                {!eventChoiceOutcome ? (
+                  <>
+                    <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">How do you choose to react?</div>
+                    {narrativeEvent.choices?.map((choice: any, idx: number) => {
+                      const disabled = !choice.isMet;
+                      return (
+                        <button
+                          key={idx}
+                          disabled={disabled}
+                          onClick={() => handleSelectEventChoice(choice)}
+                          className={`w-full text-left p-3.5 rounded-xl border transition-all text-xs flex flex-col gap-1 cursor-pointer ${
+                            disabled 
+                              ? 'bg-zinc-900/40 border-zinc-800 text-zinc-600 cursor-not-allowed opacity-50' 
+                              : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-purple-400 active:scale-[0.98]'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between font-bold text-white">
+                            <span>{choice.text}</span>
+                            {choice.requirement && choice.requirement !== "None" && choice.requirement !== "none" && (
+                              <span className={`text-[9px] px-2 py-0.5 rounded font-mono ${disabled ? 'bg-red-900/30 text-red-400' : 'bg-emerald-900/30 text-emerald-400'}`}>
+                                {choice.requirement}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-zinc-400 leading-normal">{choice.description}</p>
+                        </button>
+                      );
+                    })}
+                  </>
+                ) : (
+                  <div className="flex flex-col gap-4 animate-fade-in">
+                    <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">Outcome:</div>
+                    <div className="bg-black/40 border border-white/5 p-4 rounded-xl text-xs leading-relaxed text-zinc-300 whitespace-pre-wrap">
+                      {eventChoiceOutcome}
+                    </div>
+                    <button
+                      onClick={handleAcknowledgeEvent}
+                      className="w-full py-3 bg-purple-600 hover:bg-purple-500 active:scale-95 text-xs font-bold tracking-widest uppercase rounded-xl transition-all shadow-[0_4px_12px_rgba(168,85,247,0.3)] cursor-pointer"
+                    >
+                      Acknowledge Event & Continue
+                    </button>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* --- Joystick --- */}
       <div className="absolute bottom-24 left-8 z-30 touch-none md:hidden select-none">
         <div 
@@ -1976,7 +2467,27 @@ export default function SurvivalGame() {
 
       {/* --- Controls --- */}
       {/* Bottom Center: Hotbar (Always centered at the bottom, pointer enabled) */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto select-none">
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto select-none flex flex-col items-center gap-1.5">
+        {gameState?.pl.hotbar[hotSlot] && (() => {
+          const key = gameState.pl.hotbar[hotSlot];
+          const stats = getWeaponStats(gameState, key);
+          return (
+            <div className="bg-black/80 border border-white/10 px-3 py-1.5 rounded-full text-xs backdrop-blur-md text-gray-300 font-mono tracking-tight flex items-center justify-center gap-2 shadow-lg max-w-sm whitespace-nowrap">
+              <span className="text-base">{stats.ico || IT[key]?.ico}</span>
+              <span className="font-bold text-white">{stats.n}</span>
+              <span className="opacity-40">|</span>
+              <span className="text-yellow-400 font-bold">Dmg: {stats.dmg}</span>
+              <span className="text-cyan-400 font-bold">Spd: {stats.spd}t</span>
+              {stats.vamp > 0 && (
+                <>
+                  <span className="opacity-40">|</span>
+                  <span className="text-red-400 font-bold flex items-center gap-0.5">🩸 {Math.round(stats.vamp * 100)}% Lifesteal</span>
+                </>
+              )}
+            </div>
+          );
+        })()}
+
         <div className="flex gap-1 bg-black/85 p-2 rounded-xl border border-white/10 shadow-[0_4px_24px_rgba(0,0,0,0.6)]">
           {gameState?.pl.hotbar.map((item: string, i: number) => (
             <button

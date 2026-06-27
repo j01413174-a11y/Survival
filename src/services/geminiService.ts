@@ -1,42 +1,47 @@
-import { GoogleGenAI } from "@google/genai";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
 export async function getOracleGuidance(gameState: any) {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `
-        You are the "Celestial Oracle" in a survival RPG game. 
-        The player is currently at:
-        - Level: ${gameState.lvl}
-        - Wave: ${gameState.waveNum}
-        - Day: ${gameState.day}
-        - Current Map: ${gameState.mapName}
-        - Health: ${gameState.hp}/${gameState.mhp}
-        - Inventory: ${JSON.stringify(gameState.inv)}
-
-        Provide a short, cryptic, but helpful piece of advice or a "prophecy" (max 2 sentences). 
-        Also, suggest a "World Event" that should happen (e.g., "A meteor shower of iron", "A swarm of golden rabbits", "A sudden mana storm").
-        Return the response in JSON format:
-        {
-          "message": "The message to the player",
-          "event": "A short description of the event",
-          "eventType": "one of: meteor, swarm, storm, blessing, curse"
-        }
-      `,
-      config: {
-        responseMimeType: "application/json"
-      }
+    const response = await fetch("/api/gemini/guidance", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ gameState }),
     });
 
-    const text = response.text;
-    if (text) {
-      return JSON.parse(text);
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || `HTTP error! status: ${response.status}`);
     }
-    return null;
+
+    return await response.json();
   } catch (error) {
-    console.error("Gemini Error:", error);
+    console.error("Client getOracleGuidance Error:", error);
+    return {
+      message: "An echoing cosmic wave interrupts your telepathy... Double check that your API key is correctly configured in Settings > Secrets.",
+      event: "Cosmic Whispers",
+      eventType: "error"
+    };
+  }
+}
+
+export async function generateWorldEvent(gameState: any) {
+  try {
+    const response = await fetch("/api/gemini/world-event", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ gameState }),
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Client generateWorldEvent Error:", error);
     return null;
   }
 }
