@@ -410,6 +410,8 @@ export default function SurvivalGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<any>(null);
   const [showInv, setShowInv] = useState(false);
+  const [invCategory, setInvCategory] = useState<'all' | 'weapon' | 'armor' | 'food' | 'mat'>('all');
+  const [selectedInvItem, setSelectedInvItem] = useState<string | null>(null);
   const [showCraft, setShowCraft] = useState(false);
   const [showSkills, setShowSkills] = useState(false);
   
@@ -2713,6 +2715,14 @@ export default function SurvivalGame() {
     setGameState({ ...s });
   };
 
+  const assignToHotbar = (itemKey: string, index: number) => {
+    const s = stateRef.current;
+    if (!s || !s.pl) return;
+    s.pl.hotbar[index] = itemKey;
+    setGameState({ ...s });
+    addLog(`Assigned ${IT[itemKey]?.n || itemKey} to Hotbar Slot ${index + 1}`, '#10b981');
+  };
+
   const addSkillXPDirect = (s: any, skill: string, amount: number) => {
     if (!s || !s.pl) return;
     if (!s.pl.skills) {
@@ -3594,6 +3604,32 @@ export default function SurvivalGame() {
     }, 2200);
   };
 
+  const getFilteredItems = () => {
+    if (!gameState || !gameState.pl || !gameState.pl.inv) return [];
+    const allItems = Object.entries(gameState.pl.inv).filter(([, v]) => (v as number) > 0);
+    
+    if (invCategory === 'all') return allItems;
+    
+    return allItems.filter(([k]) => {
+      const it = IT[k];
+      if (!it) return false;
+      
+      if (invCategory === 'weapon') {
+        return it.t === 'tool' || !!it.id;
+      }
+      if (invCategory === 'armor') {
+        return it.t === 'armor';
+      }
+      if (invCategory === 'food') {
+        return it.t === 'food' || it.t === 'pot' || k === 'mana_crystal';
+      }
+      if (invCategory === 'mat') {
+        return it.t === 'mat' && k !== 'mana_crystal';
+      }
+      return true;
+    });
+  };
+
   return (
     <div className="relative w-full h-screen bg-black overflow-hidden font-mono text-white select-none">
       <canvas 
@@ -4071,7 +4107,7 @@ export default function SurvivalGame() {
           {/* Master Action & Management Menu Bar */}
           <div className="mt-3 flex gap-1.5 sm:gap-2 pointer-events-auto">
             <button 
-              onClick={() => setShowInv(true)}
+              onClick={() => { setShowInv(true); setSelectedInvItem(null); setInvCategory('all'); }}
               className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-white/10 hover:border-yellow-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-yellow-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
             >
               <Backpack size={11} className="text-yellow-500" />
@@ -4421,29 +4457,399 @@ export default function SurvivalGame() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/90 flex flex-col"
+            className="fixed inset-0 z-50 bg-black/95 flex flex-col"
           >
-            <div className="p-6 flex justify-between items-center border-b border-white/10">
+            <div className="p-4 sm:p-6 flex justify-between items-center border-b border-white/10 shrink-0">
               <h2 className="text-xl font-bold tracking-widest text-green-400 flex items-center gap-2">
-                <Backpack /> INVENTORY
+                <Backpack className="text-green-400 animate-pulse" /> PLAYER INVENTORY & EQUIPMENT
               </h2>
-              <button onClick={() => setShowInv(false)} className="p-2 hover:bg-white/10 rounded-full">
+              <button onClick={() => setShowInv(false)} className="p-2 hover:bg-white/10 rounded-full cursor-pointer transition-all active:scale-95 text-zinc-400 hover:text-white">
                 <X />
               </button>
             </div>
-            <div className="flex-1 p-6 overflow-y-auto">
-              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-4">
-                {Object.entries(gameState?.pl.inv || {}).filter(([, v]) => (v as number) > 0).map(([k, v]) => (
-                  <div 
-                    key={k} 
-                    onClick={() => { handleUse(k); setShowInv(false); }}
-                    className="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col items-center gap-2 hover:border-green-500 hover:bg-white/10 transition-all cursor-pointer group"
-                  >
-                    <span className="text-3xl group-hover:scale-110 transition-transform">{IT[k]?.ico || '?'}</span>
-                    <span className="text-[10px] opacity-50 text-center">{IT[k]?.n || k}</span>
-                    <span className="text-sm font-bold text-green-400">{v as number}</span>
+            
+            <div className="flex-1 overflow-hidden flex flex-col md:flex-row p-4 sm:p-6 gap-6 font-mono">
+              {/* Column 1: Character Stats & Equipped Gear */}
+              <div className="w-full md:w-1/4 flex flex-col gap-4 overflow-y-auto bg-zinc-950/60 border border-white/10 rounded-2xl p-4 shrink-0">
+                <h3 className="text-xs font-bold tracking-widest text-cyan-400 uppercase border-b border-white/10 pb-2 flex items-center gap-1">
+                  🛡️ CHARACTER & GEAR
+                </h3>
+                
+                {/* Equipment slots */}
+                <div className="flex flex-col gap-1.5">
+                  {[
+                    { slot: 'head', n: 'Head', ico: '🪖' },
+                    { slot: 'chest', n: 'Chest', ico: '👕' },
+                    { slot: 'legs', n: 'Legs', ico: '👖' },
+                    { slot: 'feet', n: 'Feet', ico: '🥾' },
+                    { slot: 'ring', n: 'Ring', ico: '💍' },
+                  ].map(({ slot, n, ico }) => {
+                    const itemKey = gameState?.pl.equip?.[slot];
+                    const item = itemKey ? IT[itemKey] : null;
+                    return (
+                      <div 
+                        key={slot} 
+                        className={`flex items-center justify-between p-2 rounded-xl border text-xs transition-all ${
+                          item 
+                            ? 'bg-cyan-950/20 border-cyan-500/30 shadow-[0_0_8px_rgba(6,182,212,0.1)]' 
+                            : 'bg-white/[0.01] border-white/5 opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl" title={n}>{item ? item.ico : ico}</span>
+                          <div className="flex flex-col">
+                            <span className="text-[8px] opacity-40 uppercase tracking-widest leading-none">{n}</span>
+                            <span className={`text-[10px] font-bold truncate max-w-[100px] ${item ? 'text-white' : 'text-zinc-500'}`}>
+                              {item ? item.n : '[ Empty Slot ]'}
+                            </span>
+                          </div>
+                        </div>
+                        {item && (
+                          <button 
+                            onClick={() => handleUnequip(slot)}
+                            className="p-1 hover:bg-red-500/20 text-red-400 hover:text-red-300 rounded cursor-pointer transition-all active:scale-90"
+                            title="Unequip Slot"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Active Weapon Slot */}
+                  {(() => {
+                    const wKey = gameState?.pl.weapon;
+                    const wItem = wKey && wKey !== 'fists' ? IT[wKey] : null;
+                    return (
+                      <div 
+                        className={`flex items-center justify-between p-2 rounded-xl border text-xs transition-all ${
+                          wItem 
+                            ? 'bg-yellow-950/20 border-yellow-500/30 shadow-[0_0_8px_rgba(234,179,8,0.1)]' 
+                            : 'bg-white/[0.01] border-white/5 opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">⚔️</span>
+                          <div className="flex flex-col">
+                            <span className="text-[8px] opacity-40 uppercase tracking-widest leading-none">Active Weapon</span>
+                            <span className={`text-[10px] font-bold truncate max-w-[100px] ${wItem ? 'text-white' : 'text-zinc-500'}`}>
+                              {wItem ? wItem.n : 'Fists ✊'}
+                            </span>
+                          </div>
+                        </div>
+                        {wItem && (
+                          <button 
+                            onClick={() => {
+                              const s = stateRef.current;
+                              if (s && s.pl) {
+                                s.pl.weapon = 'fists';
+                                setGameState({ ...s });
+                                addLog(`Unequipped weapon`, '#94a3b8');
+                              }
+                            }}
+                            className="p-1 hover:bg-red-500/20 text-red-400 hover:text-red-300 rounded cursor-pointer transition-all active:scale-90"
+                            title="Unequip Weapon"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* RPG Attributes list */}
+                <div className="mt-2 bg-white/[0.02] border border-white/5 rounded-xl p-3 flex flex-col gap-1.5 text-[10px]">
+                  <div className="flex justify-between items-center">
+                    <span className="opacity-50">👑 Level</span>
+                    <span className="font-bold text-yellow-400">LVL {gameState?.pl.lvl || 1}</span>
                   </div>
-                ))}
+                  <div className="flex justify-between items-center">
+                    <span className="opacity-50">📈 Experience</span>
+                    <span className="font-bold text-zinc-300">{gameState?.pl.xp || 0} / {gameState?.pl.xpNext || 100}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="opacity-50">❤️ HP Status</span>
+                    <span className="font-bold text-rose-400">{Math.floor(gameState?.pl.hp || 0)} / {gameState?.pl.mhp || 100}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="opacity-50">🛡️ Defense (DEF)</span>
+                    <span className="font-bold text-cyan-400">{gameState?.pl.def || 0}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="opacity-50">🏃‍♂️ Speed Rating</span>
+                    <span className="font-bold text-green-400">{(gameState?.pl.spd || 3.0).toFixed(1)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Column 2: Backpack (Grid and Tabs) */}
+              <div className="flex-1 flex flex-col gap-4 overflow-hidden bg-zinc-950/40 border border-white/10 rounded-2xl p-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-white/10 pb-3">
+                  <h3 className="text-xs font-bold tracking-widest text-green-400 uppercase flex items-center gap-1">
+                    🎒 BACKPACK ITEMS
+                  </h3>
+                  
+                  {/* Tabs */}
+                  <div className="flex flex-wrap gap-1">
+                    {[
+                      { id: 'all', n: '🎒 All' },
+                      { id: 'weapon', n: '⚔️ Gear' },
+                      { id: 'armor', n: '🛡️ Armor' },
+                      { id: 'food', n: '🧪 Consumables' },
+                      { id: 'mat', n: '🪵 Materials' },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setInvCategory(tab.id as any)}
+                        className={`px-2 py-1 text-[9px] font-bold rounded-lg transition-all cursor-pointer ${
+                          invCategory === tab.id 
+                            ? 'bg-green-500 text-black font-black shadow-md' 
+                            : 'bg-white/5 text-zinc-400 border border-white/5 hover:bg-white/10 hover:text-white'
+                        }`}
+                      >
+                        {tab.n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Items Grid */}
+                <div className="flex-1 overflow-y-auto pr-1">
+                  {(() => {
+                    const filtered = getFilteredItems();
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="h-full flex flex-col items-center justify-center text-center p-6 text-zinc-500 text-xs">
+                          <Backpack size={32} className="opacity-20 mb-2" />
+                          <p>No items found in this category.</p>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                        {filtered.map(([k, v]) => {
+                          const isSelected = selectedInvItem === k;
+                          const eqSlot = Object.keys(gameState?.pl.equip || {}).find(slot => gameState?.pl.equip[slot] === k);
+                          const isEqWeapon = gameState?.pl.weapon === k;
+                          const isCurrentlyEquipped = eqSlot || isEqWeapon;
+                          
+                          return (
+                            <div 
+                              key={k} 
+                              onClick={() => setSelectedInvItem(k)}
+                              className={`relative bg-white/[0.02] border rounded-xl p-3 flex flex-col items-center gap-1.5 transition-all cursor-pointer group hover:bg-white/[0.05] ${
+                                isSelected 
+                                  ? 'border-green-400 bg-green-500/10 shadow-[0_0_12px_rgba(34,197,94,0.15)] scale-[1.02]' 
+                                  : 'border-white/5'
+                              }`}
+                            >
+                              <span className="text-3xl group-hover:scale-110 transition-transform">{IT[k]?.ico || '?'}</span>
+                              <span className="text-[9px] opacity-70 text-center truncate w-full">{IT[k]?.n || k}</span>
+                              
+                              <div className="flex justify-between items-center w-full px-1">
+                                <span className="text-xs font-extrabold text-green-400">x{v as number}</span>
+                                {isCurrentlyEquipped && (
+                                  <span className="text-[7px] font-extrabold bg-green-500 text-black px-1 rounded uppercase tracking-tighter leading-normal shrink-0">
+                                    EQ
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Column 3: Selected Item Details Panel */}
+              <div className="w-full md:w-1/3 xl:w-1/4 flex flex-col bg-zinc-950/60 border border-white/10 rounded-2xl p-4 overflow-y-auto shrink-0 animate-fadeIn">
+                <h3 className="text-xs font-bold tracking-widest text-yellow-500 uppercase border-b border-white/10 pb-2 flex items-center gap-1 mb-4">
+                  ✨ ITEM DETAILS
+                </h3>
+
+                {selectedInvItem && IT[selectedInvItem] ? (() => {
+                  const it = IT[selectedInvItem];
+                  const qty = gameState?.pl.inv[selectedInvItem] || 0;
+                  
+                  const eqSlot = Object.keys(gameState?.pl.equip || {}).find(slot => gameState?.pl.equip[slot] === selectedInvItem);
+                  const isEqWeapon = gameState?.pl.weapon === selectedInvItem;
+                  const isCurrentlyEquipped = eqSlot || isEqWeapon;
+
+                  return (
+                    <div className="flex flex-col gap-4 text-left">
+                      {/* Logo and Name header */}
+                      <div className="flex items-center gap-3 bg-white/[0.02] border border-white/5 p-3 rounded-xl">
+                        <span className="text-4xl bg-white/5 p-2 rounded-xl border border-white/5">{it.ico}</span>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-xs font-black text-white truncate">{it.n}</span>
+                          <span className="text-[8px] tracking-wider text-zinc-400 uppercase mt-0.5 leading-none">
+                            {it.t === 'armor' ? `🛡️ Body Armor (${it.sl})` : 
+                             it.t === 'tool' || it.id ? '⚔️ Weapon / Tool' :
+                             it.t === 'food' || it.t === 'pot' || selectedInvItem === 'mana_crystal' ? '🧪 Consumable' : '🪵 Crafting Material'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Item Stats info box */}
+                      <div className="bg-white/[0.01] border border-white/5 rounded-xl p-3 flex flex-col gap-2">
+                        <div className="flex justify-between items-center text-[10px]">
+                          <span className="opacity-50">Backpack Quantity:</span>
+                          <span className="font-bold text-green-400">{qty}</span>
+                        </div>
+
+                        {/* Weapon specific stats */}
+                        {(it.id || it.t === 'tool') && (
+                          <div className="flex flex-col gap-1 text-[10px] border-t border-white/5 pt-2 mt-1">
+                            <div className="flex justify-between">
+                              <span className="opacity-50">Base Damage:</span>
+                              <span className="font-bold text-yellow-400">{it.dmg || 0} DMG</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="opacity-50">Base Attack Speed:</span>
+                              <span className="font-bold text-cyan-400">{it.spd || 0} ticks</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="opacity-50">Range:</span>
+                              <span className="font-bold text-zinc-300">{it.rng || 0}px</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="opacity-50">Attack Type:</span>
+                              <span className="font-bold uppercase text-purple-400">{it.type || 'melee'}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Armor specific stats */}
+                        {it.t === 'armor' && (
+                          <div className="flex flex-col gap-1 text-[10px] border-t border-white/5 pt-2 mt-1">
+                            <div className="flex justify-between">
+                              <span className="opacity-50">Defense Rating:</span>
+                              <span className="font-bold text-cyan-400">+{it.def || 0} DEF</span>
+                            </div>
+                            {it.hpBonus && (
+                              <div className="flex justify-between">
+                                <span className="opacity-50">Max HP Bonus:</span>
+                                <span className="font-bold text-rose-400">+{it.hpBonus} HP</span>
+                              </div>
+                            )}
+                            {it.mpBonus && (
+                              <div className="flex justify-between">
+                                <span className="opacity-50">Max MP Bonus:</span>
+                                <span className="font-bold text-purple-400">+{it.mpBonus} MP</span>
+                              </div>
+                            )}
+                            {it.spdBonus && (
+                              <div className="flex justify-between">
+                                <span className="opacity-50">Speed Bonus:</span>
+                                <span className="font-bold text-green-400">+{Math.round(it.spdBonus * 100)}% SPD</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Consumable specific stats */}
+                        {(it.t === 'food' || it.t === 'pot' || selectedInvItem === 'mana_crystal') && (
+                          <div className="flex flex-col gap-1 text-[10px] border-t border-white/5 pt-2 mt-1">
+                            {it.hu && (
+                              <div className="flex justify-between">
+                                <span className="opacity-50">Hunger Recovered:</span>
+                                <span className="font-bold text-amber-400">+{it.hu}%</span>
+                              </div>
+                            )}
+                            {it.hp && (
+                              <div className="flex justify-between">
+                                <span className="opacity-50">HP Restored:</span>
+                                <span className="font-bold text-rose-400">+{it.hp} HP</span>
+                              </div>
+                            )}
+                            {it.mp && (
+                              <div className="flex justify-between">
+                                <span className="opacity-50">Mana Restored:</span>
+                                <span className="font-bold text-purple-400">+{it.mp} MP</span>
+                              </div>
+                            )}
+                            {selectedInvItem === 'mana_crystal' && (
+                              <div className="flex justify-between">
+                                <span className="opacity-50">Mana Restored:</span>
+                                <span className="font-bold text-purple-400">+40 MP</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Equip/Use/Unequip Primary Actions CTA */}
+                      <div className="flex flex-col gap-2 mt-2">
+                        {isCurrentlyEquipped ? (
+                          <button
+                            onClick={() => {
+                              if (eqSlot) {
+                                handleUnequip(eqSlot);
+                              } else {
+                                // Unequip weapon
+                                const s = stateRef.current;
+                                if (s && s.pl) {
+                                  s.pl.weapon = 'fists';
+                                  setGameState({ ...s });
+                                  addLog(`Unequipped weapon`, '#94a3b8');
+                                }
+                              }
+                            }}
+                            className="w-full py-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-xl text-xs font-bold uppercase transition-all active:scale-[0.98] cursor-pointer text-center"
+                          >
+                            ❌ Unequip Item
+                          </button>
+                        ) : (
+                          (it.t === 'armor' || it.id || it.t === 'tool' || it.t === 'food' || it.t === 'pot' || selectedInvItem === 'mana_crystal') && (
+                            <button
+                              onClick={() => {
+                                handleUse(selectedInvItem);
+                              }}
+                              className="w-full py-2.5 bg-green-500 hover:bg-green-400 text-black rounded-xl text-xs font-black uppercase transition-all active:scale-[0.98] cursor-pointer text-center shadow-lg shadow-green-500/10"
+                            >
+                              {it.t === 'armor' ? '🛡️ Equip Armor' : 
+                               it.id || it.t === 'tool' ? '⚔️ Equip Weapon' : '🧪 Consume / Use'}
+                            </button>
+                          )
+                        )}
+                      </div>
+
+                      {/* Hotbar assign submenu (for anything except material) */}
+                      {selectedInvItem && selectedInvItem !== 'fists' && (
+                        <div className="flex flex-col gap-2 border-t border-white/5 pt-4 mt-2">
+                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                            Assign to Hotbar Slot:
+                          </span>
+                          <div className="grid grid-cols-4 gap-1">
+                            {gameState?.pl.hotbar.map((slotItem: string, idx: number) => (
+                              <button
+                                key={idx}
+                                onClick={() => assignToHotbar(selectedInvItem, idx)}
+                                className={`h-8 rounded-lg flex flex-col items-center justify-center text-[9px] font-mono border transition-all active:scale-95 cursor-pointer ${
+                                  slotItem === selectedInvItem 
+                                    ? 'bg-green-500/20 border-green-500 text-green-300 font-bold' 
+                                    : 'bg-white/5 border-white/5 text-zinc-400 hover:border-white/10 hover:text-white'
+                                }`}
+                              >
+                                <span className="text-xs leading-none">{IT[slotItem]?.ico || '❌'}</span>
+                                <span className="text-[7px] opacity-40 leading-none">{idx + 1}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })() : (
+                  <div className="flex-1 flex flex-col items-center justify-center text-center p-4 text-zinc-500 text-[10px] leading-relaxed">
+                    <Sparkles size={24} className="opacity-20 mb-2 animate-pulse" />
+                    <p>Select any weapon, shield, magic ring, potion, or item inside your backpack grid to equip, use, or hotkey it!</p>
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>
