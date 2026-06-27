@@ -45,3 +45,28 @@ export async function generateWorldEvent(gameState: any) {
     return null;
   }
 }
+
+export async function castSpell(spellName: string, gameState: any) {
+  try {
+    const response = await fetch("/api/gemini/cast-spell", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ spellName, gameState }),
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Client castSpell Error:", error);
+    return {
+      success: false,
+      message: "The local atmospheric mana currents disrupted the magical sequence... Try again."
+    };
+  }
+}

@@ -194,6 +194,142 @@ app.post("/api/gemini/world-event", async (req, res) => {
   }
 });
 
+// API endpoint for Spellcasting
+app.post("/api/gemini/cast-spell", async (req, res) => {
+  try {
+    if (!apiKey) {
+      return res.status(500).json({
+        error: "GEMINI_API_KEY is not set on the server.",
+        message: "Your magic fizzles out... Stellar energies are blocked.",
+        success: false
+      });
+    }
+
+    const { spellName, gameState } = req.body;
+    if (!spellName || !gameState) {
+      return res.status(400).json({ error: "Missing spellName or gameState" });
+    }
+
+    const currentBiomeName = gameState.currentBiome?.n || "Unknown Biome";
+    const plLvl = gameState.pl?.lvl || 1;
+    const plX = gameState.pl?.x ? Math.floor(gameState.pl.x / 32) : 40;
+    const plY = gameState.pl?.y ? Math.floor(gameState.pl.y / 32) : 40;
+
+    const prompt = `
+      You are the "Weaver of Magic" in a cosmic fantasy survival RPG.
+      The player has just cast the magic spell: "${spellName}".
+      
+      Here is the current situation of the player:
+      - Current Biome: ${currentBiomeName}
+      - Coordinate Tile: (${plX}, ${plY})
+      - Player Level: ${plLvl}
+      - Inventory: ${JSON.stringify(gameState.pl?.inv || {})}
+      
+      Interpret the spell's effect and return a JSON response with high-value mechanical actions and immersive lore.
+      
+      Depending on the spell name, craft specific rewards:
+      
+      1. For "Reveal Map":
+         The spell acts as a scrying oracle. Highlight 4 to 6 locations of extremely rare ore nodes or plants in the player's vicinity (e.g. within 15 tiles of X:${plX}, Y:${plY}).
+         Return an array of "scoutedNodes" with item type, coordinates (randomized but realistic tile offsets, e.g. within -15 to +15 of the player's current tile), and brief reason.
+         Provide a beautiful astral revelation message describing how the universe reveals its secrets to the player.
+         
+      2. For "Resource Bounty":
+         The spell pulls raw resources out of the astral clouds, condensation of the current biome.
+         Create an array of "spawnDrops" specifying items to drop on the ground near the player (e.g. within 3-6 tiles of (${plX}, ${plY})).
+         - If in a Desert biome: spawn cactus_fruit, copper_ore, gold_ore, sulfur.
+         - If in a Frozen/Tundra biome: spawn snowberry, iron_ore, crystal.
+         - If in a Celestial biome: spawn magic_essence, void_crystal, celestial_shard, crystal.
+         - If in a Volcanic/Scorched biome: spawn sulfur, coal, iron_ore, obsidian.
+         - Else (Forest/Plains): spawn wood, stick, herb, berry, copper_ore.
+         Provide a narrative "revelation" of how these resources materialized (e.g., "A glittering meteor of pure cosmic crystal vaporizes and showers the earth with glowing shards").
+         
+      3. For "Healing Sanctuary":
+         Casts a restorative circle of rejuvenation.
+         Return the restoration values: healHP (integer 40 to 60), foodBonus (integer 15 to 30), and stats buff details (e.g., speedMultiplier: 1.25, defenseBonus: 5, durationSeconds: 45).
+         Provide a soothing, comforting message of divine wellness.
+         
+      Return the response in JSON format.
+    `;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            success: { type: Type.BOOLEAN, description: "True if spell succeeded" },
+            message: { type: Type.STRING, description: "Narrative lore/description of the magical phenomenon." },
+            scoutedNodes: {
+              type: Type.ARRAY,
+              description: "List of rare resource nodes discovered near the player (only for Reveal Map).",
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  type: { type: Type.STRING, description: "e.g., void_crystal, celestial, gold, mithril, crystal, gem" },
+                  tx: { type: Type.INTEGER, description: "X tile coordinate" },
+                  ty: { type: Type.INTEGER, description: "Y tile coordinate" },
+                  description: { type: Type.STRING, description: "e.g., 'A pulsing purple void crystal deep in the dirt.'" }
+                },
+                required: ["type", "tx", "ty", "description"]
+              }
+            },
+            spawnDrops: {
+              type: Type.ARRAY,
+              description: "Items spawned on the ground around the player (only for Resource Bounty).",
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  item: { type: Type.STRING, description: "Item key, e.g. 'magic_essence', 'gold_ore', 'crystal', 'wood', 'gem'" },
+                  qty: { type: Type.INTEGER, description: "Quantity of item" },
+                  dx: { type: Type.INTEGER, description: "Tile delta X relative to player (e.g. -4 to 4)" },
+                  dy: { type: Type.INTEGER, description: "Tile delta Y relative to player (e.g. -4 to 4)" }
+                },
+                required: ["item", "qty", "dx", "dy"]
+              }
+            },
+            restoration: {
+              type: Type.OBJECT,
+              description: "Healing and Rejuvenation stats (only for Healing Sanctuary).",
+              properties: {
+                healHP: { type: Type.INTEGER },
+                foodBonus: { type: Type.INTEGER },
+                buff: {
+                  type: Type.OBJECT,
+                  properties: {
+                    name: { type: Type.STRING },
+                    speedMultiplier: { type: Type.NUMBER },
+                    defenseBonus: { type: Type.INTEGER },
+                    durationSeconds: { type: Type.INTEGER }
+                  },
+                  required: ["name", "speedMultiplier", "defenseBonus", "durationSeconds"]
+                }
+              },
+              required: ["healHP", "foodBonus"]
+            }
+          },
+          required: ["success", "message"]
+        }
+      }
+    });
+
+    const text = response.text;
+    if (text) {
+      return res.json(JSON.parse(text));
+    }
+    throw new Error("No text returned from Gemini");
+  } catch (error: any) {
+    console.error("Cast Spell API Error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to cast spell",
+      message: "The cosmic leylines fractured during casting... Mana was refunded.",
+      success: false
+    });
+  }
+});
+
 // Serve Vite-managed app
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

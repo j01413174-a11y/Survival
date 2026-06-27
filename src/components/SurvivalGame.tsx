@@ -23,10 +23,12 @@ import {
   AlertCircle,
   Download,
   Upload,
-  Cpu
+  Cpu,
+  Globe,
+  Shuffle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { getOracleGuidance, generateWorldEvent } from '../services/geminiService';
+import { getOracleGuidance, generateWorldEvent, castSpell } from '../services/geminiService';
 
 // --- Constants & Types ---
 const TZ = 32;
@@ -129,18 +131,39 @@ const IT: Record<string, any> = {
   heal_potion: { ico: '🧪', n: 'Heal Potion', t: 'pot', hp: 58 },
   mana_potion: { ico: '💙', n: 'Mana Potion', t: 'pot', mp: 58 },
   
+  copper_ore: { ico: '🪙', n: 'Copper Ore', t: 'mat' },
+  gold_ore: { ico: '💛', n: 'Gold Ore', t: 'mat' },
+  mithril_ore: { ico: '🪐', n: 'Mithril Ore', t: 'mat' },
+  clay: { ico: '🧱', n: 'Clay', t: 'mat' },
+  cactus_fruit: { ico: '🌵', n: 'Cactus Fruit', t: 'food', hu: 20, hp: 8 },
+  snowberry: { ico: '❄️', n: 'Snowberry', t: 'food', hu: 15, hp: 12 },
+  astral_flower: { ico: '🌸', n: 'Astral Flower', t: 'mat' },
+  copper_bar: { ico: '🟫', n: 'Copper Bar', t: 'mat' },
+  gold_bar: { ico: '⭐', n: 'Gold Bar', t: 'mat' },
+  mithril_bar: { ico: '💠', n: 'Mithril Bar', t: 'mat' },
+
   leather_vest: { ico: '🧥', n: 'Leather Vest', t: 'armor', sl: 'chest', def: 5 },
   iron_chest: { ico: '🛡️', n: 'Iron Chest', t: 'armor', sl: 'chest', def: 14 },
+  copper_chest: { ico: '🧥', n: 'Copper Plate', t: 'armor', sl: 'chest', def: 8 },
+  gold_chest: { ico: '👑', n: 'Gold Plate', t: 'armor', sl: 'chest', def: 11 },
+  mithril_chest: { ico: '🛡️', n: 'Mithril Plate', t: 'armor', sl: 'chest', def: 24 },
   
   fists: { id: 'fists', n: 'Fists', ico: '✊', dmg: 5, spd: 20, rng: 44, type: 'melee', mp: 0 },
   fishing_rod: { id: 'fishing_rod', n: 'Fishing Rod', ico: '🎣', dmg: 2, spd: 40, rng: 30, type: 'melee', mp: 0 },
   stone_axe: { id: 'stone_axe', n: 'Stone Axe', ico: '🪓', dmg: 15, spd: 28, rng: 44, type: 'melee', mp: 0 },
   iron_sword: { id: 'iron_sword', n: 'Iron Sword', ico: '⚔️', dmg: 28, spd: 24, rng: 50, type: 'melee', mp: 0 },
+  copper_sword: { id: 'copper_sword', n: 'Copper Sword', ico: '🗡️', dmg: 16, spd: 26, rng: 46, type: 'melee', mp: 0 },
+  gold_sword: { id: 'gold_sword', n: 'Gold Sword', ico: '⚔️', dmg: 22, spd: 22, rng: 48, type: 'melee', mp: 0 },
+  mithril_sword: { id: 'mithril_sword', n: 'Mithril Sword', ico: '⚔️', dmg: 48, spd: 18, rng: 54, type: 'melee', mp: 0 },
   shortbow: { id: 'shortbow', n: 'Shortbow', ico: '🏹', dmg: 20, spd: 30, rng: 200, type: 'ranged', mp: 0 },
   fire_staff: { id: 'fire_staff', n: 'Fire Staff', ico: '🪄', dmg: 38, spd: 36, rng: 240, type: 'magic', mp: 15, fx: 'burn', col: '#ff5500' },
   ice_staff: { id: 'ice_staff', n: 'Ice Staff', ico: '❄️', dmg: 25, spd: 40, rng: 220, type: 'magic', mp: 12, fx: 'slow', col: '#00ccff' },
   void_staff: { id: 'void_staff', n: 'Void Staff', ico: '🔮', dmg: 60, spd: 50, rng: 300, type: 'magic', mp: 30, fx: 'void', col: '#9900ff' },
   heal_staff: { id: 'heal_staff', n: 'Heal Staff', ico: '🩹', dmg: 0, spd: 60, rng: 0, type: 'magic_heal', mp: 25, fx: 'heal', col: '#00ffaa' },
+  storm_staff: { id: 'storm_staff', n: 'Storm Staff', ico: '⚡', dmg: 45, spd: 32, rng: 280, type: 'magic', mp: 20, fx: 'lightning', col: '#00ffff' },
+  earth_staff: { id: 'earth_staff', n: 'Earth Staff', ico: '⛰️', dmg: 55, spd: 45, rng: 200, type: 'magic', mp: 25, fx: 'earthquake', col: '#e28743' },
+  cosmic_staff: { id: 'cosmic_staff', n: 'Cosmic Staff', ico: '🌠', dmg: 75, spd: 50, rng: 350, type: 'magic', mp: 40, fx: 'starfall', col: '#ff33ff' },
+  mithril_staff: { id: 'mithril_staff', n: 'Mithril Staff', ico: '🪄', dmg: 75, spd: 40, rng: 310, type: 'magic', mp: 22, fx: 'starfall', col: '#00ffff' },
   
   campfire: { ico: '🔥', n: 'Campfire', t: 'struct' },
   workbench: { ico: '🪚', n: 'Workbench', t: 'struct' },
@@ -152,10 +175,19 @@ const RC = [
   { n: 'Stick x2', out: 'stick', cnt: 2, cat: 'Materials', c: { wood: 1 } },
   { n: 'Iron Bar', out: 'iron_bar', cnt: 1, cat: 'Materials', c: { iron_ore: 2, coal: 1 }, req: 'forge' },
   { n: 'Steel Bar', out: 'steel_bar', cnt: 1, cat: 'Materials', c: { iron_bar: 2, coal: 2 }, req: 'forge' },
+  { n: 'Copper Bar', out: 'copper_bar', cnt: 1, cat: 'Materials', c: { copper_ore: 2, coal: 1 }, req: 'forge' },
+  { n: 'Gold Bar', out: 'gold_bar', cnt: 1, cat: 'Materials', c: { gold_ore: 2, coal: 1 }, req: 'forge' },
+  { n: 'Mithril Bar', out: 'mithril_bar', cnt: 1, cat: 'Materials', c: { mithril_ore: 3, coal: 2 }, req: 'forge' },
   { n: 'Stone Axe', out: 'stone_axe', cnt: 1, cat: 'Weapons', c: { stone: 2, stick: 1 } },
   { n: 'Iron Sword', out: 'iron_sword', cnt: 1, cat: 'Weapons', c: { iron_bar: 3, stick: 1 }, req: 'workbench' },
+  { n: 'Copper Sword', out: 'copper_sword', cnt: 1, cat: 'Weapons', c: { copper_bar: 3, stick: 1 }, req: 'workbench' },
+  { n: 'Gold Sword', out: 'gold_sword', cnt: 1, cat: 'Weapons', c: { gold_bar: 3, stick: 1 }, req: 'workbench' },
+  { n: 'Mithril Sword', out: 'mithril_sword', cnt: 1, cat: 'Weapons', c: { mithril_bar: 4, stick: 1 }, req: 'workbench' },
   { n: 'Shortbow', out: 'shortbow', cnt: 1, cat: 'Weapons', c: { wood: 3, fiber: 2 } },
   { n: 'Iron Chest', out: 'iron_chest', cnt: 1, cat: 'Armor', c: { iron_bar: 5 }, req: 'workbench' },
+  { n: 'Copper Chestplate', out: 'copper_chest', cnt: 1, cat: 'Armor', c: { copper_bar: 5 }, req: 'workbench' },
+  { n: 'Gold Chestplate', out: 'gold_chest', cnt: 1, cat: 'Armor', c: { gold_bar: 5 }, req: 'workbench' },
+  { n: 'Mithril Chestplate', out: 'mithril_chest', cnt: 1, cat: 'Armor', c: { mithril_bar: 6 }, req: 'workbench' },
   { n: 'Leather Vest', out: 'leather_vest', cnt: 1, cat: 'Armor', c: { leather: 3, fiber: 2 } },
   { n: 'Magic Altar', out: 'magic_altar', cnt: 1, cat: 'Structures', c: { stone: 10, magic_essence: 5 } },
   { n: 'Mana Crystal', out: 'mana_crystal', cnt: 1, cat: 'Materials', c: { magic_essence: 3, crystal: 1 }, req: 'magic_altar' },
@@ -163,6 +195,10 @@ const RC = [
   { n: 'Ice Staff', out: 'ice_staff', cnt: 1, cat: 'Weapons', c: { stick: 2, crystal: 1, ice_crystal: 2 }, req: 'magic_altar' },
   { n: 'Heal Staff', out: 'heal_staff', cnt: 1, cat: 'Weapons', c: { stick: 2, magic_essence: 5, herb: 5 }, req: 'magic_altar' },
   { n: 'Void Staff', out: 'void_staff', cnt: 1, cat: 'Weapons', c: { stick: 2, void_crystal: 2, magic_essence: 10 }, req: 'magic_altar' },
+  { n: 'Storm Staff', out: 'storm_staff', cnt: 1, cat: 'Weapons', c: { stick: 2, crystal: 3, magic_essence: 8 }, req: 'magic_altar' },
+  { n: 'Earth Staff', out: 'earth_staff', cnt: 1, cat: 'Weapons', c: { stick: 2, stone: 10, magic_essence: 8 }, req: 'magic_altar' },
+  { n: 'Cosmic Staff', out: 'cosmic_staff', cnt: 1, cat: 'Weapons', c: { stick: 2, void_crystal: 3, magic_essence: 15 }, req: 'magic_altar' },
+  { n: 'Mithril Staff', out: 'mithril_staff', cnt: 1, cat: 'Weapons', c: { stick: 2, mithril_bar: 3, magic_essence: 12 }, req: 'magic_altar' },
   { n: 'Cooked Meat', out: 'cooked_meat', cnt: 1, cat: 'Food', c: { meat: 1 }, req: 'campfire' },
   { n: 'Cooked Fish', out: 'cooked_fish', cnt: 1, cat: 'Food', c: { raw_fish: 1 }, req: 'campfire' },
   { n: 'Fishing Rod', out: 'fishing_rod', cnt: 1, cat: 'Weapons', c: { wood: 4, fiber: 3 } },
@@ -179,6 +215,39 @@ const mkRng = (s: number) => {
     n = (n ^ (n << 13)) ^ (n >> 7) ^ (n << 17);
     return (n >>> 0) / 4294967296;
   };
+};
+
+const getProceduralBiomeForZone = (zc: number, zr: number, seed: number) => {
+  if (zc === 0 && zr === 0) {
+    return MAPS[0]; // Starting zone (0, 0): Verdant Forest (always safe)
+  }
+  // Simple robust seed-based hash function
+  const h = Math.sin(zc * 17.13 + zr * 53.97 + seed * 0.19) * 43758.5453;
+  const rand = h - Math.floor(h);
+  
+  // Choose index from 0 to MAPS.length - 1
+  const idx = Math.floor(rand * MAPS.length);
+  return MAPS[idx];
+};
+
+const getProceduralNoise = (x: number, y: number, seed: number) => {
+  // Octave 1: Low frequency, high amplitude (main continent shape)
+  const n1 = Math.sin(x * 0.02 + y * 0.015 + seed * 0.005) * 0.5 + 0.5;
+  // Octave 2: Medium frequency (local hills and valleys)
+  const n2 = Math.sin(x * 0.08 - y * 0.06 + seed * 0.013) * 0.25 + 0.25;
+  // Octave 3: High frequency (detail texture)
+  const n3 = Math.sin(x * 0.25 + y * 0.22 - seed * 0.021) * 0.12 + 0.12;
+  
+  return (n1 * 0.5 + n2 * 0.3 + n3 * 0.2);
+};
+
+const getProceduralTile = (wx: number, wy: number, M: any, seed: number) => {
+  const n = getProceduralNoise(wx, wy, seed + M.s);
+  
+  if (n < 0.18) return M.w; // Water or Lava
+  if (n < 0.25) return M.f; // Flat sand/dirt/coast
+  if (n > 0.78) return M.r; // High rocky ridges
+  return M.m; // Main biome ground
 };
 
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -208,6 +277,25 @@ const getWeaponStats = (s: any, weaponKey: string) => {
   base.vamp = vamp;
   
   return base;
+};
+
+const spawnExplosion = (s: any, x: number, y: number, col: string, count: number = 10, type: string = 'pixel') => {
+  if (!s || !s.parts) return;
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const spd = 1 + Math.random() * 4;
+    s.parts.push({
+      x,
+      y,
+      vx: Math.cos(ang) * spd,
+      vy: Math.sin(ang) * spd,
+      life: 15 + Math.floor(Math.random() * 15),
+      maxLife: 30,
+      col,
+      sz: 1.5 + Math.random() * 3,
+      type
+    });
+  }
 };
 
 const rollProceduralMod = (itemKey: string) => {
@@ -303,20 +391,43 @@ export default function SurvivalGame() {
   const [autoAttack, setAutoAttack] = useState(false);
   const [autoCollect, setAutoCollect] = useState(false);
   const [autoHarvest, setAutoHarvest] = useState(false);
+  const [autoPlay, setAutoPlay] = useState(false);
 
   const autoAttackRef = useRef(false);
   const autoCollectRef = useRef(false);
   const autoHarvestRef = useRef(false);
+  const autoPlayRef = useRef(false);
   const pausedRef = useRef(false);
 
   useEffect(() => { autoAttackRef.current = autoAttack; }, [autoAttack]);
   useEffect(() => { autoCollectRef.current = autoCollect; }, [autoCollect]);
   useEffect(() => { autoHarvestRef.current = autoHarvest; }, [autoHarvest]);
+  useEffect(() => { autoPlayRef.current = autoPlay; }, [autoPlay]);
+
+  // --- World Seed & Menu States ---
+  const [showWorldMenu, setShowWorldMenu] = useState(false);
+  const [worldSeed, setWorldSeed] = useState<number>(1337);
+  const worldSeedRef = useRef(1337);
+  useEffect(() => { worldSeedRef.current = worldSeed; }, [worldSeed]);
+
+  // --- Auto-Craft Core States ---
+  const [autoCraftState, setAutoCraftState] = useState(false);
+  const autoCraftStateRef = useRef(false);
+  useEffect(() => { autoCraftStateRef.current = autoCraftState; }, [autoCraftState]);
+
+  const [autoCraftList, setAutoCraftList] = useState<Record<string, boolean>>({});
+  const autoCraftListRef = useRef<Record<string, boolean>>({});
+  useEffect(() => { autoCraftListRef.current = autoCraftList; }, [autoCraftList]);
 
   // --- World Event states ---
   const [showEventModal, setShowEventModal] = useState(false);
   const [narrativeEvent, setNarrativeEvent] = useState<any | null>(null);
   const [eventChoiceOutcome, setEventChoiceOutcome] = useState<string | null>(null);
+
+  // --- Magic Spellbook States ---
+  const [showSpellbook, setShowSpellbook] = useState(false);
+  const [isCasting, setIsCasting] = useState(false);
+  const [spellResult, setSpellResult] = useState<any>(null);
 
   // Load slot metadata upon opening
   const loadSlotMetadata = useCallback(() => {
@@ -600,58 +711,190 @@ export default function SurvivalGame() {
   const keysRef = useRef<Record<string, boolean>>({});
   const joyRef = useRef({ x: 0, y: 0, active: false });
 
-  // Initialize Game
-  useEffect(() => {
-    const initGame = () => {
-      const initialPl = {
-        x: Math.floor(ZW / 2) * TZ + TZ / 2,
-        y: Math.floor(ZH / 2) * TZ + TZ / 2,
-        targetX: Math.floor(ZW / 2) * TZ + TZ / 2,
-        targetY: Math.floor(ZH / 2) * TZ + TZ / 2,
-        isGridMoving: false,
-        hp: 100, mhp: 100, hu: 100, sta: 100, mp: 100, mmp: 100,
-        inv: { wood: 10, stone: 5, fiber: 5, herb: 3, berry: 5, torch: 1 },
-        equip: { head: null, chest: null, legs: null, feet: null },
-        weapon: 'fists',
-        hotbar: ['torch', 'campfire', 'workbench', 'forge', 'stone_axe', 'iron_sword', 'shortbow', 'fishing_rod'],
-        spd: 3.0, sprint: false, atkcd: 0, gcd: 0, ifr: 0, xp: 0, lvl: 1, xpNext: 100, def: 0,
-        skills: {
-          fishing: { lvl: 1, xp: 0, xpNext: 100 },
-          cooking: { lvl: 1, xp: 0, xpNext: 100 },
-          mining: { lvl: 1, xp: 0, xpNext: 100 },
-          woodcutting: { lvl: 1, xp: 0, xpNext: 100 },
-          combat: { lvl: 1, xp: 0, xpNext: 100 },
-          alchemy: { lvl: 1, xp: 0, xpNext: 100 }
-        }
-      };
+  // Initialize Game Function
+  const initGame = useCallback(() => {
+    const initialPl = {
+      x: Math.floor(ZW / 2) * TZ + TZ / 2,
+      y: Math.floor(ZH / 2) * TZ + TZ / 2,
+      targetX: Math.floor(ZW / 2) * TZ + TZ / 2,
+      targetY: Math.floor(ZH / 2) * TZ + TZ / 2,
+      isGridMoving: false,
+      hp: 100, mhp: 100, hu: 100, sta: 100, mp: 100, mmp: 100,
+      inv: { wood: 10, stone: 5, fiber: 5, herb: 3, berry: 5, torch: 1 },
+      equip: { head: null, chest: null, legs: null, feet: null },
+      weapon: 'fists',
+      hotbar: ['torch', 'campfire', 'workbench', 'forge', 'stone_axe', 'iron_sword', 'shortbow', 'fishing_rod'],
+      spd: 3.0, sprint: false, atkcd: 0, gcd: 0, ifr: 0, xp: 0, lvl: 1, xpNext: 100, def: 0,
+      skills: {
+        fishing: { lvl: 1, xp: 0, xpNext: 100 },
+        cooking: { lvl: 1, xp: 0, xpNext: 100 },
+        mining: { lvl: 1, xp: 0, xpNext: 100 },
+        woodcutting: { lvl: 1, xp: 0, xpNext: 100 },
+        combat: { lvl: 1, xp: 0, xpNext: 100 },
+        alchemy: { lvl: 1, xp: 0, xpNext: 100 }
+      }
+    };
 
-      const world: number[][] = [];
-      const objs: any[] = [];
-      
-      // Generate World
-      for (let zr = 0; zr < ZROWS; zr++) {
-        for (let zc = 0; zc < ZCOLS; zc++) {
-          const mi = zr * ZCOLS + zc;
-          const M = MAPS[mi] || MAPS[0];
-          const rng = mkRng(M.s + mi * 7919);
-          const ox = zc * ZW, oy = zr * ZH;
+    const world: number[][] = [];
+    const objs: any[] = [];
+    
+    const currentSeed = worldSeedRef.current;
+    const zoneMaps: any[] = [];
+    for (let zr = 0; zr < ZROWS; zr++) {
+      for (let zc = 0; zc < ZCOLS; zc++) {
+        zoneMaps.push(getProceduralBiomeForZone(zc, zr, currentSeed));
+      }
+    }
 
-          for (let ly = 0; ly < ZH; ly++) {
-            if (!world[oy + ly]) world[oy + ly] = [];
-            for (let lx = 0; lx < ZW; lx++) {
-              const wx = ox + lx, wy = oy + ly;
-              const n = (Math.sin(wx * .37 + wy * .19 + M.s * .001) * .5 + .5) + (Math.sin(wx * .11 - wy * .29 + M.s * .001) * .35);
-              world[wy][wx] = n < .18 ? M.w : n < .24 ? M.f : n > .82 ? M.r : M.m;
+    // Generate World
+    for (let zr = 0; zr < ZROWS; zr++) {
+      for (let zc = 0; zc < ZCOLS; zc++) {
+        const mi = zr * ZCOLS + zc;
+        const M = zoneMaps[mi];
+        const rng = mkRng(M.s + mi * 7919 + currentSeed);
+        const ox = zc * ZW, oy = zr * ZH;
+
+        for (let ly = 0; ly < ZH; ly++) {
+          if (!world[oy + ly]) world[oy + ly] = [];
+          for (let lx = 0; lx < ZW; lx++) {
+            const wx = ox + lx, wy = oy + ly;
+            world[wy][wx] = getProceduralTile(wx, wy, M, currentSeed);
+            
+            // Objects Placement
+            if (lx > 2 && lx < ZW - 2 && ly > 2 && ly < ZH - 2) {
+              const randVal = rng();
+              const tileType = world[wy][wx];
               
-              // Objects
-              if (lx > 2 && lx < ZW - 2 && ly > 2 && ly < ZH - 2) {
-                if ((world[wy][wx] === M.m || world[wy][wx] === M.f) && rng() < M.wf) {
-                  objs.push({ type: 'tree', tx: wx, ty: wy, hp: 3, mhp: 3 });
-                } else if ((world[wy][wx] === M.m || world[wy][wx] === M.r) && rng() < M.rf) {
-                  objs.push({ type: 'rock', tx: wx, ty: wy, hp: 4, mhp: 4 });
-                } else {
-                  for (const [k, v] of Object.entries(M.dr)) {
-                    if (rng() < (v as number)) objs.push({ type: 'drop', tx: wx, ty: wy, item: k, qty: 1 + Math.floor(rng() * 2) });
+              if (tileType === M.m || tileType === M.f) {
+                // Spawn Trees based on Biome
+                if (randVal < M.wf) {
+                  let treeIco = '🌲';
+                  let treeHp = 3;
+                  let treeSubtype = 'oak';
+                  
+                  if (M.n.includes('Desert')) {
+                    treeIco = '🌵';
+                    treeSubtype = 'cactus';
+                    treeHp = 2;
+                  } else if (M.n.includes('Frozen') || M.n.includes('Tundra')) {
+                    treeIco = '❄️';
+                    treeSubtype = 'snowpine';
+                    treeHp = 4;
+                  } else if (M.n.includes('Swamp')) {
+                    treeIco = '🌴';
+                    treeSubtype = 'willow';
+                    treeHp = 3;
+                  } else if (M.n.includes('Scorched') || M.n.includes('Volcanic')) {
+                    treeIco = '🪵';
+                    treeSubtype = 'dead';
+                    treeHp = 2;
+                  } else if (M.n.includes('Enchanted')) {
+                    treeIco = '🌸';
+                    treeSubtype = 'blossom';
+                    treeHp = 4;
+                  } else if (M.n.includes('Celestial')) {
+                    treeIco = '🌌';
+                    treeSubtype = 'cosmic';
+                    treeHp = 5;
+                  } else {
+                    treeIco = '🌳';
+                    treeSubtype = 'birch';
+                  }
+                  
+                  objs.push({ type: 'tree', tx: wx, ty: wy, hp: treeHp, mhp: treeHp, ico: treeIco, subtype: treeSubtype });
+                }
+              } else if (tileType === M.r) {
+                // Spawn Rocks/Ores based on Biome and Elevation
+                if (randVal < M.rf) {
+                  let rockIco = '🪨';
+                  let rockHp = 4;
+                  let rockSubtype = 'stone';
+                  const oreRand = rng();
+                  
+                  if (M.n.includes('Celestial')) {
+                    if (oreRand < 0.4) {
+                      rockIco = '🔮';
+                      rockSubtype = 'void_crystal';
+                      rockHp = 6;
+                    } else if (oreRand < 0.8) {
+                      rockIco = '💎';
+                      rockSubtype = 'crystal';
+                      rockHp = 5;
+                    } else {
+                      rockIco = '✨';
+                      rockSubtype = 'celestial';
+                      rockHp = 8;
+                    }
+                  } else if (M.n.includes('Mountain') || M.n.includes('Ruins')) {
+                    if (oreRand < 0.2) {
+                      rockIco = '🪐';
+                      rockSubtype = 'mithril';
+                      rockHp = 8;
+                    } else if (oreRand < 0.5) {
+                      rockIco = '⚙️';
+                      rockSubtype = 'iron';
+                      rockHp = 5;
+                    } else if (oreRand < 0.7) {
+                      rockIco = '🪙';
+                      rockSubtype = 'copper';
+                      rockHp = 4;
+                    } else if (oreRand < 0.9) {
+                      rockIco = '🖤';
+                      rockSubtype = 'coal';
+                      rockHp = 4;
+                    }
+                  } else if (M.n.includes('Desert') || M.n.includes('Coastal')) {
+                    if (oreRand < 0.3) {
+                      rockIco = '💛';
+                      rockSubtype = 'gold';
+                      rockHp = 6;
+                    } else if (oreRand < 0.6) {
+                      rockIco = '🪙';
+                      rockSubtype = 'copper';
+                      rockHp = 4;
+                    } else if (oreRand < 0.8) {
+                      rockIco = '🟡';
+                      rockSubtype = 'sulfur';
+                      rockHp = 3;
+                    }
+                  } else if (M.n.includes('Volcanic') || M.n.includes('Scorched')) {
+                    if (oreRand < 0.4) {
+                      rockIco = '🟡';
+                      rockSubtype = 'sulfur';
+                      rockHp = 3;
+                    } else if (oreRand < 0.8) {
+                      rockIco = '🖤';
+                      rockSubtype = 'coal';
+                      rockHp = 4;
+                    } else {
+                      rockIco = '⚙️';
+                      rockSubtype = 'iron';
+                      rockHp = 5;
+                    }
+                  } else {
+                    // Forest/Plains standard rock
+                    if (oreRand < 0.2) {
+                      rockIco = '🪙';
+                      rockSubtype = 'copper';
+                      rockHp = 4;
+                    } else if (oreRand < 0.4) {
+                      rockIco = '⚙️';
+                      rockSubtype = 'iron';
+                      rockHp = 5;
+                    } else if (oreRand < 0.5) {
+                      rockIco = '🖤';
+                      rockSubtype = 'coal';
+                      rockHp = 4;
+                    }
+                  }
+                  
+                  objs.push({ type: 'rock', tx: wx, ty: wy, hp: rockHp, mhp: rockHp, ico: rockIco, subtype: rockSubtype });
+                }
+              } else {
+                // Ground drops
+                for (const [k, v] of Object.entries(M.dr)) {
+                  if (rng() < (v as number) * 0.8) {
+                    objs.push({ type: 'drop', tx: wx, ty: wy, item: k, qty: 1 + Math.floor(rng() * 2) });
                   }
                 }
               }
@@ -659,28 +902,33 @@ export default function SurvivalGame() {
           }
         }
       }
+    }
 
-      const newState = {
-        pl: initialPl,
-        world,
-        objs,
-        enemies: [],
-        companions: [],
-        projs: [],
-        parts: [],
-        ticks: 0,
-        day: 1,
-        dayTime: 0.4,
-        waveNum: 0,
-        waveTimer: 300,
-        waveActive: false,
-        cam: { x: initialPl.x - window.innerWidth / 2, y: initialPl.y - window.innerHeight / 2 }
-      };
-
-      stateRef.current = newState;
-      setGameState(newState);
+    const newState = {
+      pl: initialPl,
+      world,
+      objs,
+      enemies: [],
+      companions: [],
+      projs: [],
+      parts: [],
+      ticks: 0,
+      day: 1,
+      dayTime: 0.4,
+      waveNum: 0,
+      waveTimer: 300,
+      waveActive: false,
+      cam: { x: initialPl.x - window.innerWidth / 2, y: initialPl.y - window.innerHeight / 2 },
+      zoneMaps,
+      worldSeed: currentSeed
     };
 
+    stateRef.current = newState;
+    setGameState(newState);
+  }, []);
+
+  // Initialize Game on Mount
+  useEffect(() => {
     initGame();
 
     const handleKeyDown = (e: KeyboardEvent) => keysRef.current[e.key] = true;
@@ -692,7 +940,7 @@ export default function SurvivalGame() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []);
+  }, [initGame]);
 
   // Handle Resize
   useEffect(() => {
@@ -724,6 +972,28 @@ export default function SurvivalGame() {
         s.dayTime = (s.ticks % 18000) / 18000;
         if (s.ticks % 18000 === 0) s.day++;
 
+        // Tick active magic spell durations
+        if (s.activeSpells) {
+          if (s.activeSpells.revealMapTimer > 0) {
+            s.activeSpells.revealMapTimer--;
+            if (s.activeSpells.revealMapTimer === 0) {
+              s.activeScoutedNodes = [];
+              addLog("🔮 The scrying ward fades... Scouted nodes have disappeared from your radar.", "#f472b6");
+            }
+          }
+          if (s.activeSpells.healingSanctuaryTimer > 0) {
+            s.activeSpells.healingSanctuaryTimer--;
+            // Rejuvenate HP every second (60 ticks)
+            if (s.activeSpells.healingSanctuaryTimer % 60 === 0 && s.pl.hp < s.pl.mhp) {
+              s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + 2);
+              spawnExplosion(s, s.pl.x, s.pl.y, '#ec4899', 3, 'spark');
+            }
+            if (s.activeSpells.healingSanctuaryTimer === 0) {
+              addLog("💖 The Healing Sanctuary aura fades.", "#f472b6");
+            }
+          }
+        }
+
       // Periodic HUD state sync to React to render player bar modifications
       if (s.ticks % 15 === 0) {
         setGameState({ ...s });
@@ -747,6 +1017,124 @@ export default function SurvivalGame() {
           dx = joyRef.current.x > 0 ? 1 : -1;
         } else {
           dy = joyRef.current.y > 0 ? 1 : -1;
+        }
+      }
+
+      // Neural Autoplay Intelligence Core
+      if (autoPlayRef.current && dx === 0 && dy === 0 && !joyRef.current.active) {
+        // Auto-healing if health is critical
+        if (s.pl.hp < s.pl.mhp * 0.45) {
+          const healItems = ['heal_potion', 'cooked_fish', 'celestial_fish', 'cooked_meat', 'berry', 'mushroom'];
+          const availableHeal = healItems.find(item => s.pl.inv[item] > 0);
+          if (availableHeal) {
+            const itDef = IT[availableHeal];
+            if (itDef.t === 'pot' || itDef.t === 'food') {
+              if (itDef.hp) {
+                s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + itDef.hp);
+                s.pl.inv[availableHeal]--;
+                addLog(`🤖 Autoplay used ${itDef.n} (+${itDef.hp} HP)`, '#10b981');
+                spawnExplosion(s, s.pl.x, s.pl.y, '#10b981', 15, 'spark');
+              }
+            }
+          }
+        }
+
+        // Auto mana restore
+        if (s.pl.mp < 20 && s.pl.inv['mana_potion'] > 0) {
+          s.pl.mp = Math.min(s.pl.mmp, s.pl.mp + 50);
+          s.pl.inv['mana_potion']--;
+          addLog(`🤖 Autoplay used Mana Potion!`, '#06b6d4');
+          spawnExplosion(s, s.pl.x, s.pl.y, '#06b6d4', 15, 'spark');
+        }
+
+        const px = Math.floor(s.pl.x / TZ);
+        const py = Math.floor(s.pl.y / TZ);
+
+        // Scan for nearest hostile targets
+        let nearestEnemy: any = null;
+        let minEnemyDist = Infinity;
+        for (const e of s.enemies) {
+          const d = dist(s.pl, e);
+          if (d < minEnemyDist) {
+            minEnemyDist = d;
+            nearestEnemy = e;
+          }
+        }
+
+        // Scan for nearest drops, resources
+        let nearestNode: any = null;
+        let minNodeDist = Infinity;
+        for (const o of s.objs) {
+          if (o.type === 'drop' || o.type === 'tree' || o.type === 'rock') {
+            const d = Math.abs(o.tx - px) + Math.abs(o.ty - py);
+            if (d < minNodeDist) {
+              minNodeDist = d;
+              nearestNode = o;
+            }
+          }
+        }
+
+        if (nearestEnemy && minEnemyDist < 350) {
+          // Switch to best weapon in hotbar
+          const weaponTier = ['void_staff', 'cosmic_staff', 'storm_staff', 'fire_staff', 'ice_staff', 'iron_sword', 'shortbow'];
+          const bestWeapons = weaponTier.filter(w => s.pl.inv[w] > 0 || s.pl.hotbar.includes(w));
+          if (bestWeapons.length > 0) {
+            const bestW = bestWeapons[0];
+            if (s.pl.weapon !== bestW) {
+              s.pl.weapon = bestW;
+            }
+          }
+
+          const wp = getWeaponStats(s, s.pl.weapon);
+          const enemyTx = Math.floor(nearestEnemy.x / TZ);
+          const enemyTy = Math.floor(nearestEnemy.y / TZ);
+
+          if ((wp.type === 'magic' || wp.type === 'ranged') && minEnemyDist < wp.rng) {
+            if (minEnemyDist < 80) {
+              // Too close, kite backwards!
+              if (px < enemyTx) dx = -1;
+              else if (px > enemyTx) dx = 1;
+              if (py < enemyTy) dy = -1;
+              else if (py > enemyTy) dy = 1;
+            } else {
+              // Keep shooting/casting!
+            }
+          } else {
+            // Chase down target
+            if (px < enemyTx) dx = 1;
+            else if (px > enemyTx) dx = -1;
+            if (py < enemyTy) dy = 1;
+            else if (py > enemyTy) dy = -1;
+          }
+        } else if (nearestNode) {
+          const ntx = nearestNode.tx;
+          const nty = nearestNode.ty;
+
+          if (px < ntx) dx = 1;
+          else if (px > ntx) dx = -1;
+          if (py < nty) dy = 1;
+          else if (py > nty) dy = -1;
+
+          // If adjacent, handle auto chop/mine
+          if (Math.abs(ntx - px) + Math.abs(nty - py) <= 2) {
+            if (nearestNode.type === 'tree' || nearestNode.type === 'rock') {
+              // Ensure we use axe if chopping
+              if (nearestNode.type === 'tree' && s.pl.inv['stone_axe'] && s.pl.weapon !== 'stone_axe') {
+                s.pl.weapon = 'stone_axe';
+              }
+              if (s.ticks % 25 === 0) {
+                handleGather();
+              }
+            }
+          }
+        } else {
+          // Passive wandering
+          if (s.ticks % 100 === 0) {
+            const dirs = [{x: 1, y: 0}, {x: -1, y: 0}, {x: 0, y: 1}, {x: 0, y: -1}];
+            const rDir = dirs[Math.floor(Math.random() * dirs.length)];
+            dx = rDir.x;
+            dy = rDir.y;
+          }
         }
       }
 
@@ -792,6 +1180,9 @@ export default function SurvivalGame() {
         let eventSpeedMult = 1.0;
         if (s.activeEvent?.effect?.statModifiers?.speedBoost) {
           eventSpeedMult = s.activeEvent.effect.statModifiers.speedBoost;
+        }
+        if (s.activeSpells?.healingSanctuaryTimer > 0) {
+          eventSpeedMult *= 1.25;
         }
         const speed = s.pl.spd * (isSprinting ? 1.7 : 1) * eventSpeedMult;
         const diffX = s.pl.targetX - s.pl.x;
@@ -865,6 +1256,9 @@ export default function SurvivalGame() {
           e.burnTicks--;
           if (s.ticks % 30 === 0) e.hp -= 2;
         }
+        if (e.flashTicks && e.flashTicks > 0) {
+          e.flashTicks--;
+        }
 
         const d = dist(e, s.pl);
         if (d < 400) {
@@ -879,10 +1273,28 @@ export default function SurvivalGame() {
               e.x = nx;
               e.y = ny;
             }
+
+            // Spawn gentle walk puff trails
+            if (s.ticks % 20 === 0) {
+              s.parts.push({
+                x: e.x + (Math.random() - 0.5) * 8,
+                y: e.y + 4,
+                vx: -Math.cos(ang) * 0.3 + (Math.random() - 0.5) * 0.2,
+                vy: -Math.sin(ang) * 0.3 + (Math.random() - 0.5) * 0.2,
+                life: 8 + Math.floor(Math.random() * 8),
+                maxLife: 16,
+                col: s.world[ety]?.[etx] === TLV ? '#ff5500' : 'rgba(255, 255, 255, 0.2)',
+                sz: 1 + Math.random() * 2
+              });
+            }
           }
           // Attack player
           if (d < 40 && e.cd <= 0 && s.pl.ifr <= 0) {
-            const dmg = Math.max(1, e.dmg - s.pl.def);
+            let finalDef = s.pl.def;
+            if (s.activeSpells?.healingSanctuaryTimer > 0) {
+              finalDef += 5;
+            }
+            const dmg = Math.max(1, e.dmg - finalDef);
             s.pl.hp -= dmg;
             s.pl.ifr = 40;
             e.cd = e.acd;
@@ -985,6 +1397,21 @@ export default function SurvivalGame() {
         p.x += p.vx;
         p.y += p.vy;
         p.dist += Math.hypot(p.vx, p.vy);
+
+        // Spawn beautiful trailing particles
+        if (s.ticks % 2 === 0) {
+          s.parts.push({
+            x: p.x + (Math.random() - 0.5) * 6,
+            y: p.y + (Math.random() - 0.5) * 6,
+            vx: -p.vx * 0.15 + (Math.random() - 0.5) * 0.8,
+            vy: -p.vy * 0.15 + (Math.random() - 0.5) * 0.8,
+            life: 8 + Math.floor(Math.random() * 8),
+            maxLife: 16,
+            col: p.col || '#ffaa44',
+            sz: p.sz ? p.sz * 0.4 : 1.8
+          });
+        }
+
         if (p.dist > p.rng) {
           s.projs.splice(i, 1);
           continue;
@@ -992,8 +1419,10 @@ export default function SurvivalGame() {
         // Hit enemies
         for (let j = s.enemies.length - 1; j >= 0; j--) {
           const e = s.enemies[j];
-          if (dist(p, e) < 20) {
+          if (dist(p, e) < 22) {
             e.hp -= p.dmg;
+            e.flashTicks = 12; // Trigger red damage glow!
+
             if (p.vamp && p.vamp > 0) {
               const heal = Math.round(p.dmg * p.vamp);
               if (heal > 0) {
@@ -1001,14 +1430,84 @@ export default function SurvivalGame() {
                 addLog(`🩸 Vampirism: +${heal} HP!`, '#ff3366');
               }
             }
-            if (p.fx === 'slow') e.slowTicks = 180;
-            if (p.fx === 'burn') e.burnTicks = 300;
-            if (p.fx === 'void') {
-              // AOE damage
+
+            // Elemental Hit Reactions & Custom Magic
+            if (p.fx === 'slow') {
+              e.slowTicks = 180;
+              spawnExplosion(s, p.x, p.y, '#00e5ff', 12, 'spark');
+              spawnExplosion(s, p.x, p.y, '#ffffff', 6, 'pixel');
+            } else if (p.fx === 'burn') {
+              e.burnTicks = 300;
+              spawnExplosion(s, p.x, p.y, '#ff4500', 14, 'pixel');
+              spawnExplosion(s, p.x, p.y, '#ffea00', 8, 'spark');
+            } else if (p.fx === 'void') {
+              // Gravitational purple explosion
+              spawnExplosion(s, p.x, p.y, '#7f00ff', 18, 'ring');
+              spawnExplosion(s, p.x, p.y, '#d500f9', 10, 'spark');
               for (const other of s.enemies) {
-                if (dist(e, other) < 100) other.hp -= p.dmg * 0.5;
+                if (dist(e, other) < 100) {
+                  other.hp -= p.dmg * 0.5;
+                  other.flashTicks = 10;
+                  spawnExplosion(s, other.x, other.y, '#7f00ff', 4, 'pixel');
+                }
               }
+            } else if (p.fx === 'lightning') {
+              // Electric Sparks
+              spawnExplosion(s, p.x, p.y, '#00ffff', 15, 'spark');
+              // Chain to an adjacent enemy
+              const chainTargets = s.enemies.filter((other: any) => other !== e && dist(e, other) < 130);
+              if (chainTargets.length > 0) {
+                const targetEnemy = chainTargets[Math.floor(Math.random() * chainTargets.length)];
+                targetEnemy.hp -= Math.round(p.dmg * 0.7);
+                targetEnemy.flashTicks = 12;
+                spawnExplosion(s, targetEnemy.x, targetEnemy.y, '#00ffff', 8, 'spark');
+                // Create spectacular lightning bolt bridge particles
+                for (let k = 0; k <= 12; k++) {
+                  const t = k / 12;
+                  const lx = e.x + (targetEnemy.x - e.x) * t + (Math.random() - 0.5) * 8;
+                  const ly = e.y + (targetEnemy.y - e.y) * t + (Math.random() - 0.5) * 8;
+                  s.parts.push({ x: lx, y: ly, vx: 0, vy: 0, life: 12, maxLife: 12, col: '#00ffff', sz: 2 });
+                }
+                addLog("⚡ Chain Lightning: Cascaded to secondary target!", '#00ffff');
+              }
+            } else if (p.fx === 'earthquake') {
+              // Shockwave ring and screen shake vibe
+              spawnExplosion(s, p.x, p.y, '#e28743', 14, 'pixel');
+              s.parts.push({
+                x: p.x, y: p.y, vx: 0, vy: 0,
+                life: 18, maxLife: 18,
+                col: 'rgba(226, 135, 67, 0.4)',
+                sz: 1.5, type: 'ring'
+              });
+              // Stun and damage surrounding enemies
+              for (const other of s.enemies) {
+                if (dist(e, other) < 90) {
+                  other.hp -= Math.round(p.dmg * 0.4);
+                  other.slowTicks = 140; // Heavy slowness / stun
+                  other.flashTicks = 8;
+                }
+              }
+            } else if (p.fx === 'starfall') {
+              // Cosmic purple/pink shower
+              spawnExplosion(s, p.x, p.y, '#ff00ff', 22, 'spark');
+              spawnExplosion(s, p.x, p.y, '#00ffff', 12, 'pixel');
+              // Stars shower from heaven
+              for (let k = 0; k < 3; k++) {
+                const rx = p.x + (Math.random() - 0.5) * 80;
+                const ry = p.y - 120 - Math.random() * 40;
+                s.projs.push({
+                  x: rx, y: ry,
+                  vx: (p.x - rx) / 18 + (Math.random() - 0.5) * 1.5,
+                  vy: (p.y - ry) / 18,
+                  dmg: Math.round(p.dmg * 0.45), rng: 160, dist: 0,
+                  col: '#ff00ff', fx: 'none', vamp: 0, sz: 3
+                });
+              }
+            } else {
+              // Default impact particles
+              spawnExplosion(s, p.x, p.y, p.col || '#ffd700', 8, 'pixel');
             }
+
             s.projs.splice(i, 1);
             if (e.hp <= 0) {
               const et = ET[e.eid];
@@ -1086,6 +1585,37 @@ export default function SurvivalGame() {
         handleGather();
       }
 
+      if (autoCraftStateRef.current && s.ticks % 45 === 0) {
+        const pTileX = Math.floor(s.pl.x / TZ);
+        const pTileY = Math.floor(s.pl.y / TZ);
+        
+        for (let i = 0; i < recipes.length; i++) {
+          const r = recipes[i];
+          if (!autoCraftListRef.current[r.out]) continue;
+          
+          // Check structure requirement
+          let isNear = true;
+          if (r.req) {
+            isNear = s.objs.some((o: any) => o.type === r.req && Math.abs(o.tx - pTileX) <= 3 && Math.abs(o.ty - pTileY) <= 3);
+          }
+          if (!isNear) continue;
+          
+          // Check costs
+          let hasResources = true;
+          for (const [k, v] of Object.entries(r.c)) {
+            if ((s.pl.inv[k] || 0) < (v as number)) {
+              hasResources = false;
+              break;
+            }
+          }
+          if (!hasResources) continue;
+          
+          // Craft!
+          craft(i, 1);
+          break; // Process one craft per tick check to keep performance lean
+        }
+      }
+
       if (autoCollectRef.current && s.ticks % 10 === 0) {
         const px = Math.floor(s.pl.x / TZ);
         const py = Math.floor(s.pl.y / TZ);
@@ -1098,6 +1628,17 @@ export default function SurvivalGame() {
               s.objs.splice(i, 1);
             }
           }
+        }
+      }
+
+      // Update Particles
+      for (let i = s.parts.length - 1; i >= 0; i--) {
+        const pt = s.parts[i];
+        pt.x += pt.vx || 0;
+        pt.y += pt.vy || 0;
+        pt.life--;
+        if (pt.life <= 0) {
+          s.parts.splice(i, 1);
         }
       }
       } // End of if (!pausedRef.current)
@@ -1156,6 +1697,46 @@ export default function SurvivalGame() {
         ctx.fillText(ico, ox, oy);
       }
 
+      // Draw Scouted Nodes on Radar (Reveal Map active)
+      if (s.activeScoutedNodes && s.activeScoutedNodes.length > 0) {
+        for (const sn of s.activeScoutedNodes) {
+          const sx = sn.tx * TZ + TZ / 2 - s.cam.x;
+          const sy = sn.ty * TZ + TZ / 2 - s.cam.y;
+          
+          if (sx < -TZ || sx > ctx.canvas.width + TZ || sy < -TZ || sy > ctx.canvas.height + TZ) continue;
+
+          // Drawing pulse wave
+          const size = TZ * 0.75 + Math.sin(s.ticks * 0.12) * 6;
+          ctx.save();
+          ctx.strokeStyle = '#d946ef';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(sx, sy, size, 0, Math.PI * 2);
+          ctx.stroke();
+
+          // Draw neon scrying circle
+          ctx.strokeStyle = 'rgba(217, 70, 239, 0.4)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(sx, sy, TZ * 1.5, 0, Math.PI * 2);
+          ctx.stroke();
+
+          // Inner pin-point
+          ctx.fillStyle = '#f43f5e';
+          ctx.beginPath();
+          ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Label
+          ctx.font = 'bold 9px monospace';
+          ctx.fillStyle = '#fdf2f8';
+          ctx.textAlign = 'center';
+          ctx.fillText(IT[sn.type]?.ico || '📍', sx, sy - 14);
+          ctx.fillText(IT[sn.type]?.n || sn.type, sx, sy + 18);
+          ctx.restore();
+        }
+      }
+
       // Player
       ctx.font = `${TZ + 4}px serif`;
       if (s.pl.ifr > 0 && s.ticks % 10 < 5) ctx.globalAlpha = 0.5;
@@ -1167,13 +1748,46 @@ export default function SurvivalGame() {
         const ex = e.x - s.cam.x;
         const ey = e.y - s.cam.y;
         if (ex < -TZ || ex > ctx.canvas.width + TZ || ey < -TZ || ey > ctx.canvas.height + TZ) continue;
+
+        // Beautiful Bobbing and Squish-Stretch Animations
+        const bob = Math.sin(s.ticks * 0.12 + e.id * 1.5) * 4;
+        const squishX = 1 + Math.sin(s.ticks * 0.16 + e.id) * 0.06;
+        const squishY = 1 - Math.sin(s.ticks * 0.16 + e.id) * 0.06;
+
+        ctx.save();
+        ctx.translate(ex, ey + bob);
+        ctx.scale(squishX, squishY);
+
+        // Flash red glow when hit!
+        if (e.flashTicks && e.flashTicks > 0) {
+          ctx.shadowColor = '#ff3333';
+          ctx.shadowBlur = 18;
+          ctx.fillStyle = 'rgba(255, 51, 51, 0.4)';
+          ctx.beginPath();
+          ctx.arc(0, -TZ/3, TZ/2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
         ctx.font = `${TZ}px serif`;
-        ctx.fillText(ET[e.eid].ico, ex, ey);
+        ctx.textAlign = 'center';
+        ctx.fillText(ET[e.eid].ico, 0, 0);
+        ctx.restore();
+
         // Health bar
-        ctx.fillStyle = '#300';
-        ctx.fillRect(ex - 15, ey - 25, 30, 4);
-        ctx.fillStyle = '#f00';
-        ctx.fillRect(ex - 15, ey - 25, 30 * (e.hp / e.mhp), 4);
+        ctx.fillStyle = '#1e1e24';
+        ctx.fillRect(ex - 15, ey - 25 + bob, 30, 4);
+        ctx.fillStyle = '#ff4757';
+        ctx.fillRect(ex - 15, ey - 25 + bob, 30 * (e.hp / e.mhp), 4);
+
+        // Render Active Status Effects above head
+        let statusStr = '';
+        if (e.slowTicks > 0) statusStr += '🧊';
+        if (e.burnTicks > 0) statusStr += '🔥';
+        if (statusStr) {
+          ctx.font = '11px serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(statusStr, ex, ey - 32 + bob);
+        }
       }
 
       // Companions
@@ -1224,10 +1838,47 @@ export default function SurvivalGame() {
 
       // Projectiles
       for (const p of s.projs) {
-        ctx.fillStyle = p.col;
+        ctx.fillStyle = p.col || '#ffaa44';
+        ctx.shadowColor = p.col || '#ffaa44';
+        ctx.shadowBlur = 10;
         ctx.beginPath();
-        ctx.arc(p.x - s.cam.x, p.y - s.cam.y, 4, 0, Math.PI * 2);
+        ctx.arc(p.x - s.cam.x, p.y - s.cam.y, p.sz || 4, 0, Math.PI * 2);
         ctx.fill();
+        ctx.shadowBlur = 0; // Reset
+      }
+
+      // Draw Beautiful Visual Particles
+      for (const pt of s.parts) {
+        const px = pt.x - s.cam.x;
+        const py = pt.y - s.cam.y;
+        if (px < -40 || px > ctx.canvas.width + 40 || py < -40 || py > ctx.canvas.height + 40) continue;
+        
+        ctx.save();
+        ctx.fillStyle = pt.col || '#fff';
+        ctx.globalAlpha = Math.max(0, Math.min(1, pt.life / (pt.maxLife || 30)));
+        
+        ctx.beginPath();
+        if (pt.type === 'ring') {
+          ctx.strokeStyle = pt.col || '#fff';
+          ctx.lineWidth = pt.sz || 2;
+          ctx.arc(px, py, (pt.maxLife - pt.life) * 2.2, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (pt.type === 'spark') {
+          // Cross-shaped magic stars
+          const r = pt.sz || 3;
+          ctx.moveTo(px - r * 1.5, py);
+          ctx.lineTo(px + r * 1.5, py);
+          ctx.moveTo(px, py - r * 1.5);
+          ctx.lineTo(px, py + r * 1.5);
+          ctx.strokeStyle = pt.col || '#fff';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        } else {
+          // Standard pixel/circle debris
+          ctx.arc(px, py, pt.sz || 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
       }
 
       // Night Overlay
@@ -1432,6 +2083,8 @@ export default function SurvivalGame() {
         const e = s.enemies[i];
         if (dist(s.pl, e) < wp.rng) {
           e.hp -= finalDmg;
+          e.flashTicks = 10;
+          spawnExplosion(s, e.x, e.y, '#f53b57', 12, 'pixel'); // Spectacular hit blood splash!
           if (wp.vamp && wp.vamp > 0) {
             const heal = Math.round(finalDmg * wp.vamp);
             if (heal > 0) {
@@ -1694,6 +2347,36 @@ export default function SurvivalGame() {
             s.pl.inv.wood = (s.pl.inv.wood || 0) + q;
             addLog(`+Wood x${q} ${bonusLogs > 0 ? `(Skill Bonus +${bonusLogs})` : ''}`, '#22c55e');
 
+            // Biome-specific custom tree drops
+            if (o.subtype === 'cactus') {
+              if (Math.random() < 0.6) {
+                const qty = 1 + Math.floor(Math.random() * 2);
+                s.pl.inv.cactus_fruit = (s.pl.inv.cactus_fruit || 0) + qty;
+                addLog(`+Cactus Fruit x${qty}! 🌵`, '#eab308');
+              }
+            } else if (o.subtype === 'snowpine') {
+              if (Math.random() < 0.6) {
+                const qty = 1 + Math.floor(Math.random() * 2);
+                s.pl.inv.snowberry = (s.pl.inv.snowberry || 0) + qty;
+                addLog(`+Snowberry x${qty}! ❄️`, '#38bdf8');
+              }
+            } else if (o.subtype === 'blossom') {
+              if (Math.random() < 0.6) {
+                s.pl.inv.astral_flower = (s.pl.inv.astral_flower || 0) + 1;
+                addLog(`+Astral Flower x1! 🌸`, '#f472b6');
+              }
+            } else if (o.subtype === 'cosmic') {
+              if (Math.random() < 0.4) {
+                s.pl.inv.void_crystal = (s.pl.inv.void_crystal || 0) + 1;
+                addLog(`+Void Crystal x1! 🔮`, '#a855f7');
+              }
+              if (Math.random() < 0.5) {
+                const qty = 1 + Math.floor(Math.random() * 2);
+                s.pl.inv.magic_essence = (s.pl.inv.magic_essence || 0) + qty;
+                addLog(`+Magic Essence x${qty}! ✨`, '#22d3ee');
+              }
+            }
+
             if (Math.random() < 0.2 + (wcLvl * 0.05)) {
               const stickQty = 1 + Math.floor(Math.random() * wcLvl);
               s.pl.inv.stick = (s.pl.inv.stick || 0) + stickQty;
@@ -1704,7 +2387,7 @@ export default function SurvivalGame() {
               addLog(`+Herb x1 (Hidden in branches!)`, '#4ade80');
             }
             gainSkillXP('woodcutting', 15);
-          } else addLog(`Chopping... ${o.hp} left`, '#ffe88a');
+          } else addLog(`Chopping ${o.subtype || 'tree'}... ${o.hp} left`, '#ffe88a');
           return;
         }
         if (o.type === 'rock') {
@@ -1723,21 +2406,65 @@ export default function SurvivalGame() {
             s.pl.inv.stone = (s.pl.inv.stone || 0) + baseStones + bonusStones;
             addLog(`+Stone x${baseStones + bonusStones} ${bonusStones > 0 ? `(Skill Bonus +${bonusStones})` : ''}`, '#22c55e');
 
-            if (Math.random() < 0.15 + (mineLvl * 0.05)) {
-              const ironQty = 1 + Math.floor(Math.random() * (mineLvl / 2));
-              s.pl.inv.iron_ore = (s.pl.inv.iron_ore || 0) + ironQty;
-              addLog(`+Iron Ore x${ironQty}!`, '#818cf8');
+            // Biome-specific custom rock drops
+            if (o.subtype === 'copper') {
+              const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.3);
+              s.pl.inv.copper_ore = (s.pl.inv.copper_ore || 0) + qty;
+              addLog(`+Copper Ore x${qty}! 🪙`, '#fb923c');
+            } else if (o.subtype === 'iron') {
+              const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.3);
+              s.pl.inv.iron_ore = (s.pl.inv.iron_ore || 0) + qty;
+              addLog(`+Iron Ore x${qty}! ⚙️`, '#818cf8');
+            } else if (o.subtype === 'coal') {
+              const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.3);
+              s.pl.inv.coal = (s.pl.inv.coal || 0) + qty;
+              addLog(`+Coal x${qty}! 🖤`, '#4b5563');
+            } else if (o.subtype === 'gold') {
+              const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.2);
+              s.pl.inv.gold_ore = (s.pl.inv.gold_ore || 0) + qty;
+              addLog(`+Gold Ore x${qty}! ⭐`, '#facc15');
+            } else if (o.subtype === 'mithril') {
+              const qty = 1 + Math.floor(Math.random() * 1) + Math.floor(mineLvl * 0.15);
+              s.pl.inv.mithril_ore = (s.pl.inv.mithril_ore || 0) + qty;
+              addLog(`+Mithril Ore x${qty}! 🪐`, '#22d3ee');
+            } else if (o.subtype === 'sulfur') {
+              const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.2);
+              s.pl.inv.sulfur = (s.pl.inv.sulfur || 0) + qty;
+              addLog(`+Sulfur x${qty}! 🟡`, '#facc15');
+            } else if (o.subtype === 'crystal') {
+              const qty = 1 + Math.floor(Math.random() * 2);
+              s.pl.inv.crystal = (s.pl.inv.crystal || 0) + qty;
+              addLog(`+Crystal x${qty}! 💎`, '#38bdf8');
+            } else if (o.subtype === 'void_crystal') {
+              const qty = 1 + Math.floor(Math.random() * 1);
+              s.pl.inv.void_crystal = (s.pl.inv.void_crystal || 0) + qty;
+              addLog(`+Void Crystal x${qty}! 🔮`, '#c084fc');
+            } else if (o.subtype === 'celestial') {
+              s.pl.inv.celestial_shard = (s.pl.inv.celestial_shard || 0) + 1;
+              addLog(`+Celestial Shard x1! ✨`, '#67e8f9');
+              if (Math.random() < 0.3) {
+                s.pl.inv.gem = (s.pl.inv.gem || 0) + 1;
+                addLog(`💎 Stellar Gem discovered!`, '#ec4899');
+              }
+            } else {
+              // Standard Rock drops
+              if (Math.random() < 0.15 + (mineLvl * 0.05)) {
+                const ironQty = 1 + Math.floor(Math.random() * (mineLvl / 2));
+                s.pl.inv.iron_ore = (s.pl.inv.iron_ore || 0) + ironQty;
+                addLog(`+Iron Ore x${ironQty}!`, '#818cf8');
+              }
+              if (Math.random() < 0.1 + (mineLvl * 0.04)) {
+                s.pl.inv.coal = (s.pl.inv.coal || 0) + 1;
+                addLog(`+Coal x1!`, '#4b5563');
+              }
+              if (Math.random() < 0.02 + (mineLvl * 0.01)) {
+                s.pl.inv.gem = (s.pl.inv.gem || 0) + 1;
+                addLog(`💎 Found a rare Gem!`, '#ec4899');
+              }
             }
-            if (Math.random() < 0.1 + (mineLvl * 0.04)) {
-              s.pl.inv.coal = (s.pl.inv.coal || 0) + 1;
-              addLog(`+Coal x1!`, '#4b5563');
-            }
-            if (Math.random() < 0.02 + (mineLvl * 0.01)) {
-              s.pl.inv.gem = (s.pl.inv.gem || 0) + 1;
-              addLog(`💎 Found a rare Gem!`, '#ec4899');
-            }
+
             gainSkillXP('mining', 15);
-          } else addLog(`Mining... ${o.hp} left`, '#ffe88a');
+          } else addLog(`Mining ${o.subtype || 'rock'}... ${o.hp} left`, '#ffe88a');
           return;
         }
         if (o.type === 'drop') {
@@ -1786,6 +2513,110 @@ export default function SurvivalGame() {
       }
     }
     setIsOracleLoading(false);
+  };
+
+  const handleCastSpell = async (spellName: string, manaCost: number) => {
+    const s = stateRef.current;
+    if (!s) return;
+
+    if (s.pl.mp < manaCost) {
+      addLog("❌ You do not have enough Mana to cast this spell!", "#ef4444");
+      return;
+    }
+
+    // Spend Mana immediately
+    s.pl.mp -= manaCost;
+    setGameState({ ...s });
+    addLog(`✨ Channelling spell: "${spellName}" (${manaCost} MP spent)...`, "#c084fc");
+
+    setIsCasting(true);
+    setSpellResult(null);
+
+    // Get current biome name
+    const zc = Math.floor((s.pl.x / TZ) / ZW);
+    const zr = Math.floor((s.pl.y / TZ) / ZH);
+    const currentBiome = getProceduralBiomeForZone(zc, zr, s.worldSeed);
+    const mapName = currentBiome?.n || "Unknown Region";
+
+    // Call Gemini API to cast the spell
+    const result = await castSpell(spellName, {
+      pl: {
+        lvl: s.pl.lvl,
+        x: s.pl.x,
+        y: s.pl.y,
+        inv: s.pl.inv
+      },
+      currentBiome: currentBiome,
+      mapName
+    });
+
+    setIsCasting(false);
+
+    if (result && result.success !== false) {
+      setSpellResult(result);
+      addLog(`✨ Spell Success: ${spellName}!`, "#c084fc");
+
+      // Initialize active spells object if not present
+      s.activeSpells = s.activeSpells || { revealMapTimer: 0, healingSanctuaryTimer: 0 };
+
+      // Apply mechanical effects
+      if (spellName === "Reveal Map") {
+        // Unlocks active sensory scrying
+        s.activeSpells.revealMapTimer = 7200; // 2 minutes @ 60fps
+        s.activeScoutedNodes = result.scoutedNodes || [];
+
+        // Log the coordinates of scouted nodes
+        if (result.scoutedNodes && result.scoutedNodes.length > 0) {
+          result.scoutedNodes.forEach((node: any) => {
+            const itemDef = IT[node.type];
+            addLog(`📍 Radar detected: ${itemDef?.n || node.type} at Tile (${node.tx}, ${node.ty})`, "#38bdf8");
+          });
+        }
+      } else if (spellName === "Resource Bounty") {
+        // Spawn drops around the player
+        if (result.spawnDrops && result.spawnDrops.length > 0) {
+          result.spawnDrops.forEach((drop: any) => {
+            const px = Math.floor(s.pl.x / TZ);
+            const py = Math.floor(s.pl.y / TZ);
+            const tx = px + drop.dx;
+            const ty = py + drop.dy;
+            if (tx >= 0 && tx < WW && ty >= 0 && ty < WH) {
+              if (s.world[ty][tx] !== TW) {
+                s.objs.push({
+                  type: 'drop',
+                  tx: tx,
+                  ty: ty,
+                  item: drop.item,
+                  qty: drop.qty
+                });
+                // Spawn small particle explosion
+                spawnExplosion(s, tx * TZ + TZ/2, ty * TZ + TZ/2, "#38bdf8", 5, "spark");
+              }
+            }
+          });
+          addLog("✨ Ground is showered with cosmic resource drops!", "#ccffaa");
+        }
+      } else if (spellName === "Healing Sanctuary") {
+        // Restore health and hunger
+        const heal = result.restoration?.healHP || 50;
+        const food = result.restoration?.foodBonus || 20;
+        s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + heal);
+        s.pl.hu = Math.min(100, s.pl.hu + food);
+
+        // Apply active stat buff
+        s.activeSpells.healingSanctuaryTimer = 2700; // 45 seconds @ 60fps
+
+        spawnExplosion(s, s.pl.x, s.pl.y, "#ec4899", 25, "spark");
+        addLog(`💖 Rejuvenated (+${heal} HP, +${food}% Satiety)`, "#f43f5e");
+      }
+
+      setGameState({ ...s });
+    } else {
+      // Refund Mana if spell failed completely
+      s.pl.mp = Math.min(s.pl.mmp, s.pl.mp + manaCost);
+      setGameState({ ...s });
+      addLog(`❌ Spell Casting Failed: ${result?.message || "Leyline disruption."}. Mana refunded.`, "#ef4444");
+    }
   };
 
   const craft = (ri: number, qty = 1) => {
@@ -2178,50 +3009,188 @@ export default function SurvivalGame() {
       {/* --- HUD --- */}
       <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none z-10">
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <div className="w-8 text-xs opacity-50 text-right">HP</div>
-            <div className="w-48 h-3 bg-white/10 rounded-full overflow-hidden border border-white/5">
-              <motion.div 
-                className="h-full bg-gradient-to-r from-red-500 to-rose-400"
-                initial={{ width: '100%' }}
-                animate={{ width: `${(gameState?.pl.hp / gameState?.pl.mhp) * 100}%` }}
-              />
+          {/* Detailed, RPG-Style Survival Status Panel */}
+          <div className="flex flex-col gap-2.5 p-3.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto min-w-[250px] select-none">
+            {/* Avatar / Level Indicator */}
+            <div className="flex items-center gap-2 border-b border-white/10 pb-2 mb-0.5">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-yellow-500 to-amber-300 flex items-center justify-center text-xs font-black text-black shadow-inner shadow-black/20 animate-pulse">
+                👑
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold tracking-wider text-yellow-400 uppercase font-sans">Survival Core</span>
+                <span className="text-xs font-extrabold text-white font-mono">LVL {gameState?.pl.lvl || 1}</span>
+              </div>
+              <div className="ml-auto text-[9px] text-zinc-400 font-mono">
+                XP: {gameState?.pl.xp || 0} / {gameState?.pl.xpNext || 100}
+              </div>
             </div>
-            <div className="text-[10px] opacity-70">{Math.floor(gameState?.pl.hp || 0)}</div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-8 text-xs opacity-50 text-right">HUN</div>
-            <div className="w-48 h-3 bg-white/10 rounded-full overflow-hidden border border-white/5">
-              <motion.div 
-                className="h-full bg-gradient-to-r from-orange-500 to-amber-400"
-                initial={{ width: '100%' }}
-                animate={{ width: `${gameState?.pl.hu || 0}%` }}
-              />
+            
+            {/* Health (HP) */}
+            <div className="flex flex-col gap-1">
+              <div className="flex justify-between items-center text-[10px] font-bold font-mono">
+                <span className="text-rose-400 flex items-center gap-1">❤️ HP</span>
+                <span className="text-rose-200">{Math.floor(gameState?.pl.hp || 0)} / {gameState?.pl.mhp || 100}</span>
+              </div>
+              <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5 p-0.5 shadow-inner">
+                <motion.div 
+                  className="h-full bg-gradient-to-r from-red-600 to-rose-400 rounded-full"
+                  initial={{ width: '100%' }}
+                  animate={{ width: `${Math.max(0, Math.min(100, ((gameState?.pl.hp || 0) / (gameState?.pl.mhp || 100)) * 100))}%` }}
+                  transition={{ duration: 0.3 }}
+                />
+              </div>
             </div>
-            <div className="text-[10px] opacity-70">{Math.floor(gameState?.pl.hu || 0)}</div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-8 text-xs opacity-50 text-right">STA</div>
-            <div className="w-48 h-3 bg-white/10 rounded-full overflow-hidden border border-white/5">
-              <motion.div 
-                className="h-full bg-gradient-to-r from-blue-500 to-cyan-400"
-                initial={{ width: '100%' }}
-                animate={{ width: `${gameState?.pl.sta || 0}%` }}
-              />
+
+            {/* Hunger (HUN) */}
+            <div className="flex flex-col gap-1">
+              <div className="flex justify-between items-center text-[10px] font-bold font-mono">
+                <span className="text-amber-400 flex items-center gap-1">🍗 HUNGER</span>
+                <span className={`${(gameState?.pl.hu || 0) < 30 ? 'text-red-400 animate-pulse font-black' : 'text-amber-200'}`}>{Math.floor(gameState?.pl.hu || 0)}%</span>
+              </div>
+              <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5 p-0.5 shadow-inner">
+                <motion.div 
+                  className="h-full bg-gradient-to-r from-orange-500 to-yellow-400 rounded-full"
+                  initial={{ width: '100%' }}
+                  animate={{ width: `${Math.max(0, Math.min(100, gameState?.pl.hu || 0))}%` }}
+                  transition={{ duration: 0.3 }}
+                />
+              </div>
             </div>
-            <div className="text-[10px] opacity-70">{Math.floor(gameState?.pl.sta || 0)}</div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-8 text-xs opacity-50 text-right">MP</div>
-            <div className="w-48 h-3 bg-white/10 rounded-full overflow-hidden border border-white/5">
-              <motion.div 
-                className="h-full bg-gradient-to-r from-purple-500 to-fuchsia-400"
-                initial={{ width: '100%' }}
-                animate={{ width: `${(gameState?.pl.mp / gameState?.pl.mmp) * 100}%` }}
-              />
+
+            {/* Stamina (STA) */}
+            <div className="flex flex-col gap-1">
+              <div className="flex justify-between items-center text-[10px] font-bold font-mono">
+                <span className="text-cyan-400 flex items-center gap-1">⚡ STAMINA</span>
+                <span className="text-cyan-200">{Math.floor(gameState?.pl.sta || 0)}%</span>
+              </div>
+              <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5 p-0.5 shadow-inner">
+                <motion.div 
+                  className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full"
+                  initial={{ width: '100%' }}
+                  animate={{ width: `${Math.max(0, Math.min(100, gameState?.pl.sta || 0))}%` }}
+                  transition={{ duration: 0.3 }}
+                />
+              </div>
             </div>
-            <div className="text-[10px] opacity-70">{Math.floor(gameState?.pl.mp || 0)}</div>
+
+            {/* Mana (MP) */}
+            <div className="flex flex-col gap-1">
+              <div className="flex justify-between items-center text-[10px] font-bold font-mono">
+                <span className="text-purple-400 flex items-center gap-1">🔮 MANA</span>
+                <span className="text-purple-200">{Math.floor(gameState?.pl.mp || 0)} / {gameState?.pl.mmp || 100}</span>
+              </div>
+              <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5 p-0.5 shadow-inner">
+                <motion.div 
+                  className="h-full bg-gradient-to-r from-purple-600 to-fuchsia-400 rounded-full"
+                  initial={{ width: '100%' }}
+                  animate={{ width: `${Math.max(0, Math.min(100, ((gameState?.pl.mp || 0) / (gameState?.pl.mmp || 100)) * 100))}%` }}
+                  transition={{ duration: 0.3 }}
+                />
+              </div>
+            </div>
           </div>
+
+          {/* Crisis Alerts Overlay */}
+          {gameState?.pl.hu < 30 && (
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex flex-col gap-1.5 p-2.5 bg-red-950/80 border border-red-500/40 rounded-xl backdrop-blur-sm pointer-events-auto shadow-lg max-w-[250px]"
+            >
+              <div className="flex items-center gap-1.5 text-[10px] font-black text-red-400 uppercase tracking-wider font-mono">
+                <AlertCircle size={12} className="animate-bounce" />
+                <span>Starving! Eat Food:</span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {['cooked_meat', 'cooked_fish', 'celestial_fish', 'berry', 'mushroom'].map(foodKey => {
+                  const count = gameState?.pl.inv[foodKey] || 0;
+                  if (count > 0) {
+                    return (
+                      <button
+                        key={foodKey}
+                        onClick={() => {
+                          handleUse(foodKey);
+                          setGameState({ ...stateRef.current });
+                        }}
+                        className="px-2 py-1 bg-red-600/30 hover:bg-red-600/60 text-white rounded-lg text-[9px] font-bold flex items-center gap-1 border border-white/5 active:scale-95 transition-all cursor-pointer"
+                      >
+                        <span>{IT[foodKey]?.ico}</span>
+                        <span>x{count}</span>
+                      </button>
+                    );
+                  }
+                  return null;
+                })}
+                {!['cooked_meat', 'cooked_fish', 'celestial_fish', 'berry', 'mushroom'].some(f => (gameState?.pl.inv[f] || 0) > 0) && (
+                  <span className="text-[9px] text-red-300 italic">No food in inventory!</span>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {gameState?.pl.hp < gameState?.pl.mhp * 0.4 && (
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex flex-col gap-1.5 p-2.5 bg-rose-950/80 border border-rose-500/40 rounded-xl backdrop-blur-sm pointer-events-auto shadow-lg max-w-[250px]"
+            >
+              <div className="flex items-center gap-1.5 text-[10px] font-black text-rose-400 uppercase tracking-wider font-mono">
+                <AlertCircle size={12} className="animate-pulse" />
+                <span>Low HP! Heal Potion:</span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {['heal_potion'].map(potKey => {
+                  const count = gameState?.pl.inv[potKey] || 0;
+                  if (count > 0) {
+                    return (
+                      <button
+                        key={potKey}
+                        onClick={() => {
+                          handleUse(potKey);
+                          setGameState({ ...stateRef.current });
+                        }}
+                        className="px-2 py-1 bg-rose-600/30 hover:bg-rose-600/60 text-white rounded-lg text-[9px] font-bold flex items-center gap-1 border border-white/5 active:scale-95 transition-all cursor-pointer"
+                      >
+                        <span>{IT[potKey]?.ico}</span>
+                        <span>Drink (x{count})</span>
+                      </button>
+                    );
+                  }
+                  return null;
+                })}
+                {(gameState?.pl.inv['heal_potion'] || 0) === 0 && (
+                  <span className="text-[9px] text-rose-300 italic">No health potions!</span>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </div>
+
+        {/* Floating Resource Monitor Overlay (Centered at top) */}
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 p-2 bg-zinc-950/80 border border-white/10 rounded-2xl backdrop-blur-md shadow-2xl pointer-events-auto select-none z-10 max-w-[90vw] overflow-x-auto scrollbar-none">
+          {[
+            { key: 'wood', ico: '🪵', col: 'border-amber-700/20 text-amber-100 bg-amber-950/10' },
+            { key: 'stone', ico: '🪨', col: 'border-zinc-500/20 text-zinc-100 bg-zinc-800/10' },
+            { key: 'fiber', ico: '🌿', col: 'border-emerald-600/20 text-emerald-100 bg-emerald-950/10' },
+            { key: 'iron_ore', ico: '⚙️', col: 'border-cyan-600/20 text-cyan-100 bg-cyan-950/10' },
+            { key: 'coal', ico: '🖤', col: 'border-slate-800/20 text-slate-100 bg-slate-900/15' },
+            { key: 'crystal', ico: '💎', col: 'border-sky-500/20 text-sky-100 bg-sky-950/10' },
+            { key: 'magic_essence', ico: '✨', col: 'border-purple-500/20 text-purple-100 bg-purple-950/10' },
+            { key: 'void_crystal', ico: '🔮', col: 'border-fuchsia-600/20 text-fuchsia-100 bg-fuchsia-950/10' }
+          ].map(res => {
+            const qty = gameState?.pl.inv[res.key] || 0;
+            const active = qty > 0;
+            return (
+              <div 
+                key={res.key}
+                className={`flex items-center gap-1 px-2 py-1 rounded-xl border transition-all text-xs font-mono font-bold ${res.col} ${active ? 'opacity-100 scale-100 shadow-[0_0_8px_rgba(255,255,255,0.05)]' : 'opacity-25 scale-95'}`}
+                title={`${IT[res.key]?.n || res.key}: ${qty}`}
+              >
+                <span>{res.ico}</span>
+                <span>{qty}</span>
+              </div>
+            );
+          })}
         </div>
 
         <div className="text-right flex flex-col items-end gap-1">
@@ -2265,6 +3234,13 @@ export default function SurvivalGame() {
               <span>ORACLE</span>
             </button>
             <button 
+              onClick={() => setShowSpellbook(true)}
+              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-fuchsia-500/20 hover:border-fuchsia-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-fuchsia-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+            >
+              <BookOpen size={11} className="text-fuchsia-400" />
+              <span>SPELLS</span>
+            </button>
+            <button 
               id="system-save-btn"
               onClick={() => {
                 loadSlotMetadata();
@@ -2274,6 +3250,13 @@ export default function SurvivalGame() {
             >
               <Save size={11} className="animate-pulse text-yellow-500" />
               <span>SAVE</span>
+            </button>
+            <button 
+              onClick={() => setShowWorldMenu(true)}
+              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-emerald-500/20 hover:border-emerald-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-emerald-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+            >
+              <Globe size={11} className="text-emerald-400" />
+              <span>WORLD</span>
             </button>
           </div>
         </div>
@@ -2343,6 +3326,49 @@ export default function SurvivalGame() {
               {autoCollect ? 'ON' : 'OFF'}
             </span>
           </button>
+
+          <button
+            onClick={() => setAutoCraftState(prev => !prev)}
+            className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase font-mono flex items-center justify-between transition-all border cursor-pointer ${
+              autoCraftState 
+                ? 'bg-orange-500/20 border-orange-500/50 text-orange-300 shadow-[0_0_10px_rgba(249,115,22,0.2)]' 
+                : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
+            }`}
+          >
+            <span>🛠️ Auto-Craft Core</span>
+            <span className={autoCraftState ? 'text-orange-400 animate-pulse' : 'text-zinc-500'}>
+              {autoCraftState ? 'ON' : 'OFF'}
+            </span>
+          </button>
+          
+          <button
+            onClick={() => {
+              setAutoPlay(prev => {
+                const newVal = !prev;
+                if (newVal) {
+                  // Turn on other cores to complement full autoplay
+                  setAutoAttack(true);
+                  setAutoHarvest(true);
+                  setAutoCollect(true);
+                  setAutoCraftState(true);
+                  addLog("🧠 Neural Autoplay Core Online: Full Autonomous Survival Active!", "#22d3ee");
+                } else {
+                  addLog("🧠 Neural Autoplay Core Offline", "#a1a1aa");
+                }
+                return newVal;
+              });
+            }}
+            className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase font-mono flex items-center justify-between transition-all border cursor-pointer ${
+              autoPlay 
+                ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.2)]' 
+                : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
+            }`}
+          >
+            <span className="flex items-center gap-1">🤖 Neural Autoplay</span>
+            <span className={autoPlay ? 'text-cyan-400 animate-pulse font-black' : 'text-zinc-500'}>
+              {autoPlay ? 'ON' : 'OFF'}
+            </span>
+          </button>
         </div>
       </div>
 
@@ -2360,6 +3386,30 @@ export default function SurvivalGame() {
               {Math.ceil(gameState.activeEvent.ticksLeft / 60)}s left
             </div>
           </div>
+        </div>
+      )}
+
+      {/* --- Active Spell Buffs Indicator --- */}
+      {((gameState?.activeSpells?.revealMapTimer > 0) || (gameState?.activeSpells?.healingSanctuaryTimer > 0)) && (
+        <div className="absolute top-[250px] left-1/2 -translate-x-1/2 z-10 pointer-events-auto flex gap-2">
+          {gameState.activeSpells.revealMapTimer > 0 && (
+            <div className="bg-gradient-to-r from-fuchsia-950/90 to-black/80 border border-fuchsia-500/30 px-3 py-1.5 rounded-full flex items-center gap-2 shadow-[0_0_15px_rgba(217,70,239,0.15)]">
+              <span className="text-xs animate-pulse">🔮</span>
+              <span className="text-[10px] text-fuchsia-300 font-bold uppercase tracking-wide">Astral Scrying</span>
+              <span className="text-[10px] text-fuchsia-400 font-mono font-bold">
+                {Math.ceil(gameState.activeSpells.revealMapTimer / 60)}s
+              </span>
+            </div>
+          )}
+          {gameState.activeSpells.healingSanctuaryTimer > 0 && (
+            <div className="bg-gradient-to-r from-pink-950/90 to-black/80 border border-pink-500/30 px-3 py-1.5 rounded-full flex items-center gap-2 shadow-[0_0_15px_rgba(236,72,153,0.15)]">
+              <span className="text-xs animate-pulse">💖</span>
+              <span className="text-[10px] text-pink-300 font-bold uppercase tracking-wide">Sanctuary</span>
+              <span className="text-[10px] text-pink-400 font-mono font-bold">
+                {Math.ceil(gameState.activeSpells.healingSanctuaryTimer / 60)}s
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -3026,6 +4076,22 @@ export default function SurvivalGame() {
                                         Craft Max ({maxQty}x)
                                       </button>
                                     )}
+                                    <button
+                                      onClick={() => {
+                                        setAutoCraftList(prev => {
+                                          const next = { ...prev };
+                                          next[r.out] = !next[r.out];
+                                          return next;
+                                        });
+                                      }}
+                                      className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border cursor-pointer ${
+                                        autoCraftList[r.out]
+                                          ? 'bg-orange-500/20 border-orange-500/50 text-orange-400 shadow-[0_0_8px_rgba(249,115,22,0.15)] hover:bg-orange-500/30 font-bold'
+                                          : 'bg-white/5 border border-white/10 text-white/50 hover:bg-white/10 hover:text-white'
+                                      }`}
+                                    >
+                                      {autoCraftList[r.out] ? '✓ Auto ON' : '➕ Queue Auto'}
+                                    </button>
                                   </>
                                 ) : (
                                   <div className="text-[10px] text-cyan-400 uppercase tracking-widest font-sans flex items-center gap-1 py-1.5 px-3 bg-cyan-500/10 rounded-lg border border-cyan-500/30">
@@ -3471,6 +4537,122 @@ export default function SurvivalGame() {
             </div>
           </motion.div>
         )}
+
+        {showWorldMenu && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 sm:p-6"
+          >
+            <div className="max-w-4xl w-full bg-zinc-950 border border-emerald-500/30 rounded-3xl p-6 md:p-8 flex flex-col gap-6 max-h-[90vh] overflow-y-auto shadow-[0_0_50px_rgba(16,185,129,0.15)] text-white font-mono pointer-events-auto">
+              <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <Globe size={22} className="text-emerald-400" />
+                  <div>
+                    <h2 className="text-xl font-bold uppercase tracking-wider text-emerald-400 font-mono">WORLD GENERATOR PLATFORM</h2>
+                    <p className="text-[10px] opacity-50 uppercase mt-0.5">Procedural Multi-Biome Noise Grid & Seed Orchestrator</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowWorldMenu(false)}
+                  className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* World Seed Controls */}
+              <div className="bg-white/[0.02] border border-white/10 p-5 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div className="flex-1">
+                  <div className="text-xs font-bold uppercase tracking-wider text-emerald-400">Custom Generation Seed</div>
+                  <p className="text-[10px] opacity-40 uppercase mt-1">Changing the seed completely restructures the layout, biome map, and resource nodes</p>
+                  
+                  {/* Input and Reroll Row */}
+                  <div className="flex items-center gap-3 mt-3 w-full max-w-md">
+                    <input 
+                      type="number"
+                      value={worldSeed}
+                      onChange={(e) => setWorldSeed(parseInt(e.target.value) || 0)}
+                      className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm text-emerald-300 font-bold focus:border-emerald-500/50 focus:outline-none"
+                    />
+                    <button
+                      onClick={() => {
+                        const newSeed = Math.floor(Math.random() * 1000000);
+                        setWorldSeed(newSeed);
+                        addLog(`🎲 Rolled seed: ${newSeed}`, '#34d399');
+                      }}
+                      className="px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <Shuffle size={14} />
+                      <span>REROLL SEED</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 shrink-0 w-full md:w-auto">
+                  <button
+                    onClick={() => {
+                      initGame();
+                      setShowWorldMenu(false);
+                      addLog(`🌍 Rebuilt world using Seed: ${worldSeedRef.current}`, '#34d399');
+                    }}
+                    className="w-full md:w-auto px-6 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-black rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer text-center"
+                  >
+                    REGENERATE WORLD GRID
+                  </button>
+                </div>
+              </div>
+
+              {/* Grid map Preview / Biome Layout overview */}
+              <div className="flex flex-col gap-3">
+                <div className="text-xs font-bold uppercase tracking-wider text-emerald-400">Procedural Zone Layout for Seed: {worldSeed}</div>
+                <p className="text-[10px] opacity-40 uppercase">The map is a {ZCOLS}x{ZROWS} cluster of continuous biomes. Below is the mapped layout:</p>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-5 gap-3.5 mt-2">
+                  {Array.from({ length: ZROWS }).map((_, zr) => {
+                    return Array.from({ length: ZCOLS }).map((_, zc) => {
+                      const M = getProceduralBiomeForZone(zc, zr, worldSeed);
+                      const isStart = zc === 0 && zr === 0;
+                      return (
+                        <div 
+                          key={`${zc}-${zr}`}
+                          className={`p-3 rounded-xl border flex flex-col justify-between transition-all relative ${
+                            isStart 
+                              ? 'bg-emerald-500/15 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.15)]' 
+                              : 'bg-white/[0.02] border-white/5 hover:border-white/15'
+                          }`}
+                        >
+                          {isStart && (
+                            <span className="absolute top-1 right-1 text-[7px] bg-emerald-500 text-black px-1 rounded font-sans font-bold uppercase">
+                              START
+                            </span>
+                          )}
+                          <div>
+                            <div className="text-[10px] text-zinc-500 font-mono">Zone ({zc}, {zr})</div>
+                            <div className="text-xs font-extrabold text-white mt-1 flex items-center gap-1.5">
+                              <span>{M.n.split(' ').map((word: string) => word[0]).join('')}</span>
+                              <span className="text-lg">{M.n.includes('Desert') ? '🏜️' : M.n.includes('Forest') ? '🌲' : M.n.includes('Frozen') ? '❄️' : M.n.includes('Scorched') ? '🌋' : M.n.includes('Celestial') ? '🌌' : '🌾'}</span>
+                            </div>
+                            <div className="text-[9px] text-zinc-400 mt-1 truncate">{M.n}</div>
+                          </div>
+                          
+                          <div className="mt-2 pt-2 border-t border-white/5 flex flex-wrap gap-1 text-[8px] opacity-60">
+                            {Object.keys(M.dr).slice(0, 3).map(k => (
+                              <span key={k} className="bg-white/5 px-1 rounded">
+                                {IT[k]?.ico || '📦'}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
       </AnimatePresence>
 
       {/* --- Banner --- */}
@@ -3490,6 +4672,168 @@ export default function SurvivalGame() {
           </motion.div>
         )}
       </AnimatePresence>
+
+        {showSpellbook && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 overflow-y-auto"
+          >
+            <div className="max-w-3xl w-full bg-zinc-950 border border-fuchsia-500/30 rounded-3xl p-6 md:p-8 flex flex-col gap-6 max-h-[95vh] overflow-y-auto shadow-[0_0_50px_rgba(217,70,239,0.15)] text-white pointer-events-auto">
+              <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <BookOpen size={22} className="text-fuchsia-400" />
+                  <div>
+                    <h2 className="text-xl font-bold uppercase tracking-wider text-fuchsia-400 font-mono">ASTRAL SPELLBOOK</h2>
+                    <p className="text-[10px] opacity-50 uppercase mt-0.5">Weave ambient mana fields via Gemini's cosmic intelligence</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => {
+                    setShowSpellbook(false);
+                    setSpellResult(null);
+                  }}
+                  className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Mana reserves monitor */}
+              <div className="bg-white/[0.02] border border-white/10 p-5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wider text-fuchsia-400 flex items-center gap-1">
+                    <Zap size={14} /> Mana Reserves
+                  </div>
+                  <p className="text-[10px] opacity-40 uppercase mt-1">Spells require focused mana. Consumed mana regenerates naturally over time.</p>
+                </div>
+                <div className="w-full sm:w-48">
+                  <div className="flex justify-between items-center text-[10px] font-mono font-bold mb-1 text-fuchsia-300">
+                    <span>MANA</span>
+                    <span>{gameState?.pl.mp} / {gameState?.pl.mmp}</span>
+                  </div>
+                  <div className="w-full h-3 bg-zinc-900 border border-white/5 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-fuchsia-600 to-indigo-500 transition-all duration-300" 
+                      style={{ width: `${Math.max(0, Math.min(100, ((gameState?.pl.mp || 0) / (gameState?.pl.mmp || 100)) * 100))}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {isCasting ? (
+                /* Casting Animation Card */
+                <div className="bg-white/[0.01] border border-white/5 p-12 rounded-2xl flex flex-col items-center justify-center gap-6 min-h-[250px]">
+                  <div className="relative w-16 h-16">
+                    <div className="absolute inset-0 border-4 border-fuchsia-500/20 rounded-full" />
+                    <div className="absolute inset-0 border-4 border-t-fuchsia-500 border-l-indigo-400 rounded-full animate-spin" />
+                  </div>
+                  <div className="text-center">
+                    <h3 className="text-sm font-bold uppercase tracking-widest text-fuchsia-400 animate-pulse">CHANNELLING COSMIC LEYLINES...</h3>
+                    <p className="text-[10px] opacity-50 uppercase mt-2">Bending gravity and condensing planetary materials with Gemini-3.5-flash</p>
+                  </div>
+                </div>
+              ) : spellResult ? (
+                /* Spell outcome results card */
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-fuchsia-950/20 border border-fuchsia-500/30 p-6 rounded-2xl flex flex-col gap-4"
+                >
+                  <div className="flex items-center gap-2 border-b border-fuchsia-500/20 pb-2">
+                    <Sparkles className="text-fuchsia-400 animate-pulse" size={18} />
+                    <span className="text-xs font-bold text-fuchsia-300 uppercase tracking-widest">SPELL MANIFESTATION SUCCESSFUL</span>
+                  </div>
+                  <p className="text-xs leading-relaxed italic text-fuchsia-100/90 font-sans">
+                    "{spellResult.message}"
+                  </p>
+                  <div className="bg-black/40 border border-white/5 p-3 rounded-xl">
+                    <div className="text-[10px] font-bold text-fuchsia-400 uppercase tracking-wider mb-2">Mechanical outcomes</div>
+                    <ul className="text-[10px] space-y-1 text-zinc-300 font-mono">
+                      {spellResult.scoutedNodes && spellResult.scoutedNodes.length > 0 && (
+                        <li>📍 Scouted {spellResult.scoutedNodes.length} ultra-rare mineral deposits and plotted onto your overlay map.</li>
+                      )}
+                      {spellResult.spawnDrops && spellResult.spawnDrops.length > 0 && (
+                        <li>⭐ Materialized {spellResult.spawnDrops.reduce((acc: number, item: any) => acc + item.qty, 0)} raw elements onto the surrounding coordinates.</li>
+                      )}
+                      {spellResult.restoration && (
+                        <>
+                          <li>💖 Restored {spellResult.restoration.healHP} HP and {spellResult.restoration.foodBonus}% Satiety.</li>
+                          <li>🛡️ Activated "Healing Sanctuary" Aura for 45s (+25% movement speed, +5 defense).</li>
+                        </>
+                      )}
+                    </ul>
+                  </div>
+                  <button 
+                    onClick={() => setSpellResult(null)}
+                    className="mt-2 py-2 bg-gradient-to-r from-fuchsia-600 to-indigo-600 hover:from-fuchsia-500 hover:to-indigo-500 font-mono font-bold text-xs uppercase tracking-widest rounded-xl transition-all cursor-pointer text-center"
+                  >
+                    DISMISS & CONTINUE
+                  </button>
+                </motion.div>
+              ) : (
+                /* Grid list of magic spells */
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {[
+                    {
+                      name: "Reveal Map",
+                      cost: 40,
+                      ico: "🔮",
+                      tag: "SCRYING & RADAR",
+                      desc: "Invokes astral scrying to scan and target 4-6 of the rarest mineral veins and flora nodes in your area. Visually highlights them on your canvas radar for 2 minutes."
+                    },
+                    {
+                      name: "Resource Bounty",
+                      cost: 65,
+                      ico: "⭐",
+                      tag: "CONDENSATION",
+                      desc: "Pull minerals and raw reagents directly from the planetary atmospheric layers. Shakes the dirt around you, showering the ground with biome-specific resource drops."
+                    },
+                    {
+                      name: "Healing Sanctuary",
+                      cost: 50,
+                      ico: "💖",
+                      tag: "REJUVENATION",
+                      desc: "Spins a protective sphere of healing winds. Restores 40-60 HP, increases Satiety, and activates a 45s aura granting +25% Speed and +5 Defense."
+                    }
+                  ].map(spell => {
+                    const canAfford = (gameState?.pl.mp || 0) >= spell.cost;
+                    return (
+                      <div 
+                        key={spell.name}
+                        className="bg-white/[0.01] border border-white/5 p-4 rounded-2xl flex flex-col justify-between gap-4 hover:border-fuchsia-500/20 hover:bg-white/[0.02] transition-all"
+                      >
+                        <div className="flex flex-col gap-2">
+                          <div className="flex justify-between items-start">
+                            <span className="text-2xl">{spell.ico}</span>
+                            <span className="text-[8px] bg-fuchsia-500/10 text-fuchsia-400 font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">{spell.tag}</span>
+                          </div>
+                          <div className="text-xs font-bold text-white uppercase tracking-wider">{spell.name}</div>
+                          <p className="text-[10px] opacity-50 uppercase tracking-tight leading-normal font-sans">{spell.desc}</p>
+                        </div>
+                        <div className="border-t border-white/5 pt-3 mt-1 flex justify-between items-center">
+                          <span className="text-[10px] font-mono text-fuchsia-300 font-bold">{spell.cost} MP</span>
+                          <button 
+                            disabled={!canAfford}
+                            onClick={() => handleCastSpell(spell.name, spell.cost)}
+                            className={`px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all ${
+                              canAfford 
+                                ? 'bg-fuchsia-600 hover:bg-fuchsia-500 text-white shadow-md shadow-fuchsia-600/15 cursor-pointer' 
+                                : 'bg-zinc-800 text-zinc-500 border border-zinc-700/20 cursor-not-allowed'
+                            }`}
+                          >
+                            CAST
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
 
       {/* --- Death Screen --- */}
       <AnimatePresence>
