@@ -706,7 +706,7 @@ export default function SurvivalGame() {
   // Collapse/Hide states for Left Panels to prevent screen clutter
   const [isStatusCollapsed, setIsStatusCollapsed] = useState(false);
   const [isEquipCollapsed, setIsEquipCollapsed] = useState(true); // default to true to keep screen clean!
-  const [isAutoCollapsed, setIsAutoCollapsed] = useState(true); // default to true to keep screen clean!
+  const [isAutoCollapsed, setIsAutoCollapsed] = useState(false); // default to false so it is immediately visible!
 
   // --- Minimap States & Refs ---
   const [minimapMode, setMinimapMode] = useState<'local' | 'world'>('local');
@@ -776,6 +776,9 @@ export default function SurvivalGame() {
   const [autoCraftList, setAutoCraftList] = useState<Record<string, boolean>>({});
   const autoCraftListRef = useRef<Record<string, boolean>>({});
   useEffect(() => { autoCraftListRef.current = autoCraftList; }, [autoCraftList]);
+
+  const recipesRef = useRef<any[]>([]);
+  useEffect(() => { recipesRef.current = recipes; }, [recipes]);
 
   // --- World Event states ---
   const [showEventModal, setShowEventModal] = useState(false);
@@ -1012,8 +1015,6 @@ export default function SurvivalGame() {
   }, []);
 
   useEffect(() => {
-    testConnection();
-
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
@@ -2520,8 +2521,9 @@ export default function SurvivalGame() {
         const pTileX = Math.floor(s.pl.x / TZ);
         const pTileY = Math.floor(s.pl.y / TZ);
         
-        for (let i = 0; i < recipes.length; i++) {
-          const r = recipes[i];
+        const currentRecipes = recipesRef.current.length > 0 ? recipesRef.current : recipes;
+        for (let i = 0; i < currentRecipes.length; i++) {
+          const r = currentRecipes[i];
           if (!autoCraftListRef.current[r.out]) continue;
           
           // Check structure requirement
@@ -4798,6 +4800,13 @@ export default function SurvivalGame() {
               <span>CRAFT</span>
             </button>
             <button 
+              onClick={() => setIsAutoCollapsed(prev => !prev)}
+              className={`px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-lg ${!isAutoCollapsed ? 'border-teal-400 text-teal-300 shadow-[0_0_15px_rgba(20,184,166,0.25)] font-bold' : 'border-teal-500/20 text-white hover:text-teal-300'}`}
+            >
+              <Cpu size={11} className="text-teal-400" />
+              <span>AUTOMATE</span>
+            </button>
+            <button 
               onClick={() => setShowSkills(true)}
               className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-teal-500/20 hover:border-teal-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-teal-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
             >
@@ -6155,6 +6164,15 @@ export default function SurvivalGame() {
                                         setAutoCraftList(prev => {
                                           const next = { ...prev };
                                           next[r.out] = !next[r.out];
+                                          if (next[r.out]) {
+                                            if (!autoCraftState) {
+                                              addLog(`🛠️ Queued "${r.n}" for Auto-Craft. Enable "Auto-Craft Core" in the AUTOMATE panel!`, '#f97316');
+                                            } else {
+                                              addLog(`🛠️ Queued "${r.n}" for Auto-Craft.`, '#4ade80');
+                                            }
+                                          } else {
+                                            addLog(`🛠️ Removed "${r.n}" from Auto-Craft queue.`, '#94a3b8');
+                                          }
                                           return next;
                                         });
                                       }}
