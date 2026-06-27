@@ -439,6 +439,11 @@ export default function SurvivalGame() {
   const [banner, setBanner] = useState<string | null>(null);
   const [showDeathScreen, setShowDeathScreen] = useState(false);
 
+  // Collapse/Hide states for Left Panels to prevent screen clutter
+  const [isStatusCollapsed, setIsStatusCollapsed] = useState(false);
+  const [isEquipCollapsed, setIsEquipCollapsed] = useState(true); // default to true to keep screen clean!
+  const [isAutoCollapsed, setIsAutoCollapsed] = useState(true); // default to true to keep screen clean!
+
   // --- Save / Load & Backup System States ---
   const [showSaveMenu, setShowSaveMenu] = useState(false);
   const [autosaveEnabled, setAutosaveEnabled] = useState(true);
@@ -484,6 +489,11 @@ export default function SurvivalGame() {
   const [autoCraftState, setAutoCraftState] = useState(false);
   const autoCraftStateRef = useRef(false);
   useEffect(() => { autoCraftStateRef.current = autoCraftState; }, [autoCraftState]);
+
+  // --- Collapsible Panel States ---
+  const [isStatsCollapsed, setIsStatsCollapsed] = useState(false);
+  const [isEquipmentCollapsed, setIsEquipmentCollapsed] = useState(false);
+  const [isAutomationCollapsed, setIsAutomationCollapsed] = useState(false);
 
   const [autoCraftList, setAutoCraftList] = useState<Record<string, boolean>>({});
   const autoCraftListRef = useRef<Record<string, boolean>>({});
@@ -950,11 +960,20 @@ export default function SurvivalGame() {
       targetY: Math.floor(ZH / 2) * TZ + TZ / 2,
       isGridMoving: false,
       hp: 100, mhp: 100, hu: 100, sta: 100, mp: 100, mmp: 100,
-      inv: { wood: 10, stone: 5, fiber: 5, herb: 3, berry: 5, torch: 1 },
-      equip: { head: null, chest: null, legs: null, feet: null, ring: null },
+      inv: {
+        wood: 25, stone: 15, fiber: 15, herb: 8, berry: 10, torch: 2,
+        stone_axe: 1, shortbow: 1, raw_meat: 5, cooked_meat: 3
+      },
+      equip: {
+        head: 'leather_cap',
+        chest: 'leather_vest',
+        legs: 'leather_trousers',
+        feet: 'leather_boots',
+        ring: null
+      },
       weapon: 'fists',
       hotbar: ['torch', 'campfire', 'workbench', 'forge', 'stone_axe', 'iron_sword', 'shortbow', 'fishing_rod'],
-      spd: 3.0, sprint: false, atkcd: 0, gcd: 0, ifr: 0, xp: 0, lvl: 1, xpNext: 100, def: 0,
+      spd: 3.2, sprint: false, atkcd: 0, gcd: 0, ifr: 0, xp: 0, lvl: 1, xpNext: 100, def: 12,
       skills: {
         fishing: { lvl: 1, xp: 0, xpNext: 100 },
         cooking: { lvl: 1, xp: 0, xpNext: 100 },
@@ -997,8 +1016,8 @@ export default function SurvivalGame() {
               const tileType = world[wy][wx];
               
               if (tileType === M.m || tileType === M.f) {
-                // Spawn Trees based on Biome
-                if (randVal < M.wf) {
+                // Spawn Trees based on Biome (4.5x Spawn Rate)
+                if (randVal < M.wf * 4.5) {
                   let treeIco = '🌲';
                   let treeHp = 3;
                   let treeSubtype = 'oak';
@@ -1034,15 +1053,26 @@ export default function SurvivalGame() {
                   
                   objs.push({ type: 'tree', tx: wx, ty: wy, hp: treeHp, mhp: treeHp, ico: treeIco, subtype: treeSubtype });
                 }
-              } else if (tileType === M.r) {
-                // Spawn Rocks/Ores based on Biome and Elevation
-                if (randVal < M.rf) {
+              } else if (tileType === M.r || (tileType === M.m && randVal < M.rf * 2.0)) {
+                // Spawn Rocks/Ores on high ridges (4.5x rate) or occasionally on main ground (2.0x rate)
+                const isRidge = tileType === M.r;
+                const spawnLimit = isRidge ? M.rf * 4.5 : M.rf * 2.0;
+                
+                if (randVal < spawnLimit) {
                   let rockIco = '🪨';
                   let rockHp = 4;
                   let rockSubtype = 'stone';
                   const oreRand = rng();
                   
-                  if (M.n.includes('Celestial')) {
+                  // Rare chance for a magic Mana Crystal node to grow on Leylines
+                  const isMagicBiome = M.n.includes('Crystal Cavern') || M.n.includes('Enchanted Grove') || M.n.includes('Celestial') || M.n.includes('Ancient Ruins');
+                  const manaCrystalChance = isMagicBiome ? 0.15 : 0.04;
+                  
+                  if (rng() < manaCrystalChance) {
+                    rockIco = '🧿';
+                    rockSubtype = 'mana_crystal';
+                    rockHp = 5;
+                  } else if (M.n.includes('Celestial')) {
                     if (oreRand < 0.4) {
                       rockIco = '🔮';
                       rockSubtype = 'void_crystal';
@@ -1135,9 +1165,9 @@ export default function SurvivalGame() {
                     });
                   }
                 } else {
-                  // Standard ground drops
+                  // Standard ground drops (3x Spawn Rate)
                   for (const [k, v] of Object.entries(M.dr)) {
-                    if (rng() < (v as number) * 0.8) {
+                    if (rng() < (v as number) * 3.0) {
                       objs.push({ type: 'drop', tx: wx, ty: wy, item: k, qty: 1 + Math.floor(rng() * 2) });
                     }
                   }
@@ -2581,12 +2611,18 @@ export default function SurvivalGame() {
     const it = IT[k];
     if (!it || (s.pl.inv[k] || 0) <= 0) return;
 
-    if (it.t === 'food' || it.t === 'pot') {
-      if (it.hp) s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + it.hp);
-      if (it.hu) s.pl.hu = Math.min(100, (s.pl.hu || 0) + it.hu);
-      if (it.mp) s.pl.mp = Math.min(s.pl.mmp, s.pl.mp + it.mp);
-      s.pl.inv[k]--;
-      addLog(`Used ${it.n}`, '#00ffaa');
+    if (it.t === 'food' || it.t === 'pot' || k === 'mana_crystal') {
+      if (k === 'mana_crystal') {
+        s.pl.mp = Math.min(s.pl.mmp, s.pl.mp + 40);
+        s.pl.inv[k]--;
+        addLog(`Used Mana Crystal: restored 40 MP 🔮`, '#c084fc');
+      } else {
+        if (it.hp) s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + it.hp);
+        if (it.hu) s.pl.hu = Math.min(100, (s.pl.hu || 0) + it.hu);
+        if (it.mp) s.pl.mp = Math.min(s.pl.mmp, s.pl.mp + it.mp);
+        s.pl.inv[k]--;
+        addLog(`Used ${it.n}`, '#00ffaa');
+      }
     } else if (it.t === 'armor') {
       const slot = it.sl || 'chest';
       
@@ -2880,14 +2916,26 @@ export default function SurvivalGame() {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.2);
               s.pl.inv.sulfur = (s.pl.inv.sulfur || 0) + qty;
               addLog(`+Sulfur x${qty}! 🟡`, '#facc15');
+            } else if (o.subtype === 'mana_crystal') {
+              const qty = 1 + Math.floor(Math.random() * 2);
+              s.pl.inv.mana_crystal = (s.pl.inv.mana_crystal || 0) + qty;
+              addLog(`+Mana Crystal x${qty}! 🧿`, '#a78bfa');
             } else if (o.subtype === 'crystal') {
               const qty = 1 + Math.floor(Math.random() * 2);
               s.pl.inv.crystal = (s.pl.inv.crystal || 0) + qty;
               addLog(`+Crystal x${qty}! 💎`, '#38bdf8');
+              if (Math.random() < 0.4) {
+                s.pl.inv.mana_crystal = (s.pl.inv.mana_crystal || 0) + 1;
+                addLog(`+Mana Crystal x1! 🧿`, '#a78bfa');
+              }
             } else if (o.subtype === 'void_crystal') {
               const qty = 1 + Math.floor(Math.random() * 1);
               s.pl.inv.void_crystal = (s.pl.inv.void_crystal || 0) + qty;
               addLog(`+Void Crystal x${qty}! 🔮`, '#c084fc');
+              if (Math.random() < 0.5) {
+                s.pl.inv.mana_crystal = (s.pl.inv.mana_crystal || 0) + 1;
+                addLog(`+Mana Crystal x1! 🧿`, '#a78bfa');
+              }
             } else if (o.subtype === 'celestial') {
               s.pl.inv.celestial_shard = (s.pl.inv.celestial_shard || 0) + 1;
               addLog(`+Celestial Shard x1! ✨`, '#67e8f9');
@@ -3011,19 +3059,31 @@ export default function SurvivalGame() {
     setIsOracleLoading(false);
   };
 
-  const handleCastSpell = async (spellName: string, manaCost: number) => {
+  const handleCastSpell = async (spellName: string, manaCost: number, paymentType: 'mp' | 'crystals' = 'mp') => {
     const s = stateRef.current;
     if (!s) return;
 
-    if (s.pl.mp < manaCost) {
-      addLog("❌ You do not have enough Mana to cast this spell!", "#ef4444");
-      return;
-    }
+    const crystalCost = spellName === "Heal" ? 1 : spellName === "Reveal Map" ? 2 : spellName === "Healing Sanctuary" ? 2 : 3;
 
-    // Spend Mana immediately
-    s.pl.mp -= manaCost;
-    setGameState({ ...s });
-    addLog(`✨ Channelling spell: "${spellName}" (${manaCost} MP spent)...`, "#c084fc");
+    if (paymentType === 'crystals') {
+      const currentCrystals = s.pl.inv.mana_crystal || 0;
+      if (currentCrystals < crystalCost) {
+        addLog(`❌ You need ${crystalCost} Mana Crystal(s) to cast this spell!`, "#ef4444");
+        return;
+      }
+      s.pl.inv.mana_crystal -= crystalCost;
+      setGameState({ ...s });
+      addLog(`✨ Channelling spell: "${spellName}" (${crystalCost} Mana Crystal(s) spent)...`, "#c084fc");
+    } else {
+      if (s.pl.mp < manaCost) {
+        addLog("❌ You do not have enough Mana to cast this spell!", "#ef4444");
+        return;
+      }
+      // Spend Mana immediately
+      s.pl.mp -= manaCost;
+      setGameState({ ...s });
+      addLog(`✨ Channelling spell: "${spellName}" (${manaCost} MP spent)...`, "#c084fc");
+    }
 
     setIsCasting(true);
     setSpellResult(null);
@@ -3068,6 +3128,11 @@ export default function SurvivalGame() {
             addLog(`📍 Radar detected: ${itemDef?.n || node.type} at Tile (${node.tx}, ${node.ty})`, "#38bdf8");
           });
         }
+      } else if (spellName === "Heal") {
+        const heal = result.restoration?.healHP || 40;
+        s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + heal);
+        spawnExplosion(s, s.pl.x, s.pl.y, "#22c55e", 20, "spark");
+        addLog(`💚 Casted Heal Spell! Restored ${heal} HP.`, "#22c55e");
       } else if (spellName === "Resource Bounty") {
         // Spawn drops around the player
         if (result.spawnDrops && result.spawnDrops.length > 0) {
@@ -3099,7 +3164,7 @@ export default function SurvivalGame() {
         s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + heal);
         s.pl.hu = Math.min(100, s.pl.hu + food);
 
-        // Apply active stat buff
+        // Apply active stat mender buff
         s.activeSpells.healingSanctuaryTimer = 2700; // 45 seconds @ 60fps
 
         spawnExplosion(s, s.pl.x, s.pl.y, "#ec4899", 25, "spark");
@@ -3108,10 +3173,14 @@ export default function SurvivalGame() {
 
       setGameState({ ...s });
     } else {
-      // Refund Mana if spell failed completely
-      s.pl.mp = Math.min(s.pl.mmp, s.pl.mp + manaCost);
+      // Refund resources if spell failed completely
+      if (paymentType === 'crystals') {
+        s.pl.inv.mana_crystal = (s.pl.inv.mana_crystal || 0) + crystalCost;
+      } else {
+        s.pl.mp = Math.min(s.pl.mmp, s.pl.mp + manaCost);
+      }
       setGameState({ ...s });
-      addLog(`❌ Spell Casting Failed: ${result?.message || "Leyline disruption."}. Mana refunded.`, "#ef4444");
+      addLog(`❌ Spell Casting Failed: ${result?.message || "Leyline disruption."}. Resources refunded.`, "#ef4444");
     }
   };
 
@@ -3586,155 +3655,305 @@ export default function SurvivalGame() {
 
       {/* --- HUD --- */}
       <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none z-10">
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 max-h-[85vh] overflow-y-auto pr-2 scrollbar-none pointer-events-none select-none">
+          
           {/* Detailed, RPG-Style Survival Status Panel */}
-          <div className="flex flex-col gap-2.5 p-3.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto min-w-[250px] select-none">
-            {/* Avatar / Level Indicator */}
-            <div className="flex items-center gap-2 border-b border-white/10 pb-2 mb-0.5">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-yellow-500 to-amber-300 flex items-center justify-center text-xs font-black text-black shadow-inner shadow-black/20 animate-pulse">
-                👑
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[10px] font-bold tracking-wider text-yellow-400 uppercase font-sans">Survival Core</span>
-                <span className="text-xs font-extrabold text-white font-mono">LVL {gameState?.pl.lvl || 1}</span>
-              </div>
-              <div className="ml-auto text-[9px] text-zinc-400 font-mono">
-                XP: {gameState?.pl.xp || 0} / {gameState?.pl.xpNext || 100}
-              </div>
+          {isStatusCollapsed ? (
+            <div className="flex items-center justify-between p-2.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-lg pointer-events-auto w-[250px] select-none font-mono">
+              <span className="text-[10px] font-bold text-yellow-400 uppercase tracking-wider flex items-center gap-1">👑 Status (LVL {gameState?.pl.lvl || 1})</span>
+              <button 
+                onClick={() => setIsStatusCollapsed(false)} 
+                className="px-2 py-0.5 bg-zinc-900 border border-white/10 hover:border-yellow-500/50 hover:bg-zinc-800 text-[9px] rounded-lg text-white font-bold cursor-pointer transition-all active:scale-95"
+              >
+                ▲ SHOW
+              </button>
             </div>
-            
-            {/* Health (HP) */}
-            <div className="flex flex-col gap-1">
-              <div className="flex justify-between items-center text-[10px] font-bold font-mono">
-                <span className="text-rose-400 flex items-center gap-1">❤️ HP</span>
-                <span className="text-rose-200">{Math.floor(gameState?.pl.hp || 0)} / {gameState?.pl.mhp || 100}</span>
+          ) : (
+            <div className="flex flex-col gap-2 p-3.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto min-w-[250px] select-none">
+              {/* Avatar / Level Indicator */}
+              <div className="flex items-center gap-2 border-b border-white/10 pb-2 mb-0.5">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-yellow-500 to-amber-300 flex items-center justify-center text-xs font-black text-black shadow-inner shadow-black/20 animate-pulse">
+                  👑
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold tracking-wider text-yellow-400 uppercase font-sans">Survival Core</span>
+                  <span className="text-xs font-extrabold text-white font-mono">LVL {gameState?.pl.lvl || 1}</span>
+                </div>
+                <div className="ml-auto text-[9px] text-zinc-400 font-mono">
+                  XP: {gameState?.pl.xp || 0} / {gameState?.pl.xpNext || 100}
+                </div>
+                <button 
+                  onClick={() => setIsStatusCollapsed(true)} 
+                  className="px-1.5 py-0.5 bg-zinc-900 border border-white/10 hover:border-red-500/30 text-[9px] rounded-lg text-zinc-400 hover:text-white cursor-pointer transition-all active:scale-95"
+                  title="Collapse Panel"
+                >
+                  ▼ HIDE
+                </button>
               </div>
-              <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5 p-0.5 shadow-inner">
-                <motion.div 
-                  className="h-full bg-gradient-to-r from-red-600 to-rose-400 rounded-full"
-                  initial={{ width: '100%' }}
-                  animate={{ width: `${Math.max(0, Math.min(100, ((gameState?.pl.hp || 0) / (gameState?.pl.mhp || 100)) * 100))}%` }}
-                  transition={{ duration: 0.3 }}
-                />
+              
+              {/* Health (HP) */}
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between items-center text-[10px] font-bold font-mono">
+                  <span className="text-rose-400 flex items-center gap-1">❤️ HP</span>
+                  <span className="text-rose-200">{Math.floor(gameState?.pl.hp || 0)} / {gameState?.pl.mhp || 100}</span>
+                </div>
+                <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5 p-0.5 shadow-inner">
+                  <motion.div 
+                    className="h-full bg-gradient-to-r from-red-600 to-rose-400 rounded-full"
+                    initial={{ width: '100%' }}
+                    animate={{ width: `${Math.max(0, Math.min(100, ((gameState?.pl.hp || 0) / (gameState?.pl.mhp || 100)) * 100))}%` }}
+                    transition={{ duration: 0.3 }}
+                  />
+                </div>
               </div>
-            </div>
 
-            {/* Hunger (HUN) */}
-            <div className="flex flex-col gap-1">
-              <div className="flex justify-between items-center text-[10px] font-bold font-mono">
-                <span className="text-amber-400 flex items-center gap-1">🍗 HUNGER</span>
-                <span className={`${(gameState?.pl.hu || 0) < 30 ? 'text-red-400 animate-pulse font-black' : 'text-amber-200'}`}>{Math.floor(gameState?.pl.hu || 0)}%</span>
+              {/* Hunger (HUN) */}
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between items-center text-[10px] font-bold font-mono">
+                  <span className="text-amber-400 flex items-center gap-1">🍗 HUNGER</span>
+                  <span className={`${(gameState?.pl.hu || 0) < 30 ? 'text-red-400 animate-pulse font-black' : 'text-amber-200'}`}>{Math.floor(gameState?.pl.hu || 0)}%</span>
+                </div>
+                <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5 p-0.5 shadow-inner">
+                  <motion.div 
+                    className="h-full bg-gradient-to-r from-orange-500 to-yellow-400 rounded-full"
+                    initial={{ width: '100%' }}
+                    animate={{ width: `${Math.max(0, Math.min(100, gameState?.pl.hu || 0))}%` }}
+                    transition={{ duration: 0.3 }}
+                  />
+                </div>
               </div>
-              <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5 p-0.5 shadow-inner">
-                <motion.div 
-                  className="h-full bg-gradient-to-r from-orange-500 to-yellow-400 rounded-full"
-                  initial={{ width: '100%' }}
-                  animate={{ width: `${Math.max(0, Math.min(100, gameState?.pl.hu || 0))}%` }}
-                  transition={{ duration: 0.3 }}
-                />
-              </div>
-            </div>
 
-            {/* Stamina (STA) */}
-            <div className="flex flex-col gap-1">
-              <div className="flex justify-between items-center text-[10px] font-bold font-mono">
-                <span className="text-cyan-400 flex items-center gap-1">⚡ STAMINA</span>
-                <span className="text-cyan-200">{Math.floor(gameState?.pl.sta || 0)}%</span>
+              {/* Stamina (STA) */}
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between items-center text-[10px] font-bold font-mono">
+                  <span className="text-cyan-400 flex items-center gap-1">⚡ STAMINA</span>
+                  <span className="text-cyan-200">{Math.floor(gameState?.pl.sta || 0)}%</span>
+                </div>
+                <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5 p-0.5 shadow-inner">
+                  <motion.div 
+                    className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full"
+                    initial={{ width: '100%' }}
+                    animate={{ width: `${Math.max(0, Math.min(100, gameState?.pl.sta || 0))}%` }}
+                    transition={{ duration: 0.3 }}
+                  />
+                </div>
               </div>
-              <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5 p-0.5 shadow-inner">
-                <motion.div 
-                  className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full"
-                  initial={{ width: '100%' }}
-                  animate={{ width: `${Math.max(0, Math.min(100, gameState?.pl.sta || 0))}%` }}
-                  transition={{ duration: 0.3 }}
-                />
-              </div>
-            </div>
 
-            {/* Mana (MP) */}
-            <div className="flex flex-col gap-1">
-              <div className="flex justify-between items-center text-[10px] font-bold font-mono">
-                <span className="text-purple-400 flex items-center gap-1">🔮 MANA</span>
-                <span className="text-purple-200">{Math.floor(gameState?.pl.mp || 0)} / {gameState?.pl.mmp || 100}</span>
-              </div>
-              <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5 p-0.5 shadow-inner">
-                <motion.div 
-                  className="h-full bg-gradient-to-r from-purple-600 to-fuchsia-400 rounded-full"
-                  initial={{ width: '100%' }}
-                  animate={{ width: `${Math.max(0, Math.min(100, ((gameState?.pl.mp || 0) / (gameState?.pl.mmp || 100)) * 100))}%` }}
-                  transition={{ duration: 0.3 }}
-                />
+              {/* Mana (MP) */}
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between items-center text-[10px] font-bold font-mono">
+                  <span className="text-purple-400 flex items-center gap-1">🔮 MANA</span>
+                  <span className="text-purple-200">{Math.floor(gameState?.pl.mp || 0)} / {gameState?.pl.mmp || 100}</span>
+                </div>
+                <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5 p-0.5 shadow-inner">
+                  <motion.div 
+                    className="h-full bg-gradient-to-r from-purple-600 to-fuchsia-400 rounded-full"
+                    initial={{ width: '100%' }}
+                    animate={{ width: `${Math.max(0, Math.min(100, ((gameState?.pl.mp || 0) / (gameState?.pl.mmp || 100)) * 100))}%` }}
+                    transition={{ duration: 0.3 }}
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* RPG-Style Equipment & Gear Panel */}
-          <div className="flex flex-col gap-2.5 p-3.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto min-w-[250px] select-none font-mono">
-            <div className="flex items-center gap-1.5 border-b border-white/10 pb-2 mb-0.5 justify-between">
-              <span className="text-[10px] font-bold tracking-wider text-cyan-400 uppercase flex items-center gap-1">
-                🛡️ Equipment & Gear
-              </span>
-              <span className="text-[9px] bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded font-bold uppercase">
-                DEF: {gameState?.pl.def || 0}
-              </span>
+          {isEquipCollapsed ? (
+            <div className="flex items-center justify-between p-2.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-lg pointer-events-auto w-[250px] select-none font-mono">
+              <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1">🛡️ Gear (DEF: {gameState?.pl.def || 0})</span>
+              <button 
+                onClick={() => setIsEquipCollapsed(false)} 
+                className="px-2 py-0.5 bg-zinc-900 border border-white/10 hover:border-cyan-500/50 hover:bg-zinc-800 text-[9px] rounded-lg text-white font-bold cursor-pointer transition-all active:scale-95"
+              >
+                ▲ SHOW
+              </button>
             </div>
-            
-            <div className="flex flex-col gap-1.5">
-              {[
-                { slot: 'head', n: 'Head', ico: '🪖' },
-                { slot: 'chest', n: 'Chest', ico: '👕' },
-                { slot: 'legs', n: 'Legs', ico: '👖' },
-                { slot: 'feet', n: 'Feet', ico: '🥾' },
-                { slot: 'ring', n: 'Ring', ico: '💍' },
-              ].map(({ slot, n, ico }) => {
-                const itemKey = gameState?.pl.equip?.[slot];
-                const item = itemKey ? IT[itemKey] : null;
-                return (
-                  <div 
-                    key={slot} 
-                    className={`flex items-center justify-between p-2 rounded-xl border text-xs transition-all ${
-                      item 
-                        ? 'bg-zinc-900/90 border-cyan-500/30 shadow-[0_0_8px_rgba(6,182,212,0.15)]' 
-                        : 'bg-white/[0.01] border-white/5 opacity-60'
-                    }`}
+          ) : (
+            <div className="flex flex-col gap-2 p-3 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto min-w-[250px] select-none font-mono">
+              <div className="flex items-center gap-1.5 border-b border-white/10 pb-2 mb-0.5 justify-between">
+                <span className="text-[10px] font-bold tracking-wider text-cyan-400 uppercase flex items-center gap-1">
+                  🛡️ Equipment & Gear
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded font-bold uppercase">
+                    DEF: {gameState?.pl.def || 0}
+                  </span>
+                  <button 
+                    onClick={() => setIsEquipCollapsed(true)} 
+                    className="px-1.5 py-0.5 bg-zinc-900 border border-white/10 hover:border-red-500/30 text-[9px] rounded-lg text-zinc-400 hover:text-white cursor-pointer transition-all active:scale-95"
+                    title="Collapse Panel"
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="text-base" title={n}>{item ? item.ico : ico}</span>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] opacity-40 uppercase tracking-widest leading-none">{n}</span>
-                        <span className={`text-[10px] font-bold truncate max-w-[120px] ${item ? 'text-white' : 'text-zinc-500'}`}>
-                          {item ? item.n : '[ Empty Slot ]'}
-                        </span>
+                    ▼ HIDE
+                  </button>
+                </div>
+              </div>
+              
+              <div className="flex flex-col gap-1">
+                {[
+                  { slot: 'head', n: 'Head', ico: '🪖' },
+                  { slot: 'chest', n: 'Chest', ico: '👕' },
+                  { slot: 'legs', n: 'Legs', ico: '👖' },
+                  { slot: 'feet', n: 'Feet', ico: '🥾' },
+                  { slot: 'ring', n: 'Ring', ico: '💍' },
+                ].map(({ slot, n, ico }) => {
+                  const itemKey = gameState?.pl.equip?.[slot];
+                  const item = itemKey ? IT[itemKey] : null;
+                  return (
+                    <div 
+                      key={slot} 
+                      className={`flex items-center justify-between p-1.5 rounded-xl border text-xs transition-all ${
+                        item 
+                          ? 'bg-zinc-900/90 border-cyan-500/30 shadow-[0_0_8px_rgba(6,182,212,0.15)]' 
+                          : 'bg-white/[0.01] border-white/5 opacity-60'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-base" title={n}>{item ? item.ico : ico}</span>
+                        <div className="flex flex-col">
+                          <span className="text-[8px] opacity-40 uppercase tracking-widest leading-none">{n}</span>
+                          <span className={`text-[9px] font-bold truncate max-w-[120px] ${item ? 'text-white' : 'text-zinc-500'}`}>
+                            {item ? item.n : '[ Empty Slot ]'}
+                          </span>
+                        </div>
                       </div>
+                      {item ? (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[9px] text-cyan-400 font-bold whitespace-nowrap">
+                            {item.def ? `+${item.def} DEF ` : ''}
+                            {item.hpBonus ? `+${item.hpBonus} HP ` : ''}
+                            {item.mpBonus ? `+${item.mpBonus} MP ` : ''}
+                            {item.spdBonus ? `+${Math.round(item.spdBonus * 100)}% SPD ` : ''}
+                          </span>
+                          <button 
+                            onClick={() => handleUnequip(slot)}
+                            className="p-1 hover:bg-red-500/20 text-red-400 hover:text-red-300 rounded cursor-pointer transition-all active:scale-90"
+                            title="Click to Unequip"
+                          >
+                            <X size={10} />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[9px] text-zinc-600 italic">None</span>
+                      )}
                     </div>
-                    {item ? (
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-[9px] text-cyan-400 font-bold whitespace-nowrap">
-                          {item.def ? `+${item.def} DEF ` : ''}
-                          {item.hpBonus ? `+${item.hpBonus} HP ` : ''}
-                          {item.mpBonus ? `+${item.mpBonus} MP ` : ''}
-                          {item.spdBonus ? `+${Math.round(item.spdBonus * 100)}% SPD ` : ''}
-                        </span>
-                        <button 
-                          onClick={() => handleUnequip(slot)}
-                          className="p-1 hover:bg-red-500/20 text-red-400 hover:text-red-300 rounded cursor-pointer transition-all active:scale-90"
-                          title="Click to Unequip"
-                        >
-                          <X size={10} />
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-[9px] text-zinc-600 italic">None</span>
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+              
+              <p className="text-[8px] text-zinc-500 leading-tight text-center mt-1">
+                💡 Click armor pieces in your <span className="text-yellow-500 font-bold">INV</span> to equip them!
+              </p>
             </div>
-            
-            <p className="text-[8px] text-zinc-500 leading-tight text-center mt-1">
-              💡 Click any helmet, chestplate, pants, boots, or magic ring in your <span className="text-yellow-500 font-bold">INV</span> backpack to equip it!
-            </p>
-          </div>
+          )}
+
+          {/* Automation Cores Control Center */}
+          {isAutoCollapsed ? (
+            <div className="flex items-center justify-between p-2.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-lg pointer-events-auto w-[250px] select-none font-mono">
+              <span className="text-[10px] font-bold text-teal-400 uppercase tracking-wider flex items-center gap-1">🤖 Automation ({(autoAttack ? 1:0)+(autoHarvest ? 1:0)+(autoCollect ? 1:0)+(autoCraftState ? 1:0)}/4 CORES)</span>
+              <button 
+                onClick={() => setIsAutoCollapsed(false)} 
+                className="px-2 py-0.5 bg-zinc-900 border border-white/10 hover:border-teal-500/50 hover:bg-zinc-800 text-[9px] rounded-lg text-white font-bold cursor-pointer transition-all active:scale-95"
+              >
+                ▲ SHOW
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2 p-3.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto min-w-[250px] select-none text-white font-mono">
+              <div className="flex items-center gap-1.5 border-b border-white/10 pb-2 justify-between">
+                <span className="text-[10px] font-bold tracking-widest uppercase text-teal-400 flex items-center gap-1">
+                  🤖 Automation Cores
+                </span>
+                <button 
+                  onClick={() => setIsAutoCollapsed(true)} 
+                  className="px-1.5 py-0.5 bg-zinc-900 border border-white/10 hover:border-red-500/30 text-[9px] rounded-lg text-zinc-400 hover:text-white cursor-pointer transition-all active:scale-95"
+                  title="Collapse Panel"
+                >
+                  ▼ HIDE
+                </button>
+              </div>
+              <div className="flex flex-col gap-1">
+                <button
+                  onClick={() => setAutoAttack(prev => !prev)}
+                  className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase flex items-center justify-between transition-all border cursor-pointer ${
+                    autoAttack 
+                      ? 'bg-red-500/20 border-red-500/50 text-red-300 shadow-[0_0_10px_rgba(239,68,68,0.2)]' 
+                      : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
+                  }`}
+                >
+                  <span>⚔️ Combat Core</span>
+                  <span className={autoAttack ? 'text-red-400 animate-pulse font-black' : 'text-zinc-500'}>
+                    {autoAttack ? 'ON' : 'OFF'}
+                  </span>
+                </button>
+                <button
+                  onClick={() => setAutoHarvest(prev => !prev)}
+                  className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase flex items-center justify-between transition-all border cursor-pointer ${
+                    autoHarvest 
+                      ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300 shadow-[0_0_10px_rgba(234,179,8,0.2)]' 
+                      : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
+                  }`}
+                >
+                  <span>🪵 Gathering Core</span>
+                  <span className={autoHarvest ? 'text-yellow-400 animate-pulse font-black' : 'text-zinc-500'}>
+                    {autoHarvest ? 'ON' : 'OFF'}
+                  </span>
+                </button>
+                <button
+                  onClick={() => setAutoCollect(prev => !prev)}
+                  className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase flex items-center justify-between transition-all border cursor-pointer ${
+                    autoCollect 
+                      ? 'bg-green-500/20 border-green-500/50 text-green-300 shadow-[0_0_10px_rgba(34,197,94,0.2)]' 
+                      : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
+                  }`}
+                >
+                  <span>🧲 Vacuum Core</span>
+                  <span className={autoCollect ? 'text-green-400 animate-pulse font-black' : 'text-zinc-500'}>
+                    {autoCollect ? 'ON' : 'OFF'}
+                  </span>
+                </button>
+                <button
+                  onClick={() => setAutoCraftState(prev => !prev)}
+                  className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase flex items-center justify-between transition-all border cursor-pointer ${
+                    autoCraftState 
+                      ? 'bg-orange-500/20 border-orange-500/50 text-orange-300 shadow-[0_0_10px_rgba(249,115,22,0.2)]' 
+                      : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
+                  }`}
+                >
+                  <span>🛠️ Auto-Craft Core</span>
+                  <span className={autoCraftState ? 'text-orange-400 animate-pulse font-black' : 'text-zinc-500'}>
+                    {autoCraftState ? 'ON' : 'OFF'}
+                  </span>
+                </button>
+                <button
+                  onClick={() => {
+                    setAutoPlay(prev => {
+                      const newVal = !prev;
+                      if (newVal) {
+                        setAutoAttack(true);
+                        setAutoHarvest(true);
+                        setAutoCollect(true);
+                        setAutoCraftState(true);
+                        addLog("🧠 Neural Autoplay Core Online: Full Autonomous Survival Active!", "#22d3ee");
+                      } else {
+                        addLog("🧠 Neural Autoplay Core Offline", "#a1a1aa");
+                      }
+                      return newVal;
+                    });
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase flex items-center justify-between transition-all border cursor-pointer ${
+                    autoPlay 
+                      ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.2)]' 
+                      : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
+                  }`}
+                >
+                  <span className="flex items-center gap-1">🤖 Neural Autoplay</span>
+                  <span className={autoPlay ? 'text-cyan-400 animate-pulse font-black' : 'text-zinc-500'}>
+                    {autoPlay ? 'ON' : 'OFF'}
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Crisis Alerts Overlay */}
           {gameState?.pl.hu < 30 && (
@@ -3909,7 +4128,7 @@ export default function SurvivalGame() {
       </div>
 
       {/* --- Logs --- */}
-      <div className="absolute top-24 left-4 flex flex-col gap-1 pointer-events-none z-10">
+      <div className="absolute top-24 left-[276px] flex flex-col gap-1 pointer-events-none z-10 max-w-sm">
         <AnimatePresence>
           {logs.map((log, i) => (
             <motion.div 
@@ -3924,98 +4143,6 @@ export default function SurvivalGame() {
             </motion.div>
           ))}
         </AnimatePresence>
-      </div>
-
-      {/* --- Automation Cores Control Center --- */}
-      <div className="absolute top-[190px] left-4 pointer-events-auto z-10 flex flex-col gap-1.5 bg-black/80 border border-white/10 p-3 rounded-2xl backdrop-blur-md shadow-2xl max-w-xs text-white">
-        <div className="flex items-center gap-1.5 mb-1 border-b border-white/10 pb-1.5">
-          <Cpu size={14} className="text-cyan-400 animate-pulse" />
-          <span className="text-[10px] font-bold tracking-widest uppercase text-cyan-400 font-sans">Automation Cores</span>
-        </div>
-        <div className="flex flex-col gap-1">
-          <button
-            onClick={() => setAutoAttack(prev => !prev)}
-            className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase font-mono flex items-center justify-between transition-all border cursor-pointer ${
-              autoAttack 
-                ? 'bg-red-500/20 border-red-500/50 text-red-300 shadow-[0_0_10px_rgba(239,68,68,0.2)]' 
-                : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
-            }`}
-          >
-            <span>⚔️ Combat Core</span>
-            <span className={autoAttack ? 'text-red-400 animate-pulse' : 'text-zinc-500'}>
-              {autoAttack ? 'ON' : 'OFF'}
-            </span>
-          </button>
-          <button
-            onClick={() => setAutoHarvest(prev => !prev)}
-            className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase font-mono flex items-center justify-between transition-all border cursor-pointer ${
-              autoHarvest 
-                ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300 shadow-[0_0_10px_rgba(234,179,8,0.2)]' 
-                : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
-            }`}
-          >
-            <span>🪵 Gathering Core</span>
-            <span className={autoHarvest ? 'text-yellow-400 animate-pulse' : 'text-zinc-500'}>
-              {autoHarvest ? 'ON' : 'OFF'}
-            </span>
-          </button>
-          <button
-            onClick={() => setAutoCollect(prev => !prev)}
-            className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase font-mono flex items-center justify-between transition-all border cursor-pointer ${
-              autoCollect 
-                ? 'bg-green-500/20 border-green-500/50 text-green-300 shadow-[0_0_10px_rgba(34,197,94,0.2)]' 
-                : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
-            }`}
-          >
-            <span>🧲 Vacuum Core</span>
-            <span className={autoCollect ? 'text-green-400 animate-pulse' : 'text-zinc-500'}>
-              {autoCollect ? 'ON' : 'OFF'}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setAutoCraftState(prev => !prev)}
-            className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase font-mono flex items-center justify-between transition-all border cursor-pointer ${
-              autoCraftState 
-                ? 'bg-orange-500/20 border-orange-500/50 text-orange-300 shadow-[0_0_10px_rgba(249,115,22,0.2)]' 
-                : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
-            }`}
-          >
-            <span>🛠️ Auto-Craft Core</span>
-            <span className={autoCraftState ? 'text-orange-400 animate-pulse' : 'text-zinc-500'}>
-              {autoCraftState ? 'ON' : 'OFF'}
-            </span>
-          </button>
-          
-          <button
-            onClick={() => {
-              setAutoPlay(prev => {
-                const newVal = !prev;
-                if (newVal) {
-                  // Turn on other cores to complement full autoplay
-                  setAutoAttack(true);
-                  setAutoHarvest(true);
-                  setAutoCollect(true);
-                  setAutoCraftState(true);
-                  addLog("🧠 Neural Autoplay Core Online: Full Autonomous Survival Active!", "#22d3ee");
-                } else {
-                  addLog("🧠 Neural Autoplay Core Offline", "#a1a1aa");
-                }
-                return newVal;
-              });
-            }}
-            className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase font-mono flex items-center justify-between transition-all border cursor-pointer ${
-              autoPlay 
-                ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.2)]' 
-                : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
-            }`}
-          >
-            <span className="flex items-center gap-1">🤖 Neural Autoplay</span>
-            <span className={autoPlay ? 'text-cyan-400 animate-pulse font-black' : 'text-zinc-500'}>
-              {autoPlay ? 'ON' : 'OFF'}
-            </span>
-          </button>
-        </div>
       </div>
 
       {/* --- Active World Event Banner --- */}
@@ -5451,24 +5578,41 @@ export default function SurvivalGame() {
                 </button>
               </div>
 
-              {/* Mana reserves monitor */}
-              <div className="bg-white/[0.02] border border-white/10 p-5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
+              {/* Mana & Mana Crystal reserves monitor */}
+              <div className="bg-white/[0.02] border border-white/10 p-5 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-5">
+                <div className="flex-1">
                   <div className="text-xs font-bold uppercase tracking-wider text-fuchsia-400 flex items-center gap-1">
-                    <Zap size={14} /> Mana Reserves
+                    <Zap size={14} /> Arcane Leyline Reserves
                   </div>
-                  <p className="text-[10px] opacity-40 uppercase mt-1">Spells require focused mana. Consumed mana regenerates naturally over time.</p>
+                  <p className="text-[10px] opacity-45 uppercase mt-1 leading-relaxed">
+                    Spells require active mental focus (Mana) or condensed magical reagents (<span className="text-fuchsia-400 font-bold">Mana Crystals</span>) harvested or crafted from raw elements.
+                  </p>
                 </div>
-                <div className="w-full sm:w-48">
-                  <div className="flex justify-between items-center text-[10px] font-mono font-bold mb-1 text-fuchsia-300">
-                    <span>MANA</span>
-                    <span>{gameState?.pl.mp} / {gameState?.pl.mmp}</span>
+                
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full md:w-auto shrink-0 font-mono">
+                  {/* Mana Bar */}
+                  <div className="w-full sm:w-40 md:w-44">
+                    <div className="flex justify-between items-center text-[9px] font-bold mb-1 text-fuchsia-300">
+                      <span>🪄 MANA</span>
+                      <span>{gameState?.pl.mp} / {gameState?.pl.mmp}</span>
+                    </div>
+                    <div className="w-full h-2.5 bg-zinc-900 border border-white/5 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-gradient-to-r from-fuchsia-600 to-indigo-500 transition-all duration-300" 
+                        style={{ width: `${Math.max(0, Math.min(100, ((gameState?.pl.mp || 0) / (gameState?.pl.mmp || 100)) * 100))}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="w-full h-3 bg-zinc-900 border border-white/5 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-gradient-to-r from-fuchsia-600 to-indigo-500 transition-all duration-300" 
-                      style={{ width: `${Math.max(0, Math.min(100, ((gameState?.pl.mp || 0) / (gameState?.pl.mmp || 100)) * 100))}%` }}
-                    />
+
+                  {/* Mana Crystal Count */}
+                  <div className="flex items-center gap-2 bg-zinc-900/80 border border-fuchsia-500/20 px-3 py-1.5 rounded-xl shrink-0">
+                    <span className="text-xl">🧿</span>
+                    <div className="flex flex-col">
+                      <span className="text-[8px] opacity-40 uppercase leading-none">Mana Crystals</span>
+                      <span className="text-xs font-black text-fuchsia-400 leading-normal">
+                        {gameState?.pl.inv.mana_crystal || 0} Collected
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -5511,7 +5655,9 @@ export default function SurvivalGame() {
                       {spellResult.restoration && (
                         <>
                           <li>💖 Restored {spellResult.restoration.healHP} HP and {spellResult.restoration.foodBonus}% Satiety.</li>
-                          <li>🛡️ Activated "Healing Sanctuary" Aura for 45s (+25% movement speed, +5 defense).</li>
+                          {spellResult.restoration.buff && (
+                            <li>🛡️ Activated "Healing Sanctuary" Aura (+25% movement speed, +5 defense).</li>
+                          )}
                         </>
                       )}
                     </ul>
@@ -5525,31 +5671,43 @@ export default function SurvivalGame() {
                 </motion.div>
               ) : (
                 /* Grid list of magic spells */
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {[
+                    {
+                      name: "Heal",
+                      cost: 25,
+                      crystalCost: 1,
+                      ico: "💚",
+                      tag: "RESTORATION",
+                      desc: "Instantly channels pure stellar light to mend bleeding and injuries. Restores 40 Health."
+                    },
                     {
                       name: "Reveal Map",
                       cost: 40,
+                      crystalCost: 2,
                       ico: "🔮",
                       tag: "SCRYING & RADAR",
-                      desc: "Invokes astral scrying to scan and target 4-6 of the rarest mineral veins and flora nodes in your area. Visually highlights them on your canvas radar for 2 minutes."
+                      desc: "Scans the ambient leylines to highlight 4-6 of the rarest mineral veins and flora nodes in your area on your radar for 2 minutes."
                     },
                     {
                       name: "Resource Bounty",
                       cost: 65,
+                      crystalCost: 3,
                       ico: "⭐",
                       tag: "CONDENSATION",
-                      desc: "Pull minerals and raw reagents directly from the planetary atmospheric layers. Shakes the dirt around you, showering the ground with biome-specific resource drops."
+                      desc: "Condenses raw biome-specific elements directly from the clouds, showering the nearby ground with materials."
                     },
                     {
                       name: "Healing Sanctuary",
                       cost: 50,
+                      crystalCost: 2,
                       ico: "💖",
                       tag: "REJUVENATION",
-                      desc: "Spins a protective sphere of healing winds. Restores 40-60 HP, increases Satiety, and activates a 45s aura granting +25% Speed and +5 Defense."
+                      desc: "Spins a protective sphere of healing winds. Restores 40-60 HP, restores Satiety, and activates speed and defense buffs."
                     }
                   ].map(spell => {
-                    const canAfford = (gameState?.pl.mp || 0) >= spell.cost;
+                    const canAffordMP = (gameState?.pl.mp || 0) >= spell.cost;
+                    const canAffordCrystals = (gameState?.pl.inv.mana_crystal || 0) >= spell.crystalCost;
                     return (
                       <div 
                         key={spell.name}
@@ -5563,19 +5721,35 @@ export default function SurvivalGame() {
                           <div className="text-xs font-bold text-white uppercase tracking-wider">{spell.name}</div>
                           <p className="text-[10px] opacity-50 uppercase tracking-tight leading-normal font-sans">{spell.desc}</p>
                         </div>
-                        <div className="border-t border-white/5 pt-3 mt-1 flex justify-between items-center">
-                          <span className="text-[10px] font-mono text-fuchsia-300 font-bold">{spell.cost} MP</span>
-                          <button 
-                            disabled={!canAfford}
-                            onClick={() => handleCastSpell(spell.name, spell.cost)}
-                            className={`px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all ${
-                              canAfford 
-                                ? 'bg-fuchsia-600 hover:bg-fuchsia-500 text-white shadow-md shadow-fuchsia-600/15 cursor-pointer' 
-                                : 'bg-zinc-800 text-zinc-500 border border-zinc-700/20 cursor-not-allowed'
-                            }`}
-                          >
-                            CAST
-                          </button>
+                        <div className="border-t border-white/5 pt-3 mt-1 flex flex-col gap-2">
+                          <div className="flex justify-between items-center text-[9px] font-mono opacity-50 uppercase">
+                            <span>Cost options:</span>
+                            <span>{spell.cost} MP / {spell.crystalCost} Crystal</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <button 
+                              disabled={!canAffordMP}
+                              onClick={() => handleCastSpell(spell.name, spell.cost, 'mp')}
+                              className={`flex-1 py-1.5 px-2 font-mono text-[9px] font-bold uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1 ${
+                                canAffordMP 
+                                  ? 'bg-fuchsia-600/15 hover:bg-fuchsia-600 border border-fuchsia-500/40 text-fuchsia-100 hover:text-white hover:shadow-md cursor-pointer' 
+                                  : 'bg-zinc-900 text-zinc-600 border border-zinc-800/10 cursor-not-allowed'
+                              }`}
+                            >
+                              ⚡ Cast (MP)
+                            </button>
+                            <button 
+                              disabled={!canAffordCrystals}
+                              onClick={() => handleCastSpell(spell.name, spell.cost, 'crystals')}
+                              className={`flex-1 py-1.5 px-2 font-mono text-[9px] font-bold uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1 ${
+                                canAffordCrystals 
+                                  ? 'bg-purple-600 hover:bg-purple-500 border border-purple-400/40 text-white shadow-md cursor-pointer' 
+                                  : 'bg-zinc-900 text-zinc-600 border border-zinc-800/10 cursor-not-allowed'
+                              }`}
+                            >
+                              🧿 Cast (Crystal)
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );

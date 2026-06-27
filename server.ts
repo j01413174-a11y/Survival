@@ -248,6 +248,11 @@ app.post("/api/gemini/cast-spell", async (req, res) => {
          Casts a restorative circle of rejuvenation.
          Return the restoration values: healHP (integer 40 to 60), foodBonus (integer 15 to 30), and stats buff details (e.g., speedMultiplier: 1.25, defenseBonus: 5, durationSeconds: 45).
          Provide a soothing, comforting message of divine wellness.
+
+      4. For "Heal":
+         Casts a direct focal mending spell.
+         Return the restoration values: healHP (integer 35 to 55), foodBonus (0).
+         Provide a warm, restorative, soothing description of wounds closing.
          
       Return the response in JSON format.
     `;
