@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helpers
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // User Profile rules
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && incoming().uid == userId
+        && incoming().email is string
+        && incoming().email.size() <= 256;
+      allow update: if isOwner(userId)
+        && incoming().uid == existing().uid
+        && incoming().email == existing().email
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'createdAt']);
+    }
+
+    // Saves rules
+    match /users/{userId}/saves/{saveId} {
+      allow get, list: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && isValidId(saveId)
+        && incoming().userId == userId
+        && incoming().slotId == saveId
+        && incoming().saveData is string
+        && incoming().saveData.size() <= 1048576; // Max 1MB
+      allow update: if isOwner(userId)
+        && incoming().userId == existing().userId
+        && incoming().slotId == existing().slotId
+        && incoming().saveData is string
+        && incoming().saveData.size() <= 1048576
+        && incoming().diff(existing()).affectedKeys().hasOnly(['saveData', 'updatedAt']);
+      allow delete: if isOwner(userId);
+    }
+  }
+}

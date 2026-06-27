@@ -1,0 +1,38 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores user profile and account details.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "SaveSlot": {
+      "title": "Save Slot",
+      "description": "A game save slot with player state, object state, day/time state.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "slotId": { "type": "string" },
+        "saveData": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "slotId", "saveData"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Stores individual user records."
+    },
+    "/users/{userId}/saves/{saveId}": {
+      "schema": "SaveSlot",
+      "description": "Stores the user's specific game save slots synced to the cloud."
+    }
+  }
+}

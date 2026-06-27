@@ -25,10 +25,20 @@ import {
   Upload,
   Cpu,
   Globe,
-  Shuffle
+  Shuffle,
+  Cloud,
+  CloudUpload,
+  CloudDownload,
+  LogIn,
+  LogOut,
+  RefreshCw,
+  UserCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getOracleGuidance, generateWorldEvent, castSpell } from '../services/geminiService';
+import { auth, googleProvider, db, handleFirestoreError, testConnection, OperationType } from '../services/firebase';
+import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
+import { doc, setDoc, getDoc, getDocs, deleteDoc, collection, query } from 'firebase/firestore';
 
 // --- Constants & Types ---
 const TZ = 32;
@@ -54,24 +64,24 @@ const TC: Record<number, string[]> = {
 
 // --- Game Data ---
 const MAPS = [
-  { id: 0, n: 'Verdant Forest', s: 1337, m: TG, f: TD, r: TS, w: TW, wf: .12, rf: .08, sky: '#87ceeb', ef: ['wolf', 'fox', 'goblin', 'bandit'], dr: { wood: .04, fiber: .02, herb: .015, berry: .012, flint: .008, stone: .02 } },
-  { id: 1, n: 'Deep Forest', s: 2674, m: TG, f: TD, r: TS, w: TW, wf: .10, rf: .07, sky: '#1a3d10', ef: ['wolf', 'spider', 'skeleton', 'goblin'], dr: { wood: .04, mushroom: .016, herb: .012, venom: .008, fiber: .014, bone: .01 } },
-  { id: 2, n: 'Sunlit Plains', s: 3011, m: TG, f: TD, r: TS, w: TW, wf: .05, rf: .04, sky: '#6dbadf', ef: ['fox', 'goblin', 'bandit', 'archer'], dr: { fiber: .025, herb: .018, berry: .015, flint: .01, feather: .01, honey: .01, cotton: .015 } },
+  { id: 0, n: 'Verdant Forest', s: 1337, m: TG, f: TD, r: TS, w: TW, wf: .12, rf: .08, sky: '#87ceeb', ef: ['wolf', 'fox', 'goblin', 'bandit', 'deer', 'pheasant'], dr: { wood: .04, fiber: .02, herb: .015, berry: .012, flint: .008, stone: .02 } },
+  { id: 1, n: 'Deep Forest', s: 2674, m: TG, f: TD, r: TS, w: TW, wf: .10, rf: .07, sky: '#1a3d10', ef: ['wolf', 'spider', 'skeleton', 'goblin', 'boar', 'alpha_wolf'], dr: { wood: .04, mushroom: .016, herb: .012, venom: .008, fiber: .014, bone: .01 } },
+  { id: 2, n: 'Sunlit Plains', s: 3011, m: TG, f: TD, r: TS, w: TW, wf: .05, rf: .04, sky: '#6dbadf', ef: ['fox', 'goblin', 'bandit', 'archer', 'deer', 'pheasant', 'boar'], dr: { fiber: .025, herb: .018, berry: .015, flint: .01, feather: .01, honey: .01, cotton: .015 } },
   { id: 3, n: 'Sandy Desert', s: 4488, m: TSA, f: TSA, r: TS, w: TW, wf: .03, rf: .08, sky: '#f5d08a', ef: ['bandit', 'bandit_chief', 'goblin', 'orc'], dr: { bone: .02, sulfur: .016, flint: .014, gem: .005, sand: .03, stone: .02 } },
-  { id: 4, n: 'Frozen Tundra', s: 5665, m: TSN, f: TS, r: TS, w: TW, wf: .06, rf: .12, sky: '#b0d4e8', ef: ['wolf', 'bear', 'skeleton', 'orc'], dr: { ice_crystal: .02, bone: .01, herb: .006, crystal: .006, wood: .012 } },
-  { id: 5, n: 'Misty Swamp', s: 6821, m: TSW, f: TD, r: TS, w: TW, wf: .18, rf: .04, sky: '#4a5a3a', ef: ['zombie', 'spider', 'wraith', 'goblin'], dr: { mushroom: .022, venom: .016, fiber: .014, silk: .009, herb: .009 } },
-  { id: 6, n: 'Mountain Pass', s: 7234, m: TS, f: TD, r: TS, w: TW, wf: .04, rf: .26, sky: '#7a8898', ef: ['troll', 'bear', 'orc', 'skeleton'], dr: { iron_ore: .02, crystal: .009, gem: .006, coal: .014, stone: .03, mithril_ore: .005 } },
-  { id: 7, n: 'Goblin Territory', s: 8456, m: TD, f: TD, r: TS, w: TW, wf: .06, rf: .09, sky: '#7a9a6a', ef: ['goblin', 'goblin_chief', 'bandit', 'orc'], dr: { bone: .016, feather: .013, leather: .011, flint: .011, wood: .016 } },
-  { id: 8, n: 'Coastal Shore', s: 9732, m: TSA, f: TSA, r: TS, w: TW, wf: .28, rf: .03, sky: '#4a9ad4', ef: ['bandit', 'skeleton', 'goblin', 'archer'], dr: { fish: .022, silk: .011, sand: .035, feather: .016, bone: .009 } },
+  { id: 4, n: 'Frozen Tundra', s: 5665, m: TSN, f: TS, r: TS, w: TW, wf: .06, rf: .12, sky: '#b0d4e8', ef: ['wolf', 'bear', 'skeleton', 'orc', 'alpha_wolf'], dr: { ice_crystal: .02, bone: .01, herb: .006, crystal: .006, wood: .012 } },
+  { id: 5, n: 'Misty Swamp', s: 6821, m: TSW, f: TD, r: TS, w: TW, wf: .18, rf: .04, sky: '#4a5a3a', ef: ['zombie', 'spider', 'wraith', 'goblin', 'boar'], dr: { mushroom: .022, venom: .016, fiber: .014, silk: .009, herb: .009 } },
+  { id: 6, n: 'Mountain Pass', s: 7234, m: TS, f: TD, r: TS, w: TW, wf: .04, rf: .26, sky: '#7a8898', ef: ['troll', 'bear', 'orc', 'skeleton', 'deer', 'alpha_wolf'], dr: { iron_ore: .02, crystal: .009, gem: .006, coal: .014, stone: .03, mithril_ore: .005 } },
+  { id: 7, n: 'Goblin Territory', s: 8456, m: TD, f: TD, r: TS, w: TW, wf: .06, rf: .09, sky: '#7a9a6a', ef: ['goblin', 'goblin_chief', 'bandit', 'orc', 'boar', 'deer'], dr: { bone: .016, feather: .013, leather: .011, flint: .011, wood: .016 } },
+  { id: 8, n: 'Coastal Shore', s: 9732, m: TSA, f: TSA, r: TS, w: TW, wf: .28, rf: .03, sky: '#4a9ad4', ef: ['bandit', 'skeleton', 'goblin', 'archer', 'pheasant', 'deer'], dr: { fish: .022, silk: .011, sand: .035, feather: .016, bone: .009 } },
   { id: 9, n: 'Ancient Ruins', s: 10551, m: TS, f: TS, r: TS, w: TW, wf: .03, rf: .20, sky: '#5a5060', ef: ['skeleton', 'golem', 'dark_mage', 'wraith'], dr: { crystal: .016, magic_essence: .011, bone: .022, gem: .013, stone: .022, ancient_rune: .003 } },
   { id: 10, n: 'Scorched Waste', s: 11889, m: TS, f: TS, r: TS, w: TLV, wf: .06, rf: .11, sky: '#8a4020', ef: ['troll', 'orc', 'orc_chief', 'dark_mage'], dr: { sulfur: .022, coal: .027, iron_ore: .014, ash_crystal: .006 } },
   { id: 11, n: 'Volcanic Fields', s: 12004, m: TS, f: TLV, r: TS, w: TLV, wf: .14, rf: .07, sky: '#cc4400', ef: ['troll', 'orc', 'golem', 'wraith'], dr: { sulfur: .027, coal: .031, iron_ore: .022, crystal: .006, gem: .004 } },
-  { id: 12, n: 'Orc Stronghold', s: 13377, m: TD, f: TD, r: TS, w: TW, wf: .04, rf: .09, sky: '#6a5040', ef: ['orc', 'orc_chief', 'troll', 'goblin_chief'], dr: { bone: .022, leather: .016, iron_ore: .014, coal: .011, wood: .014 } },
+  { id: 12, n: 'Orc Stronghold', s: 13377, m: TD, f: TD, r: TS, w: TW, wf: .04, rf: .09, sky: '#6a5040', ef: ['orc', 'orc_chief', 'troll', 'goblin_chief', 'boar'], dr: { bone: .022, leather: .016, iron_ore: .014, coal: .011, wood: .014 } },
   { id: 13, n: 'Bandit Outpost', s: 14220, m: TD, f: TS, r: TS, w: TW, wf: .04, rf: .13, sky: '#5a5060', ef: ['bandit', 'bandit_chief', 'archer', 'dark_mage'], dr: { iron_ore: .014, leather: .014, gem: .006, flint: .014, coal: .009 } },
   { id: 14, n: 'Crystal Cavern', s: 15641, m: TS, f: TS, r: TS, w: TW, wf: .04, rf: .20, sky: '#1a1a44', ef: ['wraith', 'dark_mage', 'skeleton', 'golem'], dr: { crystal: .036, magic_essence: .020, gem: .016, ice_crystal: .014 } },
   { id: 15, n: 'Haunted Graveyard', s: 16007, m: TD, f: TS, r: TS, w: TW, wf: .04, rf: .08, sky: '#1a1a22', ef: ['skeleton', 'zombie', 'wraith', 'dark_mage'], dr: { bone: .036, crystal: .011, magic_essence: .008, herb: .004, silk: .006 } },
   { id: 16, n: 'Undead Kingdom', s: 17890, m: TD, f: TS, r: TS, w: TW, wf: .06, rf: .11, sky: '#0a0a1a', ef: ['zombie', 'skeleton', 'wraith', 'dark_mage', 'golem'], dr: { bone: .040, magic_essence: .016, crystal: .011, silk: .009 } },
-  { id: 17, n: 'Enchanted Grove', s: 18234, m: TG, f: TG, r: TS, w: TW, wf: .09, rf: .04, sky: '#2a1a4a', ef: ['dark_mage', 'wraith', 'goblin', 'spider'], dr: { magic_essence: .025, crystal: .016, herb: .027, silk: .016, mushroom: .011 } },
+  { id: 17, n: 'Enchanted Grove', s: 18234, m: TG, f: TG, r: TS, w: TW, wf: .09, rf: .04, sky: '#2a1a4a', ef: ['dark_mage', 'wraith', 'goblin', 'spider', 'deer', 'pheasant'], dr: { magic_essence: .025, crystal: .016, herb: .027, silk: .016, mushroom: .011 } },
   { id: 18, n: "Dragon's Domain", s: 19555, m: TS, f: TLV, r: TS, w: TLV, wf: .11, rf: .09, sky: '#440000', ef: ['dragon', 'troll', 'orc_chief', 'dark_mage'], dr: { gem: .022, crystal: .016, magic_essence: .016, sulfur: .022, bone: .016 } },
   { id: 19, n: 'Corrupted Lands', s: 20001, m: TD, f: TD, r: TS, w: TLV, wf: .09, rf: .09, sky: '#080810', ef: ['dragon', 'dark_mage', 'wraith', 'orc_chief', 'bandit_chief'], dr: { magic_essence: .027, crystal: .022, sulfur: .016, bone: .027, gem: .011 } },
   { id: 20, n: 'Celestial Realm', s: 99999, m: TCR, f: TCR, r: TS, w: TW, wf: .05, rf: .05, sky: '#1a0a3a', ef: ['celestial_guardian', 'void_wraith', 'star_golem'], dr: { magic_essence: .05, crystal: .04, gem: .03, void_crystal: .02, celestial_shard: .01 } },
@@ -93,6 +103,12 @@ const ET: Record<string, any> = {
   celestial_guardian: { n: 'Celestial Guardian', ico: '✨', hp: 300, spd: 1.5, dmg: 40, acd: 70, xp: 150, lo: { celestial_shard: .5, magic_essence: .8 }, ran: true },
   void_wraith: { n: 'Void Wraith', ico: '🌑', hp: 150, spd: 2.0, dmg: 35, acd: 50, xp: 100, lo: { void_crystal: .4, magic_essence: .6 }, ran: false },
   star_golem: { n: 'Star Golem', ico: '🌟', hp: 500, spd: 0.8, dmg: 60, acd: 100, xp: 300, lo: { gem: .9, crystal: .9, celestial_shard: .3 }, ran: false, boss: 1 },
+
+  // --- Wild game huntable animals ---
+  deer: { n: 'Wild Deer', ico: '🦌', hp: 25, spd: 2.2, dmg: 0, acd: 100, xp: 12, lo: { meat: 1.0, leather: .6 }, ran: false },
+  boar: { n: 'Wild Boar', ico: '🐗', hp: 45, spd: 1.4, dmg: 14, acd: 70, xp: 18, lo: { meat: 1.0, leather: .8 }, ran: false },
+  pheasant: { n: 'Wild Pheasant', ico: '🦃', hp: 12, spd: 1.8, dmg: 0, acd: 100, xp: 8, lo: { meat: .6, feather: 1.0 }, ran: false },
+  alpha_wolf: { n: 'Alpha Wolf', ico: '🐺', hp: 130, spd: 2.1, dmg: 24, acd: 50, xp: 55, lo: { meat: 2.0, leather: 1.5, alpha_pelt: 1.0 }, ran: false, boss: 1 },
 };
 
 const IT: Record<string, any> = {
@@ -169,9 +185,58 @@ const IT: Record<string, any> = {
   workbench: { ico: '🪚', n: 'Workbench', t: 'struct' },
   forge: { ico: '⚒️', n: 'Forge', t: 'struct' },
   magic_altar: { ico: '🕋', n: 'Magic Altar', t: 'struct' },
+
+  // --- Hunted/Fishing Hotspot additions ---
+  magma_cod: { ico: '🌋', n: 'Magma Cod', t: 'food', hu: 20, hp: 8, mp: 5 },
+  obsidian_fin: { ico: '🖤', n: 'Obsidian Fin', t: 'food', hu: 35, hp: 20, mp: 10 },
+  legendary_salmon: { ico: '👑', n: 'Legendary Salmon', t: 'food', hu: 40, hp: 30, mp: 15 },
+  cooked_magma_cod: { ico: '🔥', n: 'Cooked Magma Cod', t: 'food', hu: 60, hp: 35, mp: 20 },
+  cooked_obsidian_fin: { ico: '🖤', n: 'Cooked Obsidian Fin', t: 'food', hu: 80, hp: 60, mp: 40 },
+  cooked_legendary_salmon: { ico: '👑', n: 'Cooked Legendary Salmon', t: 'food', hu: 95, hp: 80, mp: 60 },
+  alpha_pelt: { ico: '🐺', n: 'Alpha Wolf Pelt', t: 'mat' },
+  boar_tusk: { ico: '🐗', n: 'Boar Tusk', t: 'mat' },
+  recurve_bow: { id: 'recurve_bow', n: 'Recurve Bow', ico: '🏹', dmg: 38, spd: 25, rng: 240, type: 'ranged', mp: 0 },
+  beastmaster_armor: { ico: '🧥', n: 'Beastmaster Armor', t: 'armor', sl: 'chest', def: 12 },
+
+  // --- Head, Legs, Feet & Ring Equipment ---
+  leather_cap: { ico: '🪖', n: 'Leather Cap', t: 'armor', sl: 'head', def: 2 },
+  iron_helmet: { ico: '🪖', n: 'Iron Helmet', t: 'armor', sl: 'head', def: 6 },
+  mithril_helmet: { ico: '🪖', n: 'Mithril Helmet', t: 'armor', sl: 'head', def: 12 },
+
+  leather_trousers: { ico: '👖', n: 'Leather Pants', t: 'armor', sl: 'legs', def: 3 },
+  iron_greaves: { ico: '👖', n: 'Iron Greaves', t: 'armor', sl: 'legs', def: 8 },
+  mithril_greaves: { ico: '👖', n: 'Mithril Greaves', t: 'armor', sl: 'legs', def: 16 },
+
+  leather_boots: { ico: '🥾', n: 'Leather Boots', t: 'armor', sl: 'feet', def: 2, spdBonus: 0.2 },
+  iron_boots: { ico: '🥾', n: 'Iron Boots', t: 'armor', sl: 'feet', def: 5, spdBonus: 0.1 },
+  mithril_boots: { ico: '🥾', n: 'Mithril Boots', t: 'armor', sl: 'feet', def: 9, spdBonus: 0.4 },
+
+  health_ring: { ico: '💍', n: 'Vitality Ring', t: 'armor', sl: 'ring', def: 1, hpBonus: 20 },
+  stamina_ring: { ico: '💍', n: 'Stamina Ring', t: 'armor', sl: 'ring', def: 0, spdBonus: 0.3 },
+  mana_ring: { ico: '💍', n: 'Arcane Ring', t: 'armor', sl: 'ring', def: 1, mpBonus: 30 },
 };
 
 const RC = [
+  { n: 'Cooked Magma Cod', out: 'cooked_magma_cod', cnt: 1, cat: 'Food', c: { magma_cod: 1 }, req: 'campfire' },
+  { n: 'Cooked Obsidian Fin', out: 'cooked_obsidian_fin', cnt: 1, cat: 'Food', c: { obsidian_fin: 1 }, req: 'campfire' },
+  { n: 'Cooked Legendary Salmon', out: 'cooked_legendary_salmon', cnt: 1, cat: 'Food', c: { legendary_salmon: 1 }, req: 'campfire' },
+  { n: 'Recurve Bow', out: 'recurve_bow', cnt: 1, cat: 'Weapons', c: { wood: 6, fiber: 5, boar_tusk: 2 }, req: 'workbench' },
+  { n: 'Beastmaster Armor', out: 'beastmaster_armor', cnt: 1, cat: 'Armor', c: { leather: 5, alpha_pelt: 1 }, req: 'workbench' },
+
+  // --- New Armor & Accessory Recipes ---
+  { n: 'Leather Cap', out: 'leather_cap', cnt: 1, cat: 'Armor', c: { leather: 2 }, req: 'workbench' },
+  { n: 'Iron Helmet', out: 'iron_helmet', cnt: 1, cat: 'Armor', c: { iron_bar: 3 }, req: 'workbench' },
+  { n: 'Mithril Helmet', out: 'mithril_helmet', cnt: 1, cat: 'Armor', c: { mithril_bar: 4 }, req: 'workbench' },
+  { n: 'Leather Pants', out: 'leather_trousers', cnt: 1, cat: 'Armor', c: { leather: 3, fiber: 2 }, req: 'workbench' },
+  { n: 'Iron Greaves', out: 'iron_greaves', cnt: 1, cat: 'Armor', c: { iron_bar: 4 }, req: 'workbench' },
+  { n: 'Mithril Greaves', out: 'mithril_greaves', cnt: 1, cat: 'Armor', c: { mithril_bar: 5 }, req: 'workbench' },
+  { n: 'Leather Boots', out: 'leather_boots', cnt: 1, cat: 'Armor', c: { leather: 2, fiber: 1 }, req: 'workbench' },
+  { n: 'Iron Boots', out: 'iron_boots', cnt: 1, cat: 'Armor', c: { iron_bar: 2 }, req: 'workbench' },
+  { n: 'Mithril Boots', out: 'mithril_boots', cnt: 1, cat: 'Armor', c: { mithril_bar: 3 }, req: 'workbench' },
+  { n: 'Vitality Ring', out: 'health_ring', cnt: 1, cat: 'Armor', c: { gold_bar: 2, crystal: 1 }, req: 'magic_altar' },
+  { n: 'Stamina Ring', out: 'stamina_ring', cnt: 1, cat: 'Armor', c: { gold_bar: 2, feather: 2 }, req: 'magic_altar' },
+  { n: 'Arcane Ring', out: 'mana_ring', cnt: 1, cat: 'Armor', c: { gold_bar: 2, mana_crystal: 1 }, req: 'magic_altar' },
+
   { n: 'Stick x2', out: 'stick', cnt: 2, cat: 'Materials', c: { wood: 1 } },
   { n: 'Iron Bar', out: 'iron_bar', cnt: 1, cat: 'Materials', c: { iron_ore: 2, coal: 1 }, req: 'forge' },
   { n: 'Steel Bar', out: 'steel_bar', cnt: 1, cat: 'Materials', c: { iron_bar: 2, coal: 2 }, req: 'forge' },
@@ -382,6 +447,11 @@ export default function SurvivalGame() {
   const [importString, setImportString] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
 
+  // --- Firebase Auth & Cloud Sync States ---
+  const [user, setUser] = useState<any>(null);
+  const [cloudSlots, setCloudSlots] = useState<Record<string, any>>({});
+  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+
   // Sync autosave ref with state
   useEffect(() => {
     autosaveEnabledRef.current = autosaveEnabled;
@@ -428,6 +498,8 @@ export default function SurvivalGame() {
   const [showSpellbook, setShowSpellbook] = useState(false);
   const [isCasting, setIsCasting] = useState(false);
   const [spellResult, setSpellResult] = useState<any>(null);
+  const [fishingHotspotTx, setFishingHotspotTx] = useState<number | null>(null);
+  const [fishingHotspotTy, setFishingHotspotTy] = useState<number | null>(null);
 
   // Load slot metadata upon opening
   const loadSlotMetadata = useCallback(() => {
@@ -478,7 +550,7 @@ export default function SurvivalGame() {
       s.pl.mp = data.pl.mp ?? 100;
       s.pl.mmp = data.pl.mmp || 100;
       s.pl.inv = data.pl.inv;
-      s.pl.equip = data.pl.equip || { head: null, chest: null, legs: null, feet: null };
+      s.pl.equip = { head: null, chest: null, legs: null, feet: null, ring: null, ...(data.pl.equip || {}) };
       s.pl.weapon = data.pl.weapon || 'fists';
       s.pl.hotbar = data.pl.hotbar || ['torch', 'campfire', 'workbench', 'forge', 'stone_axe'];
       s.pl.spd = data.pl.spd || 3.0;
@@ -492,7 +564,8 @@ export default function SurvivalGame() {
         mining: { lvl: 1, xp: 0, xpNext: 100 },
         woodcutting: { lvl: 1, xp: 0, xpNext: 100 },
         combat: { lvl: 1, xp: 0, xpNext: 100 },
-        alchemy: { lvl: 1, xp: 0, xpNext: 100 }
+        alchemy: { lvl: 1, xp: 0, xpNext: 100 },
+        hunting: { lvl: 1, xp: 0, xpNext: 100 }
       };
 
       // 2. Restore World Objects
@@ -613,6 +686,160 @@ export default function SurvivalGame() {
     loadSlotMetadata();
   }, [loadSlotMetadata]);
 
+  // --- Firebase Auth & Cloud Sync Callbacks ---
+  const fetchCloudSaves = useCallback(async (userId: string) => {
+    try {
+      setIsCloudSyncing(true);
+      const savesRef = collection(db, "users", userId, "saves");
+      const querySnapshot = await getDocs(savesRef);
+      const cloudData: Record<string, any> = {};
+      querySnapshot.forEach((doc) => {
+        try {
+          const data = doc.data();
+          if (data && data.saveData) {
+            cloudData[doc.id] = JSON.parse(data.saveData);
+          }
+        } catch (e) {
+          console.error("Failed to parse cloud save", doc.id, e);
+        }
+      });
+      setCloudSlots(cloudData);
+    } catch (err) {
+      console.error("Failed to fetch cloud saves:", err);
+      addLog("Failed to fetch cloud saves", "#f87171");
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    testConnection();
+
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        addLog(`Welcome back, ${currentUser.displayName || 'Survivor'}!`, '#60a5fa');
+        // Ensure user document exists/updates in Firestore
+        const userDocRef = doc(db, "users", currentUser.uid);
+        setDoc(userDocRef, {
+          uid: currentUser.uid,
+          email: currentUser.email || "",
+          displayName: currentUser.displayName || "Survivor",
+          createdAt: new Date().toISOString()
+        }, { merge: true }).catch(err => {
+          console.error("Failed to sync user to Firestore", err);
+        });
+
+        fetchCloudSaves(currentUser.uid);
+      } else {
+        setCloudSlots({});
+      }
+    });
+    return () => unsubscribe();
+  }, [fetchCloudSaves]);
+
+  const backupToCloud = useCallback(async (slotId: string) => {
+    if (!auth.currentUser) {
+      addLog("Please sign in to backup to cloud!", "#fbbf24");
+      return;
+    }
+
+    const localSave = localStorage.getItem(`wild_survival_save_${slotId}`);
+    if (!localSave) {
+      addLog(`No local data in Slot ${slotId.toUpperCase()} to backup!`, "#f87171");
+      return;
+    }
+
+    try {
+      setIsCloudSyncing(true);
+      const saveDocRef = doc(db, "users", auth.currentUser.uid, "saves", slotId);
+      await setDoc(saveDocRef, {
+        userId: auth.currentUser.uid,
+        slotId: slotId,
+        saveData: localSave,
+        updatedAt: new Date().toISOString()
+      });
+      addLog(`Cloud backup successful for Slot ${slotId.toUpperCase()}!`, '#10b981');
+      await fetchCloudSaves(auth.currentUser.uid);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `users/${auth.currentUser.uid}/saves/${slotId}`);
+      addLog("Cloud backup failed!", "#f87171");
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  }, [fetchCloudSaves]);
+
+  const restoreFromCloud = useCallback(async (slotId: string) => {
+    if (!auth.currentUser) {
+      addLog("Please sign in to restore from cloud!", "#fbbf24");
+      return;
+    }
+
+    try {
+      setIsCloudSyncing(true);
+      const saveDocRef = doc(db, "users", auth.currentUser.uid, "saves", slotId);
+      const docSnap = await getDoc(saveDocRef);
+      if (!docSnap.exists()) {
+        addLog(`No cloud backup found for Slot ${slotId.toUpperCase()}!`, "#f87171");
+        return;
+      }
+
+      const cloudSaveStr = docSnap.data().saveData;
+      const success = loadGameDataStr(cloudSaveStr);
+      if (success) {
+        localStorage.setItem(`wild_survival_save_${slotId}`, cloudSaveStr);
+        loadSlotMetadata();
+        addLog(`Restored Slot ${slotId.toUpperCase()} from cloud!`, '#34d399');
+        setShowSaveMenu(false);
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.GET, `users/${auth.currentUser.uid}/saves/${slotId}`);
+      addLog("Cloud restore failed!", "#f87171");
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  }, [loadGameDataStr, loadSlotMetadata]);
+
+  const deleteCloudSave = useCallback(async (slotId: string) => {
+    if (!auth.currentUser) return;
+    try {
+      setIsCloudSyncing(true);
+      const saveDocRef = doc(db, "users", auth.currentUser.uid, "saves", slotId);
+      await deleteDoc(saveDocRef);
+      addLog(`Deleted Cloud Backup for Slot ${slotId.toUpperCase()}`, "#fca5a5");
+      await fetchCloudSaves(auth.currentUser.uid);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `users/${auth.currentUser.uid}/saves/${slotId}`);
+      addLog("Failed to delete cloud backup!", "#f87171");
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  }, [fetchCloudSaves]);
+
+  const handleSignIn = async () => {
+    try {
+      setIsCloudSyncing(true);
+      await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      console.error("Sign in failed:", err);
+      addLog("Sign in failed!", "#f87171");
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      setIsCloudSyncing(true);
+      await signOut(auth);
+      addLog("Signed out successfully", "#fca5a5");
+    } catch (err) {
+      console.error("Sign out failed:", err);
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  };
+
   // Export save data as file download
   const exportSaveToFile = useCallback((slotId: string) => {
     const raw = localStorage.getItem(`wild_survival_save_${slotId}`);
@@ -702,10 +929,13 @@ export default function SurvivalGame() {
       localStorage.setItem('wild_survival_save_autosave', JSON.stringify(saveData));
       addLog("💾 Autosaved progress", "#38bdf8");
       loadSlotMetadata();
+      if (auth.currentUser) {
+        backupToCloud('autosave');
+      }
     } catch (err) {
       console.error("Autosave failed:", err);
     }
-  }, [loadSlotMetadata]);
+  }, [loadSlotMetadata, backupToCloud]);
 
   const stateRef = useRef<any>(null);
   const keysRef = useRef<Record<string, boolean>>({});
@@ -721,7 +951,7 @@ export default function SurvivalGame() {
       isGridMoving: false,
       hp: 100, mhp: 100, hu: 100, sta: 100, mp: 100, mmp: 100,
       inv: { wood: 10, stone: 5, fiber: 5, herb: 3, berry: 5, torch: 1 },
-      equip: { head: null, chest: null, legs: null, feet: null },
+      equip: { head: null, chest: null, legs: null, feet: null, ring: null },
       weapon: 'fists',
       hotbar: ['torch', 'campfire', 'workbench', 'forge', 'stone_axe', 'iron_sword', 'shortbow', 'fishing_rod'],
       spd: 3.0, sprint: false, atkcd: 0, gcd: 0, ifr: 0, xp: 0, lvl: 1, xpNext: 100, def: 0,
@@ -731,7 +961,8 @@ export default function SurvivalGame() {
         mining: { lvl: 1, xp: 0, xpNext: 100 },
         woodcutting: { lvl: 1, xp: 0, xpNext: 100 },
         combat: { lvl: 1, xp: 0, xpNext: 100 },
-        alchemy: { lvl: 1, xp: 0, xpNext: 100 }
+        alchemy: { lvl: 1, xp: 0, xpNext: 100 },
+        hunting: { lvl: 1, xp: 0, xpNext: 100 }
       }
     };
 
@@ -891,10 +1122,35 @@ export default function SurvivalGame() {
                   objs.push({ type: 'rock', tx: wx, ty: wy, hp: rockHp, mhp: rockHp, ico: rockIco, subtype: rockSubtype });
                 }
               } else {
-                // Ground drops
-                for (const [k, v] of Object.entries(M.dr)) {
-                  if (rng() < (v as number) * 0.8) {
-                    objs.push({ type: 'drop', tx: wx, ty: wy, item: k, qty: 1 + Math.floor(rng() * 2) });
+                // If it is a water or lava tile, spawn a Fishing Hotspot instead of land debris!
+                if (tileType === TW || tileType === TLV) {
+                  if (rng() < 0.045) { // 4.5% chance per water/lava tile
+                    objs.push({
+                      type: 'fishing_hotspot',
+                      tx: wx,
+                      ty: wy,
+                      hp: 3 + Math.floor(rng() * 4), // 3 to 6 catches before depletion
+                      ico: tileType === TLV ? '🌋' : '🐟',
+                      subtype: tileType === TLV ? 'lava' : 'ocean'
+                    });
+                  }
+                } else {
+                  // Standard ground drops
+                  for (const [k, v] of Object.entries(M.dr)) {
+                    if (rng() < (v as number) * 0.8) {
+                      objs.push({ type: 'drop', tx: wx, ty: wy, item: k, qty: 1 + Math.floor(rng() * 2) });
+                    }
+                  }
+                  // Occasionally spawn tracking clues / footprints on land
+                  if (rng() < 0.02) {
+                    objs.push({
+                      type: 'animal_track',
+                      tx: wx,
+                      ty: wy,
+                      hp: 1,
+                      ico: '🐾',
+                      subtype: 'track'
+                    });
                   }
                 }
               }
@@ -1261,9 +1517,43 @@ export default function SurvivalGame() {
         }
 
         const d = dist(e, s.pl);
-        if (d < 400) {
+        const spd = e.slowTicks > 0 ? e.spd * 0.5 : e.spd;
+
+        let shouldChase = true;
+        let shouldFlee = false;
+
+        if (e.eid === 'deer' || e.eid === 'pheasant') {
+          shouldChase = false;
+          if (d < 180) {
+            shouldFlee = true;
+          }
+        } else if (e.eid === 'boar') {
+          // Boar is neutral, only chases if provoked (damaged)
+          if (e.hp >= e.mhp) {
+            shouldChase = false;
+          }
+        }
+
+        if (shouldFlee) {
+          // Run AWAY from player
+          const ang = Math.atan2(e.y - s.pl.y, e.x - s.pl.x);
+          const nx = e.x + Math.cos(ang) * (spd * 1.3); // Sprint away!
+          const ny = e.y + Math.sin(ang) * (spd * 1.3);
+          const etx = Math.floor(nx / TZ);
+          const ety = Math.floor(ny / TZ);
+          if (etx >= 0 && etx < WW && ety >= 0 && ety < WH && s.world[ety][etx] !== TW) {
+            e.x = nx;
+            e.y = ny;
+          }
+          if (s.ticks % 10 === 0) {
+            s.parts.push({
+              x: e.x, y: e.y + 4,
+              vx: -Math.cos(ang) * 0.5, vy: -Math.sin(ang) * 0.5,
+              life: 6, maxLife: 12, col: 'rgba(255,255,255,0.4)', sz: 1.5
+            });
+          }
+        } else if (shouldChase && d < 400) {
           const ang = Math.atan2(s.pl.y - e.y, s.pl.x - e.x);
-          const spd = e.slowTicks > 0 ? e.spd * 0.5 : e.spd;
           if (d > 30) {
             const nx = e.x + Math.cos(ang) * spd;
             const ny = e.y + Math.sin(ang) * spd;
@@ -1288,6 +1578,23 @@ export default function SurvivalGame() {
               });
             }
           }
+        } else {
+          // Idle wandering for passive/neutral animals or enemies far away
+          if (!e.wanderAng) e.wanderAng = Math.random() * Math.PI * 2;
+          if (s.ticks % 180 === 0) e.wanderAng = Math.random() * Math.PI * 2;
+          
+          const isMoving = (s.ticks % 300) < 180;
+          if (isMoving) {
+            const nx = e.x + Math.cos(e.wanderAng) * (spd * 0.4);
+            const ny = e.y + Math.sin(e.wanderAng) * (spd * 0.4);
+            const etx = Math.floor(nx / TZ);
+            const ety = Math.floor(ny / TZ);
+            if (etx >= 0 && etx < WW && ety >= 0 && ety < WH && s.world[ety][etx] !== TW && s.world[ety][etx] !== TLV) {
+              e.x = nx;
+              e.y = ny;
+            }
+          }
+        }
           // Attack player
           if (d < 40 && e.cd <= 0 && s.pl.ifr <= 0) {
             let finalDef = s.pl.def;
@@ -1304,7 +1611,6 @@ export default function SurvivalGame() {
               setShowDeathScreen(true);
             }
           }
-        }
         if (e.cd > 0) e.cd--;
       }
 
@@ -1510,10 +1816,7 @@ export default function SurvivalGame() {
 
             s.projs.splice(i, 1);
             if (e.hp <= 0) {
-              const et = ET[e.eid];
-              s.pl.xp += et.xp;
-              addLog(`Killed ${et.n}! +${et.xp} XP`, '#ffd700');
-              addSkillXPDirect(s, 'combat', Math.ceil(et.xp * 0.5));
+              handleEnemyKilled(s, e);
               s.enemies.splice(j, 1);
             }
             break;
@@ -1681,7 +1984,29 @@ export default function SurvivalGame() {
         else if (o.type === 'rock') ico = '🪨';
         else if (o.type === 'drop') ico = IT[o.item]?.ico || '•';
         else if (o.type === 'magic_altar') ico = '🕋';
-        else if (o.type === 'campfire') {
+        else if (o.type === 'fishing_hotspot') {
+          ico = o.ico;
+          // Bubbling ripple effect
+          const rippleRadius = (TZ * 0.5) + Math.abs(Math.sin(s.ticks * 0.05)) * (TZ * 0.4);
+          ctx.save();
+          ctx.strokeStyle = o.subtype === 'lava' ? 'rgba(239, 68, 68, 0.6)' : 'rgba(56, 189, 248, 0.6)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(ox, oy, rippleRadius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        } else if (o.type === 'animal_track') {
+          ico = o.ico;
+          // Soft tracking sense indicator glow
+          const glowRad = (TZ * 0.4) + Math.abs(Math.sin(s.ticks * 0.07)) * (TZ * 0.2);
+          ctx.save();
+          ctx.strokeStyle = 'rgba(236, 72, 153, 0.5)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(ox, oy, glowRad, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        } else if (o.type === 'campfire') {
           ico = s.ticks % 20 < 10 ? '🔥' : '🕯️';
           // Fire glow
           const grad = ctx.createRadialGradient(ox, oy, 0, ox, oy, TZ * 2);
@@ -2093,10 +2418,7 @@ export default function SurvivalGame() {
             }
           }
           if (e.hp <= 0) {
-            const et = ET[e.eid];
-            s.pl.xp += et.xp;
-            addLog(`Killed ${et.n}! +${et.xp} XP`, '#ffd700');
-            addSkillXPDirect(s, 'combat', Math.ceil(et.xp * 0.5));
+            handleEnemyKilled(s, e);
             s.enemies.splice(i, 1);
           } else {
             addLog(`Hit ${ET[e.eid].n} for ${finalDmg}`, '#ffaa00');
@@ -2266,16 +2588,47 @@ export default function SurvivalGame() {
       s.pl.inv[k]--;
       addLog(`Used ${it.n}`, '#00ffaa');
     } else if (it.t === 'armor') {
-      const old = s.pl.equip[it.sl];
-      if (old) s.pl.inv[old] = (s.pl.inv[old] || 0) + 1;
-      s.pl.equip[it.sl] = k;
-      s.pl.inv[k]--;
-      // Update def
-      let d = 0;
-      for (const val of Object.values(s.pl.equip)) {
-        if (val) d += IT[val as string]?.def || 0;
+      const slot = it.sl || 'chest';
+      
+      // Revert previous item in slot if exists
+      const oldKey = s.pl.equip[slot];
+      if (oldKey) {
+        const oldItem = IT[oldKey];
+        if (oldItem) {
+          s.pl.inv[oldKey] = (s.pl.inv[oldKey] || 0) + 1;
+          if (oldItem.def) s.pl.def = Math.max(0, (s.pl.def || 0) - oldItem.def);
+          if (oldItem.hpBonus) {
+            s.pl.mhp = Math.max(10, s.pl.mhp - oldItem.hpBonus);
+            s.pl.hp = Math.min(s.pl.mhp, s.pl.hp);
+          }
+          if (oldItem.mpBonus) {
+            s.pl.mmp = Math.max(10, s.pl.mmp - oldItem.mpBonus);
+            s.pl.mp = Math.min(s.pl.mmp, s.pl.mp);
+          }
+          if (oldItem.spdBonus) {
+            s.pl.spd = Math.max(1.0, s.pl.spd - oldItem.spdBonus);
+          }
+        }
       }
-      s.pl.def = d;
+      
+      // Equip new item
+      s.pl.equip[slot] = k;
+      s.pl.inv[k]--;
+      
+      // Apply new item's stat modifiers
+      if (it.def) s.pl.def = (s.pl.def || 0) + it.def;
+      if (it.hpBonus) {
+        s.pl.mhp += it.hpBonus;
+        s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + it.hpBonus);
+      }
+      if (it.mpBonus) {
+        s.pl.mmp += it.mpBonus;
+        s.pl.mp = Math.min(s.pl.mmp, s.pl.mp + it.mpBonus);
+      }
+      if (it.spdBonus) {
+        s.pl.spd += it.spdBonus;
+      }
+      
       addLog(`Equipped ${it.n}`, '#55aaff');
     } else if (it.t === 'tool' || it.id) {
        s.pl.weapon = k;
@@ -2287,6 +2640,41 @@ export default function SurvivalGame() {
       s.pl.inv[k]--;
       addLog(`Placed ${it.n}`, '#ffaa00');
     }
+    
+    // Refresh React state instantly
+    setGameState({ ...s });
+  };
+
+  const handleUnequip = (slot: string) => {
+    const s = stateRef.current;
+    if (!s || !s.pl || !s.pl.equip) return;
+    const oldKey = s.pl.equip[slot];
+    if (!oldKey) return;
+
+    const oldItem = IT[oldKey];
+    if (oldItem) {
+      // Return to inventory
+      s.pl.inv[oldKey] = (s.pl.inv[oldKey] || 0) + 1;
+      
+      // Revert stat modifiers
+      if (oldItem.def) s.pl.def = Math.max(0, (s.pl.def || 0) - oldItem.def);
+      if (oldItem.hpBonus) {
+        s.pl.mhp = Math.max(10, s.pl.mhp - oldItem.hpBonus);
+        s.pl.hp = Math.min(s.pl.mhp, s.pl.hp);
+      }
+      if (oldItem.mpBonus) {
+        s.pl.mmp = Math.max(10, s.pl.mmp - oldItem.mpBonus);
+        s.pl.mp = Math.min(s.pl.mmp, s.pl.mp);
+      }
+      if (oldItem.spdBonus) {
+        s.pl.spd = Math.max(1.0, s.pl.spd - oldItem.spdBonus);
+      }
+      
+      addLog(`Unequipped ${oldItem.n}`, '#94a3b8');
+    }
+    
+    s.pl.equip[slot] = null;
+    setGameState({ ...s });
   };
 
   const addSkillXPDirect = (s: any, skill: string, amount: number) => {
@@ -2298,7 +2686,8 @@ export default function SurvivalGame() {
         mining: { lvl: 1, xp: 0, xpNext: 100 },
         woodcutting: { lvl: 1, xp: 0, xpNext: 100 },
         combat: { lvl: 1, xp: 0, xpNext: 100 },
-        alchemy: { lvl: 1, xp: 0, xpNext: 100 }
+        alchemy: { lvl: 1, xp: 0, xpNext: 100 },
+        hunting: { lvl: 1, xp: 0, xpNext: 100 }
       };
     }
     const sk = s.pl.skills[skill];
@@ -2320,6 +2709,66 @@ export default function SurvivalGame() {
     if (!s) return;
     addSkillXPDirect(s, skill, amount);
     setGameState({ ...s });
+  };
+
+  const handleEnemyKilled = (s: any, e: any) => {
+    const et = ET[e.eid];
+    if (!et) return;
+
+    // 1. Give character general XP
+    s.pl.xp += et.xp;
+    addLog(`Killed ${et.n}! +${et.xp} XP`, '#ffd700');
+
+    // 2. Give Combat XP
+    addSkillXPDirect(s, 'combat', Math.ceil(et.xp * 0.5));
+
+    // 3. Check if huntable
+    const huntableList = ['wolf', 'fox', 'bear', 'deer', 'boar', 'pheasant', 'alpha_wolf'];
+    const isHuntable = huntableList.includes(e.eid);
+    const huntingLvl = s.pl.skills?.hunting?.lvl || 1;
+    
+    let yieldMult = 1.0;
+    if (isHuntable) {
+      // 8% yield bonus per level
+      yieldMult = 1.0 + (huntingLvl - 1) * 0.08;
+      // Award Hunting XP
+      const huntXP = et.xp;
+      addSkillXPDirect(s, 'hunting', huntXP);
+    }
+
+    // 4. Loot Drop Calculation
+    if (et.lo) {
+      const etx = Math.floor(e.x / TZ);
+      const ety = Math.floor(e.y / TZ);
+
+      Object.entries(et.lo).forEach(([itemKey, chance]: [string, any]) => {
+        // Roll for drop chance (scale chance by 5% per hunting level for huntable targets)
+        const modifiedChance = isHuntable ? chance * (1 + (huntingLvl - 1) * 0.05) : chance;
+        if (Math.random() <= modifiedChance) {
+          let qty = 1;
+          if (isHuntable && (itemKey === 'meat' || itemKey === 'leather' || itemKey === 'feather')) {
+            qty = Math.max(1, Math.round((1 + Math.random() * 1) * yieldMult));
+          } else {
+            // Chance for extra rare drops at higher hunting levels
+            if (isHuntable && Math.random() < (huntingLvl - 1) * 0.03) {
+              qty++;
+            }
+          }
+
+          if (etx >= 0 && etx < WW && ety >= 0 && ety < WH) {
+            s.objs.push({
+              type: 'drop',
+              tx: etx,
+              ty: ety,
+              item: itemKey,
+              qty: qty
+            });
+            // Little burst of stars
+            spawnExplosion(s, e.x, e.y, '#ffd700', 4, 'spark');
+          }
+        }
+      });
+    }
   };
 
   const handleGather = () => {
@@ -2465,6 +2914,53 @@ export default function SurvivalGame() {
 
             gainSkillXP('mining', 15);
           } else addLog(`Mining ${o.subtype || 'rock'}... ${o.hp} left`, '#ffe88a');
+          return;
+        }
+        if (o.type === 'animal_track') {
+          s.objs.splice(i, 1);
+          const huntLvl = s.pl.skills?.hunting?.lvl || 1;
+          const xp = 15 + huntLvl * 2;
+
+          const trackerMessages = [
+            "🐾 Fresh tracks! A wild deer was sprinting south-west through the brush.",
+            "🐾 Large, deep claw marks. An old forest bear was searching for honey nearby.",
+            "🐾 Narrow claw marks. A quick wild pheasant was scratching for seeds.",
+            "🐾 Heavy, wallowing indentations. A sturdy boar passed by here recently."
+          ];
+          const msg = trackerMessages[Math.floor(Math.random() * trackerMessages.length)];
+          addLog(msg, '#f472b6');
+          addSkillXPDirect(s, 'hunting', xp);
+
+          // Spark particle effect at track location
+          spawnExplosion(s, o.tx * TZ + TZ / 2, o.ty * TZ + TZ / 2, '#f472b6', 10, 'spark');
+
+          // Highlight nearby wild animals (if any) with a glowing particle trail!
+          let foundCount = 0;
+          for (const e of s.enemies) {
+            if (dist(s.pl, e) < 500) {
+              const et = ET[e.eid];
+              if (et && ['deer', 'boar', 'pheasant', 'wolf', 'fox', 'bear'].includes(e.eid)) {
+                foundCount++;
+                const steps = 15;
+                for (let k = 0; k < steps; k++) {
+                  const ratio = k / steps;
+                  s.parts.push({
+                    x: s.pl.x + (e.x - s.pl.x) * ratio,
+                    y: s.pl.y + (e.y - s.pl.y) * ratio,
+                    vx: (Math.random() - 0.5) * 0.2,
+                    vy: (Math.random() - 0.5) * 0.2,
+                    life: 20 + k,
+                    maxLife: 40,
+                    col: '#ec4899',
+                    sz: 1.2
+                  });
+                }
+              }
+            }
+          }
+          if (foundCount > 0) {
+            addLog(`🔍 Tracking Senses: Located ${foundCount} wild animal signature(s) nearby!`, '#ec4899');
+          }
           return;
         }
         if (o.type === 'drop') {
@@ -2852,14 +3348,18 @@ export default function SurvivalGame() {
     const px = Math.floor(s.pl.x / TZ);
     const py = Math.floor(s.pl.y / TZ);
     let nearWater = false;
+    let lavaWater = false;
     
     for (let dy = -2; dy <= 2; dy++) {
       for (let dx = -2; dx <= 2; dx++) {
         const tx = px + dx;
         const ty = py + dy;
         if (ty >= 0 && ty < s.world.length && tx >= 0 && tx < s.world[ty].length) {
-          if (s.world[ty][tx] === TW) {
+          if (s.world[ty][tx] === TW || s.world[ty][tx] === TLV) {
             nearWater = true;
+            if (s.world[ty][tx] === TLV) {
+              lavaWater = true;
+            }
             break;
           }
         }
@@ -2868,25 +3368,45 @@ export default function SurvivalGame() {
     }
     
     if (!nearWater) {
-      addLog("🌊 Stand near water to cast your line!", "#38bdf8");
+      addLog("🌊 Stand near water or lava to cast your line!", "#38bdf8");
       return;
     }
     
     if (isFishing) return;
-    
+
+    // Search for a nearby fishing hotspot
+    let activeHotspot: any = null;
+    for (const o of s.objs) {
+      if (o.type === 'fishing_hotspot' && Math.abs(o.tx - px) + Math.abs(o.ty - py) <= 3) {
+        activeHotspot = o;
+        break;
+      }
+    }
+
     setIsFishing(true);
     setFishingState('waiting');
-    setFishingMessage("Casting line... Waiting for a bite... 🐟");
-    addLog("🎣 You cast your fishing line into the water...", "#38bdf8");
+
+    let delay = 2000 + Math.random() * 2500;
+    if (activeHotspot) {
+      setFishingHotspotTx(activeHotspot.tx);
+      setFishingHotspotTy(activeHotspot.ty);
+      delay = activeHotspot.subtype === 'lava' ? (700 + Math.random() * 600) : (900 + Math.random() * 800);
+      addLog(`✨ Spot-on! Casting directly into a bubbling ${activeHotspot.subtype === 'lava' ? 'Magma Vortex' : 'School of Fish'}!`, '#10b981');
+      setFishingMessage(`Casting into hotspot! Fish biting rapidly... 🎏`);
+    } else {
+      setFishingHotspotTx(null);
+      setFishingHotspotTy(null);
+      setFishingMessage("Casting line... Waiting for a bite... 🐟");
+      addLog(lavaWater ? "🌋 You cast your line into the boiling magma..." : "🎣 You cast your fishing line into the water...", "#38bdf8");
+    }
     
-    const delay = 2000 + Math.random() * 2500;
     const timerId = window.setTimeout(() => {
       setFishingState('bite');
       setFishingMessage("❗ A BITE! QUICK, CLICK REEL IN! 🎣");
       addLog("❗ A fish is biting! Reel it in!", "#f59e0b");
       
       const level = s.pl.skills?.fishing?.lvl || 1;
-      const finalWindow = Math.min(3200, 1600 + level * 100);
+      const finalWindow = Math.min(3200, 1600 + level * 100 + (activeHotspot ? 600 : 0)); // hotspot yields a wider, easier catch window!
       
       const failTimerId = window.setTimeout(() => {
         setFishingState('fail');
@@ -2918,19 +3438,75 @@ export default function SurvivalGame() {
     if (!s) return;
     
     const flvl = s.pl.skills?.fishing?.lvl || 1;
-    const rand = Math.random() + (flvl * 0.03);
     let fishType = 'raw_fish';
     let fishName = 'Raw Fish';
     let xpAward = 25;
-    
-    if (rand > 1.15) {
-      fishType = 'celestial_fish';
-      fishName = '🌌 Celestial Fish';
-      xpAward = 120;
-    } else if (rand > 0.82) {
-      fishType = 'cooked_fish';
-      fishName = '🐠 Crispy Cooked Fish';
-      xpAward = 65;
+
+    // Check if cast was inside a hotspot
+    let hotspotObj: any = null;
+    let hotspotIndex = -1;
+    if (fishingHotspotTx !== null && fishingHotspotTy !== null) {
+      hotspotIndex = s.objs.findIndex((o: any) => o.type === 'fishing_hotspot' && o.tx === fishingHotspotTx && o.ty === fishingHotspotTy);
+      if (hotspotIndex !== -1) {
+        hotspotObj = s.objs[hotspotIndex];
+      }
+    }
+
+    if (hotspotObj) {
+      // Hotspot catch! Much better loot tables!
+      const rand = Math.random() + (flvl * 0.05);
+      
+      if (hotspotObj.subtype === 'lava') {
+        // Lava hotspot drops magma cod or obsidian fin!
+        if (rand > 0.8) {
+          fishType = 'obsidian_fin';
+          fishName = '🖤 Obsidian Fin';
+          xpAward = 90;
+        } else {
+          fishType = 'magma_cod';
+          fishName = '🌋 Magma Cod';
+          xpAward = 50;
+        }
+      } else {
+        // Ocean hotspot drops legendary salmon, celestial fish, or raw fish!
+        if (rand > 0.95) {
+          fishType = 'legendary_salmon';
+          fishName = '👑 Legendary Salmon';
+          xpAward = 150;
+        } else if (rand > 0.7) {
+          fishType = 'celestial_fish';
+          fishName = '🌌 Celestial Fish';
+          xpAward = 120;
+        } else {
+          fishType = 'cooked_fish';
+          fishName = '🐠 Crispy Cooked Fish';
+          xpAward = 65;
+        }
+      }
+
+      // Decrement hotspot charges (depletion mechanic)
+      hotspotObj.hp--;
+      if (hotspotObj.hp <= 0) {
+        s.objs.splice(hotspotIndex, 1);
+        addLog("🎏 The Fishing Hotspot has been depleted!", "#f87171");
+      } else {
+        addLog(`🎏 Hotspot Active: ${hotspotObj.hp} catches remaining.`, '#6ee7b7');
+      }
+      
+      // Spawn happy water splashes
+      spawnExplosion(s, hotspotObj.tx * TZ + TZ / 2, hotspotObj.ty * TZ + TZ / 2, hotspotObj.subtype === 'lava' ? '#ff4500' : '#38bdf8', 12, 'spark');
+    } else {
+      // Standard catch
+      const rand = Math.random() + (flvl * 0.03);
+      if (rand > 1.15) {
+        fishType = 'celestial_fish';
+        fishName = '🌌 Celestial Fish';
+        xpAward = 120;
+      } else if (rand > 0.82) {
+        fishType = 'cooked_fish';
+        fishName = '🐠 Crispy Cooked Fish';
+        xpAward = 65;
+      }
     }
     
     s.pl.inv[fishType] = (s.pl.inv[fishType] || 0) + 1;
@@ -2944,6 +3520,8 @@ export default function SurvivalGame() {
     setTimeout(() => {
       setIsFishing(false);
       setFishingState('idle');
+      setFishingHotspotTx(null);
+      setFishingHotspotTy(null);
     }, 2200);
   };
 
@@ -3088,6 +3666,74 @@ export default function SurvivalGame() {
                 />
               </div>
             </div>
+          </div>
+
+          {/* RPG-Style Equipment & Gear Panel */}
+          <div className="flex flex-col gap-2.5 p-3.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto min-w-[250px] select-none font-mono">
+            <div className="flex items-center gap-1.5 border-b border-white/10 pb-2 mb-0.5 justify-between">
+              <span className="text-[10px] font-bold tracking-wider text-cyan-400 uppercase flex items-center gap-1">
+                🛡️ Equipment & Gear
+              </span>
+              <span className="text-[9px] bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded font-bold uppercase">
+                DEF: {gameState?.pl.def || 0}
+              </span>
+            </div>
+            
+            <div className="flex flex-col gap-1.5">
+              {[
+                { slot: 'head', n: 'Head', ico: '🪖' },
+                { slot: 'chest', n: 'Chest', ico: '👕' },
+                { slot: 'legs', n: 'Legs', ico: '👖' },
+                { slot: 'feet', n: 'Feet', ico: '🥾' },
+                { slot: 'ring', n: 'Ring', ico: '💍' },
+              ].map(({ slot, n, ico }) => {
+                const itemKey = gameState?.pl.equip?.[slot];
+                const item = itemKey ? IT[itemKey] : null;
+                return (
+                  <div 
+                    key={slot} 
+                    className={`flex items-center justify-between p-2 rounded-xl border text-xs transition-all ${
+                      item 
+                        ? 'bg-zinc-900/90 border-cyan-500/30 shadow-[0_0_8px_rgba(6,182,212,0.15)]' 
+                        : 'bg-white/[0.01] border-white/5 opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-base" title={n}>{item ? item.ico : ico}</span>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] opacity-40 uppercase tracking-widest leading-none">{n}</span>
+                        <span className={`text-[10px] font-bold truncate max-w-[120px] ${item ? 'text-white' : 'text-zinc-500'}`}>
+                          {item ? item.n : '[ Empty Slot ]'}
+                        </span>
+                      </div>
+                    </div>
+                    {item ? (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[9px] text-cyan-400 font-bold whitespace-nowrap">
+                          {item.def ? `+${item.def} DEF ` : ''}
+                          {item.hpBonus ? `+${item.hpBonus} HP ` : ''}
+                          {item.mpBonus ? `+${item.mpBonus} MP ` : ''}
+                          {item.spdBonus ? `+${Math.round(item.spdBonus * 100)}% SPD ` : ''}
+                        </span>
+                        <button 
+                          onClick={() => handleUnequip(slot)}
+                          className="p-1 hover:bg-red-500/20 text-red-400 hover:text-red-300 rounded cursor-pointer transition-all active:scale-90"
+                          title="Click to Unequip"
+                        >
+                          <X size={10} />
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[9px] text-zinc-600 italic">None</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            
+            <p className="text-[8px] text-zinc-500 leading-tight text-center mt-1">
+              💡 Click any helmet, chestplate, pants, boots, or magic ring in your <span className="text-yellow-500 font-bold">INV</span> backpack to equip it!
+            </p>
           </div>
 
           {/* Crisis Alerts Overlay */}
@@ -3797,6 +4443,21 @@ export default function SurvivalGame() {
                       'Boosts void and magic staff projectile hits by +5% per level',
                       'Generates larger discovery XP yields inside the alchemical laboratory'
                     ]
+                  },
+                  {
+                    id: 'hunting',
+                    n: 'Hunting & Tracking',
+                    ico: '🏹',
+                    color: 'from-pink-600 to-rose-400',
+                    border: 'border-pink-500/30',
+                    bg: 'bg-pink-950/20',
+                    desc: 'Tracking footprints, discovering fishing hotspots, and hunting wild game.',
+                    perks: [
+                      'Grants +8% item yield bonus on wild animals per level',
+                      'Grants +5% roll chance multiplier on rare loot items per level',
+                      'Level 3: Enables crafting Recurve Bow and Beastmaster Armor',
+                      'Level 5: Track clues to reveal nearby hidden wild animal positions'
+                    ]
                   }
                 ].map(sk => {
                   const data = gameState?.pl?.skills?.[sk.id] || { lvl: 1, xp: 0, xpNext: 100 };
@@ -4406,6 +5067,45 @@ export default function SurvivalGame() {
                 </button>
               </div>
 
+              {/* Firebase Authentication & Cloud Sync Banner */}
+              <div className="bg-white/[0.02] border border-white/10 p-5 rounded-2xl flex flex-col md:flex-row justify-between items-center gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-full bg-yellow-500/10 text-yellow-500">
+                    <Cloud size={24} />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                      Cloud Save Sync {isCloudSyncing && <RefreshCw size={12} className="animate-spin text-yellow-400" />}
+                    </div>
+                    {user ? (
+                      <div className="text-[10px] text-white/70 uppercase mt-1 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full inline-block animate-pulse"></span>
+                        Logged in as <span className="text-yellow-400 font-bold">{user.displayName || user.email}</span>
+                      </div>
+                    ) : (
+                      <p className="text-[10px] opacity-40 uppercase mt-1">Sign in to backup your survival saves to secure cloud storage and sync them across devices</p>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  {user ? (
+                    <button 
+                      onClick={handleSignOut}
+                      className="px-4 py-2 bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-900/30 hover:border-red-500/30 rounded-xl text-xs font-bold tracking-wider uppercase transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
+                    >
+                      <LogOut size={13} /> Sign Out
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={handleSignIn}
+                      className="px-4 py-2 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border border-yellow-500/20 hover:border-yellow-500/40 rounded-xl text-xs font-bold tracking-wider uppercase transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
+                    >
+                      <LogIn size={13} /> Sign in with Google
+                    </button>
+                  )}
+                </div>
+              </div>
+
               {/* Autosave Switcher */}
               <div className="bg-white/[0.02] border border-white/10 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <div>
@@ -4424,6 +5124,7 @@ export default function SurvivalGame() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {['1', '2', '3', 'autosave'].map((slotId) => {
                   const save = slots[slotId];
+                  const cloudSave = cloudSlots[slotId];
                   const isAutosave = slotId === 'autosave';
                   
                   return (
@@ -4453,6 +5154,23 @@ export default function SurvivalGame() {
                           ) : (
                             <div className="mt-3.5 text-[10px] text-white/40 uppercase tracking-wider">
                               [ Empty Slot ]
+                            </div>
+                          )}
+
+                          {/* Cloud Backup Status */}
+                          {user && (
+                            <div className="mt-4 pt-3 border-t border-white/5 flex flex-col gap-1 text-[10px]">
+                              <div className="flex items-center gap-1.5 font-bold tracking-wider text-[9px] uppercase text-yellow-400">
+                                <Cloud size={11} /> Cloud State
+                              </div>
+                              {cloudSave ? (
+                                <>
+                                  <div className="text-white/60">Day {cloudSave.day} • Level {cloudSave.pl?.lvl || 1} • {cloudSave.pl?.hp || 100} HP</div>
+                                  <div className="text-[9px] opacity-40 uppercase mt-0.5">Cloud Backed: {new Date(cloudSave.timestamp).toLocaleString()}</div>
+                                </>
+                              ) : (
+                                <div className="text-white/30 uppercase text-[9px] mt-0.5">[ No Cloud Backup ]</div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -4497,6 +5215,39 @@ export default function SurvivalGame() {
                           <div className="text-[9px] opacity-30 italic py-1.5 uppercase">No data loaded</div>
                         )}
                       </div>
+
+                      {/* Cloud Control Buttons */}
+                      {user && (
+                        <div className="flex gap-2 pt-2 border-t border-white/5 mt-1">
+                          {save && (
+                            <button
+                              onClick={() => backupToCloud(slotId)}
+                              title="Backup local save to Cloud"
+                              className="flex-1 py-1 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border border-yellow-500/10 hover:border-yellow-500/30 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1"
+                            >
+                              <CloudUpload size={11} /> Backup
+                            </button>
+                          )}
+                          {cloudSave && (
+                            <>
+                              <button
+                                onClick={() => restoreFromCloud(slotId)}
+                                title="Restore from Cloud to local slot and load"
+                                className="flex-1 py-1 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/10 hover:border-green-500/30 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1"
+                              >
+                                <CloudDownload size={11} /> Restore
+                              </button>
+                              <button
+                                onClick={() => deleteCloudSave(slotId)}
+                                title="Delete cloud backup"
+                                className="p-1.5 bg-red-950/30 hover:bg-red-950/60 text-red-400 hover:text-red-300 border border-red-900/20 hover:border-red-500/30 rounded-lg transition-all active:scale-95 cursor-pointer flex items-center justify-center"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
