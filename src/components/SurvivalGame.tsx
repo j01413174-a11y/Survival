@@ -38,7 +38,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getOracleGuidance, generateWorldEvent, castSpell } from '../services/geminiService';
-import { auth, googleProvider, db, handleFirestoreError, testConnection, OperationType } from '../services/firebase';
+import { auth, googleProvider, db, handleFirestoreError, testConnection, OperationType, getUserInventoryFromFirestore } from '../services/firebase';
 import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import { doc, setDoc, getDoc, getDocs, deleteDoc, collection, query } from 'firebase/firestore';
 import Shop from './Shop';
@@ -64,6 +64,152 @@ const TC: Record<number, string[]> = {
   7: ['#2a4020', '#344a28', '#1a2a14'], // Swamp
   8: ['#1a0a3a', '#2a1a4a', '#4a1a8a'], // Celestial
 };
+
+export interface LoreEntry {
+  id: string;
+  title: string;
+  type: 'journal' | 'carving' | 'echo';
+  biome: string;
+  text: string;
+  hint: string;
+  rewardItem?: string;
+  rewardQty?: number;
+  xpBonus?: number;
+  xpSkill?: 'mining' | 'woodcutting' | 'combat' | 'alchemy' | 'hunting';
+}
+
+export const LORE_ENTRIES: LoreEntry[] = [
+  {
+    id: 'journal_1',
+    title: 'Worn Expedition Journal - Page 12',
+    type: 'journal',
+    biome: 'Verdant Forest',
+    text: 'I woke up here with nothing but the clothes on my back. The forest seems peaceful, but the ley-lines hum with ancient, hidden energy. There is a magical Altar of some sort further to the east.',
+    hint: 'Hint: Search the eastern sectors for Ancient Ruins to build a Magic Altar.',
+    rewardItem: 'bread',
+    rewardQty: 2,
+    xpBonus: 50
+  },
+  {
+    id: 'journal_2',
+    title: 'Scraps of a Traveler\'s Diary',
+    type: 'journal',
+    biome: 'Deep Forest',
+    text: 'Day 14: The monsters are relentless at night. I built a Campfire, and they seemed to hesitate before entering its radiant aura. Campfires are more than just cooking tools; they are wards against the dark.',
+    hint: 'Hint: Keep campfires lit during waves or nighttime to stay warm and secure.',
+    rewardItem: 'torch',
+    rewardQty: 1,
+    xpBonus: 60
+  },
+  {
+    id: 'carving_1',
+    title: 'Glowing Glyphs on Mountain Stone',
+    type: 'carving',
+    biome: 'Mountain Pass',
+    text: 'THE EARTH SPEAKS. BENEATH THE COLD PEAKS LIES MITHRIL—THE METAL OF COGNITIVE LIGHT. SECURE AN IRON SWORD OR BETTER TO BREACH THE HARDEST RIDGE VEINS.',
+    hint: 'Hint: Use high-tier tools to mine rare ores like Mithril and Void Crystals.',
+    rewardItem: 'iron_ore',
+    rewardQty: 3,
+    xpSkill: 'mining',
+    xpBonus: 80
+  },
+  {
+    id: 'carving_2',
+    title: 'Faded Runes on Desert Obelisk',
+    type: 'carving',
+    biome: 'Sandy Desert',
+    text: 'SOULS DUSTED IN SAND. THE SOLAR HEAT DRAINS THE VITAL WATER FAST. IN THESE SCORCHED LANDS, SULFUR ROCKS BURN AND COAL SWELLS.',
+    hint: 'Hint: Drink water or eat fruits to maintain hydration in hot biomes.',
+    rewardItem: 'sulfur',
+    rewardQty: 2,
+    xpSkill: 'mining',
+    xpBonus: 80
+  },
+  {
+    id: 'echo_1',
+    title: 'Spectral Memory - Echo of the Knight',
+    type: 'echo',
+    biome: 'Haunted Graveyard',
+    text: 'I fell defending the fortress... The undead... they fear the light of the sun, but are driven mad by the dark mages of the Graveyard. If you find my chestplate, wear it with honor.',
+    hint: 'Hint: Equip armor to increase defense and lower damage taken from wraiths.',
+    rewardItem: 'iron_sword',
+    rewardQty: 1,
+    xpSkill: 'combat',
+    xpBonus: 100
+  },
+  {
+    id: 'echo_2',
+    title: 'Astral Echo - Voice of the Elder Mage',
+    type: 'echo',
+    biome: 'Enchanted Grove',
+    text: 'The Celestial Realm is where the leylines are strongest. But beware, the Star Golem guards the portal... Cast spell "Reveal Map" to view hidden resources in any sector.',
+    hint: 'Hint: Cast spells from the Spells tab using Mana and Mana Crystals.',
+    rewardItem: 'mana_crystal',
+    rewardQty: 2,
+    xpSkill: 'alchemy',
+    xpBonus: 120
+  },
+  {
+    id: 'journal_3',
+    title: 'Torn Log of a Ranger',
+    type: 'journal',
+    biome: 'Sunlit Plains',
+    text: 'Day 22: Wild animals leave tracks marked with paws 🐾. Follow them to hunt game. Deer are cowardly, but Boars will attack if cornered. Alpha wolves rule the tundra.',
+    hint: 'Hint: Gather paw tracks to locate animals and gain Hunting skill XP.',
+    rewardItem: 'arrow',
+    rewardQty: 5,
+    xpSkill: 'hunting',
+    xpBonus: 70
+  },
+  {
+    id: 'carving_3',
+    title: 'Ancient Druid Inscription',
+    type: 'carving',
+    biome: 'Misty Swamp',
+    text: 'WE BURIED THE SEEDS OF MAGIC UNDER THE ENCHANTED TREES. SHROOMS IN THE SWAMP GROW VIGOROUSLY UNDER THE HEAVY RAIN, RESISTING THE VENOMOUS WRATH.',
+    hint: 'Hint: Mushrooms are high-vitality food sources, but watch out for poisonous swamp spiders.',
+    rewardItem: 'mushroom',
+    rewardQty: 3,
+    xpSkill: 'woodcutting',
+    xpBonus: 90
+  },
+  {
+    id: 'echo_3',
+    title: 'Cosmic Resonance - Echo of the Void',
+    type: 'echo',
+    biome: 'Celestial Realm',
+    text: 'We are the shadows of the stars... The Void and the Celestial are two sides of the same fabric. Combine them to craft the ultimate Harbinger Staff.',
+    hint: 'Hint: Celestial Shards and Void Crystals are combined at the Magic Altar.',
+    rewardItem: 'crystal',
+    rewardQty: 3,
+    xpSkill: 'alchemy',
+    xpBonus: 150
+  },
+  {
+    id: 'journal_4',
+    title: 'Frozen Journal of the Lost Hunter',
+    type: 'journal',
+    biome: 'Frozen Tundra',
+    text: 'The cold... it seeps into my bones. Only a warm Campfire can protect me from the freezing blizzard. I hid my stash of gems under the snowy rocks to the north.',
+    hint: 'Hint: Build a campfire and stand near it to avoid HP loss during freezing cold blizzard weather.',
+    rewardItem: 'gem',
+    rewardQty: 1,
+    xpSkill: 'hunting',
+    xpBonus: 100
+  },
+  {
+    id: 'carving_4',
+    title: 'Molten Slab Glyphs',
+    type: 'carving',
+    biome: 'Volcanic Fields',
+    text: 'FIRE SHALL REBUILD THE WORLD. THE DRAGON SLEEPS IN THE VOLCANIC FIELDS, COVERED IN SCALES SHIELDED AGAINST ALL MAGIC. USE RANGED WEAPONS TO SNIPE FROM BEYOND ITS BREATH.',
+    hint: 'Hint: Ranged attacks keep you safe from a Dragon\'s massive melee strikes.',
+    rewardItem: 'coal',
+    rewardQty: 5,
+    xpSkill: 'combat',
+    xpBonus: 150
+  }
+];
 
 // --- LZW Compression & Safe Storage Utilities ---
 function lzw_encode(s: string): string {
@@ -1171,6 +1317,7 @@ export default function SurvivalGame() {
   const [user, setUser] = useState<any>(null);
   const [cloudSlots, setCloudSlots] = useState<Record<string, any>>({});
   const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+  const [activeLore, setActiveLore] = useState<any | null>(null);
 
   // Sync autosave ref with state
   useEffect(() => {
@@ -1556,6 +1703,32 @@ export default function SurvivalGame() {
       setIsCloudSyncing(false);
     }
   }, [loadGameDataStr, loadSlotMetadata]);
+  
+  const handleSyncCloudInventory = async () => {
+    if (!auth.currentUser) {
+      addLog("Please sign in to sync cloud inventory!", "#fbbf24");
+      return;
+    }
+    try {
+      setIsCloudSyncing(true);
+      const cloudInv = await getUserInventoryFromFirestore(auth.currentUser.uid);
+      if (cloudInv) {
+        const s = stateRef.current;
+        if (s && s.pl) {
+          // Merge items
+          s.pl.inv = { ...s.pl.inv, ...cloudInv };
+          setGameState({ ...s });
+          addLog("📦 Cloud inventory synced and merged successfully! Check your tabs.", "#10b981");
+        }
+      } else {
+        addLog("No cloud inventory data found on autosave slot.", "#fbbf24");
+      }
+    } catch (err) {
+      addLog("Failed to sync cloud inventory!", "#f87171");
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  };
 
   const deleteCloudSave = useCallback(async (slotId: string) => {
     if (!auth.currentUser) return;
@@ -1710,7 +1883,7 @@ export default function SurvivalGame() {
       hp: 100, mhp: 100, hu: 100, sta: 100, mp: 100, mmp: 100,
       inv: {
         wood: 25, stone: 15, fiber: 15, herb: 8, berry: 10, torch: 2,
-        stone_axe: 1, shortbow: 1, raw_meat: 5, cooked_meat: 3
+        stone_axe: 1, shortbow: 1, raw_meat: 5, cooked_meat: 3, gold_coins: 1000
       },
       equip: {
         head: 'leather_cap',
@@ -1925,6 +2098,38 @@ export default function SurvivalGame() {
             }
           }
         }
+
+        // Deterministic Lore Node per Zone (spawned in landable positions)
+        const loreRng = mkRng(M.s + mi * 12345 + currentSeed + 888);
+        const loreLx = 15 + Math.floor(loreRng() * (ZW - 30));
+        const loreLy = 15 + Math.floor(loreRng() * (ZH - 30));
+        const loreWx = ox + loreLx;
+        const loreWy = oy + loreLy;
+
+        // Force ground to be land (not water/lava) to allow reaching it
+        world[loreWy][loreWx] = M.m;
+
+        // Find matching lore entry for this biome, or random fallback
+        let matchingLore = LORE_ENTRIES.find(le => le.biome === M.n);
+        if (!matchingLore) {
+          matchingLore = LORE_ENTRIES[mi % LORE_ENTRIES.length];
+        }
+
+        let loreIco = '📓';
+        if (matchingLore.type === 'carving') loreIco = '🗿';
+        else if (matchingLore.type === 'echo') loreIco = '🌀';
+
+        // Add the lore node
+        objs.push({
+          type: 'lore_node',
+          tx: loreWx,
+          ty: loreWy,
+          ico: loreIco,
+          subtype: matchingLore.type,
+          loreId: matchingLore.id,
+          hp: 1,
+          mhp: 1
+        });
       }
     }
 
@@ -3054,7 +3259,19 @@ export default function SurvivalGame() {
         if (ox < -TZ || ox > ctx.canvas.width + TZ || oy < -TZ || oy > ctx.canvas.height + TZ) continue;
         
         let ico = '?';
-        if (o.type === 'tree') ico = '🌲';
+        if (o.type === 'lore_node') {
+          ico = o.ico || '📓';
+          // Render glowing rotating magical ring
+          const ringRad = TZ * 0.5 + Math.sin(s.ticks * 0.08) * 4;
+          ctx.save();
+          ctx.strokeStyle = o.subtype === 'echo' ? 'rgba(56, 189, 248, 0.7)' : o.subtype === 'carving' ? 'rgba(234, 179, 8, 0.7)' : 'rgba(168, 85, 247, 0.7)';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([4, 2]);
+          ctx.beginPath();
+          ctx.arc(ox, oy, ringRad, s.ticks * 0.02, s.ticks * 0.02 + Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        } else if (o.type === 'tree') ico = '🌲';
         else if (o.type === 'rock') ico = '🪨';
         else if (o.type === 'drop') ico = IT[o.item]?.ico || '•';
         else if (o.type === 'magic_altar') ico = '🕋';
@@ -4134,6 +4351,41 @@ export default function SurvivalGame() {
           s.pl.inv[o.item] = (s.pl.inv[o.item] || 0) + o.qty;
           addLog(`+${IT[o.item]?.n || o.item} x${o.qty}`, '#ccffaa');
           s.objs.splice(i, 1);
+          return;
+        }
+        if (o.type === 'lore_node') {
+          s.objs.splice(i, 1);
+          const entry = LORE_ENTRIES.find(le => le.id === o.loreId);
+          if (entry) {
+            setActiveLore(entry);
+            addLog(`📜 Uncovered ancient relic: "${entry.title}"!`, '#a855f7');
+            
+            if (entry.xpBonus) {
+              s.pl.xp += entry.xpBonus;
+              addLog(`+${entry.xpBonus} Player XP`, '#ffd700');
+              while (s.pl.xp >= s.pl.xpNext) {
+                s.pl.xp -= s.pl.xpNext;
+                s.pl.lvl++;
+                s.pl.xpNext = Math.floor(s.pl.xpNext * 1.5);
+                s.pl.mhp += 10;
+                s.pl.mmp += 10;
+                s.pl.hp = s.pl.mhp;
+                s.pl.mp = s.pl.mmp;
+                addLog(`✨ LEVEL UP! You reached level ${s.pl.lvl}!`, '#eab308');
+              }
+            }
+            if (entry.xpSkill && entry.xpBonus) {
+              addSkillXPDirect(s, entry.xpSkill, entry.xpBonus);
+            }
+            if (entry.rewardItem && entry.rewardQty) {
+              s.pl.inv[entry.rewardItem] = (s.pl.inv[entry.rewardItem] || 0) + entry.rewardQty;
+              addLog(`🎁 Discovered reward: +${IT[entry.rewardItem]?.n || entry.rewardItem} x${entry.rewardQty}!`, '#22c55e');
+            }
+
+            // Beautiful magical particle burst
+            spawnExplosion(s, o.tx * TZ + TZ / 2, o.ty * TZ + TZ / 2, '#a855f7', 25, 'spell');
+          }
+          setGameState({ ...s });
           return;
         }
       }
@@ -5950,9 +6202,21 @@ export default function SurvivalGame() {
               {/* Column 2: Backpack (Grid and Tabs) */}
               <div className="flex-1 flex flex-col gap-4 overflow-hidden bg-zinc-950/40 border border-white/10 rounded-2xl p-4">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-white/10 pb-3">
-                  <h3 className="text-xs font-bold tracking-widest text-green-400 uppercase flex items-center gap-1">
-                    🎒 BACKPACK ITEMS
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-xs font-bold tracking-widest text-green-400 uppercase flex items-center gap-1">
+                      🎒 BACKPACK ITEMS
+                    </h3>
+                    {user && (
+                      <button
+                        onClick={handleSyncCloudInventory}
+                        disabled={isCloudSyncing}
+                        className="px-2 py-0.5 rounded-md bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 text-sky-400 text-[8px] font-extrabold tracking-wider uppercase transition-all flex items-center gap-1 shrink-0 cursor-pointer active:scale-95 disabled:opacity-50 animate-pulse"
+                        title="Synchronize and retrieve all owned items and NFTs from the secure Firebase Cloud Firestore database!"
+                      >
+                        {isCloudSyncing ? "⏳ Syncing..." : "🔄 Sync Cloud Inventory"}
+                      </button>
+                    )}
+                  </div>
                   
                   {/* Tabs */}
                   <div className="flex flex-wrap gap-1">
@@ -6238,6 +6502,99 @@ export default function SurvivalGame() {
             </div>
           </motion.div>
         )}
+
+        {/* --- Beautiful Narrative / Lore Discovery Modal --- */}
+        <AnimatePresence>
+          {activeLore && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 font-mono pointer-events-auto"
+            >
+              <motion.div 
+                initial={{ scale: 0.95, y: 15 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.95, y: -15 }}
+                className="relative max-w-xl w-full bg-amber-950/20 border border-amber-500/30 rounded-3xl p-6 sm:p-8 flex flex-col gap-6 shadow-[0_0_50px_rgba(245,158,11,0.15)] text-amber-100 overflow-hidden"
+                style={{
+                  background: 'radial-gradient(circle at center, #1c130c 0%, #0a0604 100%)'
+                }}
+              >
+                {/* Vintage Scroll Border Decor */}
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-amber-500/50 to-transparent" />
+                <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-transparent via-amber-500/50 to-transparent" />
+                <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-transparent via-amber-500/20 to-transparent" />
+                <div className="absolute inset-y-0 right-0 w-1 bg-gradient-to-b from-transparent via-amber-500/20 to-transparent" />
+
+                {/* Header */}
+                <div className="flex justify-between items-center border-b border-amber-500/20 pb-4">
+                  <div className="flex items-center gap-3">
+                    <span className="text-3xl">
+                      {activeLore.type === 'journal' ? '📓' : activeLore.type === 'carving' ? '🗿' : '🌀'}
+                    </span>
+                    <div>
+                      <h3 className="text-xs uppercase tracking-widest text-amber-500 font-extrabold">Ancient Fragment Found</h3>
+                      <h2 className="text-sm sm:text-base font-bold text-amber-200 mt-0.5">{activeLore.title}</h2>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setActiveLore(null)}
+                    className="w-8 h-8 rounded-full bg-white/5 border border-amber-500/10 flex items-center justify-center hover:bg-amber-500/20 active:scale-95 transition-all cursor-pointer text-amber-300"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+
+                {/* Content with beautiful typewriter-style serif aesthetic */}
+                <div className="flex-1 py-2 font-serif text-sm sm:text-base italic leading-relaxed text-amber-100/90 whitespace-pre-line tracking-wide relative">
+                  <div className="absolute -left-3 -top-3 text-5xl text-amber-500/10 select-none font-serif">“</div>
+                  <p className="px-4 py-2 bg-amber-950/10 border-l border-amber-500/20 rounded-r-xl">
+                    {activeLore.text}
+                  </p>
+                </div>
+
+                {/* Guidance / Hint */}
+                {activeLore.hint && (
+                  <div className="bg-amber-950/40 border border-amber-500/15 p-4 rounded-xl text-xs text-amber-400/80 leading-relaxed font-sans">
+                    <span className="font-extrabold text-amber-500 block uppercase tracking-wider mb-1">🔍 Oracle Guidance</span>
+                    {activeLore.hint}
+                  </div>
+                )}
+
+                {/* Rewards Summary */}
+                <div className="bg-black/40 border border-amber-500/10 rounded-2xl p-4 flex justify-between items-center text-xs">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[9px] text-amber-500/60 uppercase tracking-widest font-bold">Rewards Earned</span>
+                    <div className="flex gap-2 flex-wrap mt-0.5">
+                      {activeLore.xpBonus && (
+                        <span className="bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 px-2 py-0.5 rounded-lg text-[10px] font-bold">
+                          +{activeLore.xpBonus} Player XP
+                        </span>
+                      )}
+                      {activeLore.xpSkill && (
+                        <span className="bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase">
+                          +{activeLore.xpBonus} {activeLore.xpSkill} XP
+                        </span>
+                      )}
+                      {activeLore.rewardItem && (
+                        <span className="bg-green-500/10 border border-green-500/20 text-green-400 px-2 py-0.5 rounded-lg text-[10px] font-bold">
+                          +{IT[activeLore.rewardItem]?.n || activeLore.rewardItem} x{activeLore.rewardQty}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setActiveLore(null)}
+                    className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs tracking-widest uppercase rounded-xl transition-all active:scale-95 cursor-pointer shadow-lg shadow-amber-500/10"
+                  >
+                    Close
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {showSkills && (
           <motion.div 
