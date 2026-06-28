@@ -16,6 +16,7 @@ import {
   Search,
   FlaskConical,
   BookOpen,
+  Book,
   Plus,
   Minus,
   Trash2,
@@ -1126,6 +1127,67 @@ const getProceduralBiomeForZone = (zc: number, zr: number, seed: number) => {
   return MAPS[idx];
 };
 
+const getDynamicBiomeAt = (wx: number, wy: number, seed: number, zoneMaps: any[]) => {
+  if (!zoneMaps || zoneMaps.length === 0) return MAPS[0];
+  
+  // Find the exact floating-point zone coordinates
+  const fzc = wx / ZW;
+  const fzr = wy / ZH;
+  
+  // Base zone
+  const zc = Math.max(0, Math.min(ZCOLS - 1, Math.floor(fzc)));
+  const zr = Math.max(0, Math.min(ZROWS - 1, Math.floor(fzr)));
+  const baseIdx = zr * ZCOLS + zc;
+  const baseM = zoneMaps[baseIdx] || MAPS[0];
+  
+  // Calculate relative distance to center of current zone
+  const dx = fzc - (zc + 0.5); // distance to center of current zone column (-0.5 to 0.5)
+  const dy = fzr - (zr + 0.5); // distance to center of current zone row (-0.5 to 0.5)
+  
+  // If we are near the borders, we have a chance to pick the neighbor's biome instead
+  // This creates a smooth organic pixelated blending of biomes!
+  let targetM = baseM;
+  
+  // Simple seed-based pseudo-random number for this tile
+  const h = Math.sin(wx * 12.9898 + wy * 78.233 + seed) * 43758.5453;
+  const rand = h - Math.floor(h);
+  
+  // Transition width (e.g., 0.20 of a zone, which is 16 tiles)
+  const transitionWidth = 0.20;
+  
+  let neighborX = zc;
+  let neighborY = zr;
+  let blendX = 0;
+  let blendY = 0;
+  
+  if (dx > 0.5 - transitionWidth && zc < ZCOLS - 1) {
+    neighborX = zc + 1;
+    blendX = (dx - (0.5 - transitionWidth)) / transitionWidth; // 0 to 1
+  } else if (dx < -0.5 + transitionWidth && zc > 0) {
+    neighborX = zc - 1;
+    blendX = (-dx - (0.5 - transitionWidth)) / transitionWidth; // 0 to 1
+  }
+  
+  if (dy > 0.5 - transitionWidth && zr < ZROWS - 1) {
+    neighborY = zr + 1;
+    blendY = (dy - (0.5 - transitionWidth)) / transitionWidth; // 0 to 1
+  } else if (dy < -0.5 + transitionWidth && zr > 0) {
+    neighborY = zr - 1;
+    blendY = (-dy - (0.5 - transitionWidth)) / transitionWidth; // 0 to 1
+  }
+  
+  // Pick which neighbor to blend with based on our random value
+  if (blendX > 0 && rand < blendX * 0.5) {
+    const idx = zr * ZCOLS + neighborX;
+    targetM = zoneMaps[idx] || baseM;
+  } else if (blendY > 0 && rand < blendY * 0.5) {
+    const idx = neighborY * ZCOLS + zc;
+    targetM = zoneMaps[idx] || baseM;
+  }
+  
+  return targetM;
+};
+
 const getProceduralNoise = (x: number, y: number, seed: number) => {
   // Octave 1: Low frequency, high amplitude (main continent shape)
   const n1 = Math.sin(x * 0.02 + y * 0.015 + seed * 0.005) * 0.5 + 0.5;
@@ -1250,6 +1312,9 @@ export default function SurvivalGame() {
   const [invCategory, setInvCategory] = useState<'all' | 'weapon' | 'armor' | 'food' | 'mat' | 'nft'>('all');
   const [selectedInvItem, setSelectedInvItem] = useState<string | null>(null);
   const [showCraft, setShowCraft] = useState(false);
+  const [showRecipeBook, setShowRecipeBook] = useState(false);
+  const [recipeSearch, setRecipeSearch] = useState('');
+  const [recipeFilter, setRecipeFilter] = useState('All');
   const [showSkills, setShowSkills] = useState(false);
   
   // Fishing Mini-game States
@@ -1279,7 +1344,7 @@ export default function SurvivalGame() {
   const [joy, setJoy] = useState<{ x: number; y: number } | null>(null);
   const [oracleData, setOracleData] = useState<any>(null);
   const [isOracleLoading, setIsOracleLoading] = useState(false);
-  const [logs, setLogs] = useState<{ msg: string; col: string }[]>([]);
+  const [logs, setLogs] = useState<{ id: string; msg: string; col: string }[]>([]);
   const [compMode, setCompMode] = useState<'guard' | 'attack'>('guard');
   const [hotSlot, setHotSlot] = useState(0);
   const [draggedOverSlot, setDraggedOverSlot] = useState<number | null>(null);
@@ -1930,41 +1995,42 @@ export default function SurvivalGame() {
           if (!world[oy + ly]) world[oy + ly] = [];
           for (let lx = 0; lx < ZW; lx++) {
             const wx = ox + lx, wy = oy + ly;
-            world[wy][wx] = getProceduralTile(wx, wy, M, currentSeed);
+            const tileM = getDynamicBiomeAt(wx, wy, currentSeed, zoneMaps);
+            world[wy][wx] = getProceduralTile(wx, wy, tileM, currentSeed);
             
             // Objects Placement
             if (lx > 2 && lx < ZW - 2 && ly > 2 && ly < ZH - 2) {
               const randVal = rng();
               const tileType = world[wy][wx];
               
-              if (tileType === M.m || tileType === M.f) {
+              if (tileType === tileM.m || tileType === tileM.f) {
                 // Spawn Trees based on Biome (4.5x Spawn Rate)
-                if (randVal < M.wf * 4.5) {
+                if (randVal < tileM.wf * 4.5) {
                   let treeIco = '🌲';
                   let treeHp = 3;
                   let treeSubtype = 'oak';
                   
-                  if (M.n.includes('Desert')) {
+                  if (tileM.n.includes('Desert')) {
                     treeIco = '🌵';
                     treeSubtype = 'cactus';
                     treeHp = 2;
-                  } else if (M.n.includes('Frozen') || M.n.includes('Tundra')) {
+                  } else if (tileM.n.includes('Frozen') || tileM.n.includes('Tundra')) {
                     treeIco = '❄️';
                     treeSubtype = 'snowpine';
                     treeHp = 4;
-                  } else if (M.n.includes('Swamp')) {
+                  } else if (tileM.n.includes('Swamp')) {
                     treeIco = '🌴';
                     treeSubtype = 'willow';
                     treeHp = 3;
-                  } else if (M.n.includes('Scorched') || M.n.includes('Volcanic')) {
+                  } else if (tileM.n.includes('Scorched') || tileM.n.includes('Volcanic')) {
                     treeIco = '🪵';
                     treeSubtype = 'dead';
                     treeHp = 2;
-                  } else if (M.n.includes('Enchanted')) {
+                  } else if (tileM.n.includes('Enchanted')) {
                     treeIco = '🌸';
                     treeSubtype = 'blossom';
                     treeHp = 4;
-                  } else if (M.n.includes('Celestial')) {
+                  } else if (tileM.n.includes('Celestial')) {
                     treeIco = '🌌';
                     treeSubtype = 'cosmic';
                     treeHp = 5;
@@ -1975,10 +2041,10 @@ export default function SurvivalGame() {
                   
                   objs.push({ type: 'tree', tx: wx, ty: wy, hp: treeHp, mhp: treeHp, ico: treeIco, subtype: treeSubtype });
                 }
-              } else if (tileType === M.r || (tileType === M.m && randVal < M.rf * 2.0)) {
+              } else if (tileType === tileM.r || (tileType === tileM.m && randVal < tileM.rf * 2.0)) {
                 // Spawn Rocks/Ores on high ridges (4.5x rate) or occasionally on main ground (2.0x rate)
-                const isRidge = tileType === M.r;
-                const spawnLimit = isRidge ? M.rf * 4.5 : M.rf * 2.0;
+                const isRidge = tileType === tileM.r;
+                const spawnLimit = isRidge ? tileM.rf * 4.5 : tileM.rf * 2.0;
                 
                 if (randVal < spawnLimit) {
                   let rockIco = '🪨';
@@ -1987,14 +2053,14 @@ export default function SurvivalGame() {
                   const oreRand = rng();
                   
                   // Rare chance for a magic Mana Crystal node to grow on Leylines
-                  const isMagicBiome = M.n.includes('Crystal Cavern') || M.n.includes('Enchanted Grove') || M.n.includes('Celestial') || M.n.includes('Ancient Ruins');
+                  const isMagicBiome = tileM.n.includes('Crystal Cavern') || tileM.n.includes('Enchanted Grove') || tileM.n.includes('Celestial') || tileM.n.includes('Ancient Ruins');
                   const manaCrystalChance = isMagicBiome ? 0.15 : 0.04;
                   
                   if (rng() < manaCrystalChance) {
                     rockIco = '🧿';
                     rockSubtype = 'mana_crystal';
                     rockHp = 5;
-                  } else if (M.n.includes('Celestial')) {
+                  } else if (tileM.n.includes('Celestial')) {
                     if (oreRand < 0.4) {
                       rockIco = '🔮';
                       rockSubtype = 'void_crystal';
@@ -2070,7 +2136,7 @@ export default function SurvivalGame() {
                   }
                 } else {
                   // Standard ground drops (3x Spawn Rate)
-                  for (const [k, v] of Object.entries(M.dr)) {
+                  for (const [k, v] of Object.entries(tileM.dr)) {
                     if (rng() < (v as number) * 3.0) {
                       objs.push({ type: 'drop', tx: wx, ty: wy, item: k, qty: 1 + Math.floor(rng() * 2) });
                     }
@@ -2428,6 +2494,79 @@ export default function SurvivalGame() {
           discoverMapAroundPlayer(s);
         }
 
+        // Tick Wave System
+        if (s.ticks % 60 === 0) {
+          if (s.waveTimer > 0) {
+            s.waveTimer--;
+          } else {
+            // Wave transition!
+            if (!s.waveActive) {
+              s.waveActive = true;
+              s.waveNum = (s.waveNum || 0) + 1;
+              // Active wave lasts 60 seconds plus 5 seconds per wave level
+              s.waveTimer = 60 + Math.min(60, s.waveNum * 5);
+              addLog(`🚨 WAVE ${s.waveNum} HAS STARTED! Monsters are attacking from all sides!`, '#ef4444');
+              spawnExplosion(s, s.pl.x, s.pl.y, '#ef4444', 15, 'spark');
+              
+              // Spawn initial wave horde
+              const zoneC = Math.floor(s.pl.x / (ZW * TZ));
+              const zoneR = Math.floor(s.pl.y / (ZH * TZ));
+              const M = s.zoneMaps?.[zoneR * ZCOLS + zoneC] || MAPS[0];
+              const spawnCount = 4 + Math.min(8, Math.floor(s.waveNum * 0.5));
+              for (let i = 0; i < spawnCount; i++) {
+                const eid = M.ef?.[Math.floor(Math.random() * (M.ef?.length || 1))] || "wolf";
+                const et = ET[eid];
+                if (et) {
+                  const angle = Math.random() * Math.PI * 2;
+                  const distance = 300 + Math.random() * 150;
+                  const sx = Math.max(0, Math.min(WW * TZ - 1, s.pl.x + Math.cos(angle) * distance));
+                  const sy = Math.max(0, Math.min(WH * TZ - 1, s.pl.y + Math.sin(angle) * distance));
+                  s.enemies.push({
+                    id: Math.random(),
+                    x: sx,
+                    y: sy,
+                    hp: et.hp * (1 + s.waveNum * 0.1),
+                    mhp: et.hp * (1 + s.waveNum * 0.1),
+                    eid,
+                    spd: et.spd * 1.1,
+                    dmg: Math.round(et.dmg * (1 + s.waveNum * 0.05)),
+                    acd: et.acd,
+                    cd: 0,
+                    ran: et.ran,
+                    spawnZc: Math.floor(sx / (ZW * TZ)),
+                    spawnZr: Math.floor(sy / (ZH * TZ)),
+                    isWaveEnemy: true
+                  });
+                }
+              }
+            } else {
+              s.waveActive = false;
+              s.waveTimer = 180; // 3 minutes peace time
+              const goldReward = 50 + s.waveNum * 25;
+              const xpReward = 120 + s.waveNum * 60;
+              s.pl.gold = (s.pl.gold || 0) + goldReward;
+              s.pl.xp = (s.pl.xp || 0) + xpReward;
+              
+              // Level up checks
+              if (s.pl.xp >= s.pl.xpNext) {
+                s.pl.xp -= s.pl.xpNext;
+                s.pl.lvl++;
+                s.pl.xpNext = Math.round(s.pl.xpNext * 1.5);
+                s.pl.mhp += 15;
+                s.pl.hp = s.pl.mhp;
+                s.pl.mmp += 10;
+                s.pl.mp = s.pl.mmp;
+                addLog(`🎉 LEVEL UP! Reached Level ${s.pl.lvl}!`, "#10b981");
+              }
+              addLog(`🏆 WAVE ${s.waveNum} SURVIVED! Gained +${goldReward} Gold & +${xpReward} XP!`, '#10b981');
+              spawnExplosion(s, s.pl.x, s.pl.y, '#10b981', 12, 'heal');
+              
+              // Remove leftover wave-marked enemies
+              s.enemies = s.enemies.filter((e: any) => !e.isWaveEnemy);
+            }
+          }
+        }
+
         // Tick active magic spell durations
         if (s.activeSpells) {
           if (s.activeSpells.revealMapTimer > 0) {
@@ -2653,6 +2792,37 @@ export default function SurvivalGame() {
         }
       }
 
+      // Track explored sectors and unlock hidden recipes
+      const currentZc = Math.floor(s.pl.x / (ZW * TZ));
+      const currentZr = Math.floor(s.pl.y / (ZH * TZ));
+      if (s.lastZc === undefined) {
+        s.lastZc = currentZc;
+        s.lastZr = currentZr;
+        s.exploredSectors = s.exploredSectors || [`${currentZc},${currentZr}`];
+      } else if (currentZc !== s.lastZc || currentZr !== s.lastZr) {
+        s.lastZc = currentZc;
+        s.lastZr = currentZr;
+        s.exploredSectors = s.exploredSectors || [];
+        const sectorKey = `${currentZc},${currentZr}`;
+        if (!s.exploredSectors.includes(sectorKey)) {
+          s.exploredSectors.push(sectorKey);
+          const mapIdx = currentZr * ZCOLS + currentZc;
+          const M = s.zoneMaps?.[mapIdx] || MAPS[mapIdx] || MAPS[0];
+          addLog(`🌍 Explored new sector: ${M?.n || "Unknown Biome"}!`, '#10b981');
+          
+          // Trigger recipe unlock through world exploration!
+          const currentRecipes = recipesRef.current.length > 0 ? recipesRef.current : recipes;
+          const lockedRecipes = currentRecipes.filter((r: any) => !r.discovered);
+          if (lockedRecipes.length > 0) {
+            const randomRecipe = lockedRecipes[Math.floor(Math.random() * lockedRecipes.length)];
+            randomRecipe.discovered = true;
+            setRecipes([...currentRecipes]);
+            addLog(`📖 DISCOVERY UNLOCKED: "${randomRecipe.n}" recipe revealed from exploration!`, '#eab308');
+            spawnExplosion(s, s.pl.x, s.pl.y, '#eab308', 12, 'spark');
+          }
+        }
+      }
+
       // Camera
       s.cam.x += (s.pl.x - window.innerWidth / 2 - s.cam.x) * 0.1;
       s.cam.y += (s.pl.y - window.innerHeight / 2 - s.cam.y) * 0.1;
@@ -2662,9 +2832,11 @@ export default function SurvivalGame() {
       if (s.pl.ifr > 0) s.pl.ifr--;
 
       // Enemy Spawning
-      if (s.ticks % 150 === 0 && s.enemies.length < 24) {
+      const spawnInterval = s.waveActive ? 50 : 150;
+      const maxEnemies = s.waveActive ? 35 : 24;
+      if (s.ticks % spawnInterval === 0 && s.enemies.length < maxEnemies) {
         const mapIdx = Math.floor(s.pl.y / (ZH * TZ)) * ZCOLS + Math.floor(s.pl.x / (ZW * TZ));
-        const M = MAPS[mapIdx] || MAPS[0];
+        const M = s.zoneMaps?.[mapIdx] || MAPS[mapIdx] || MAPS[0];
         const eid = M.ef[Math.floor(Math.random() * M.ef.length)];
         const et = ET[eid];
         if (et) {
@@ -2678,9 +2850,17 @@ export default function SurvivalGame() {
             id: Math.random(),
             x: spawnX,
             y: spawnY,
-            hp: et.hp, mhp: et.hp, eid, spd: et.spd, dmg: et.dmg, acd: et.acd, cd: 0, ran: et.ran,
+            hp: s.waveActive ? et.hp * (1 + (s.waveNum || 1) * 0.1) : et.hp,
+            mhp: s.waveActive ? et.hp * (1 + (s.waveNum || 1) * 0.1) : et.hp,
+            eid,
+            spd: s.waveActive ? et.spd * 1.1 : et.spd,
+            dmg: s.waveActive ? Math.round(et.dmg * (1 + (s.waveNum || 1) * 0.05)) : et.dmg,
+            acd: et.acd,
+            cd: 0,
+            ran: et.ran,
             spawnZc,
-            spawnZr
+            spawnZr,
+            isWaveEnemy: s.waveActive
           });
         }
       }
@@ -3531,7 +3711,8 @@ export default function SurvivalGame() {
   }, [gameState]);
 
   const addLog = (msg: string, col: string = '#a8ff78') => {
-    setLogs(prev => [{ msg, col }, ...prev].slice(0, 5));
+    const id = `${Date.now()}-${Math.random()}`;
+    setLogs(prev => [{ id, msg, col }, ...prev].slice(0, 5));
   };
 
   const triggerWorldEvent = async () => {
@@ -3718,8 +3899,10 @@ export default function SurvivalGame() {
       addLog(`Healed for ${healAmount} HP`, '#00ffaa');
     } else {
       const alchemyLvl = s.pl.skills?.alchemy?.lvl || 1;
-      const manaCost = Math.max(2, Math.round(wp.mp * (1 - (alchemyLvl - 1) * 0.03)));
-      if (s.pl.mp < manaCost) { // Only magic check
+      const manaCost = wp.type === 'magic'
+        ? Math.max(2, Math.round((wp.mp || 0) * (1 - (alchemyLvl - 1) * 0.03)))
+        : 0;
+      if (wp.type === 'magic' && s.pl.mp < manaCost) { // Only magic check
         addLog("Not enough Mana", "#f44");
         return;
       }
@@ -3740,14 +3923,18 @@ export default function SurvivalGame() {
         // Alchemy can also decrease staff mana cost!
         const alchemyLvl = s.pl.skills?.alchemy?.lvl || 1;
         const combatLvl = s.pl.skills?.combat?.lvl || 1;
-        const manaCost = Math.max(2, Math.round(wp.mp * (1 - (alchemyLvl - 1) * 0.03)));
+        const manaCost = wp.type === 'magic'
+          ? Math.max(2, Math.round((wp.mp || 0) * (1 - (alchemyLvl - 1) * 0.03)))
+          : 0;
         
-        if (s.pl.mp < manaCost) {
+        if (wp.type === 'magic' && s.pl.mp < manaCost) {
           addLog("Not enough Mana", "#f44");
           return;
         }
         
-        s.pl.mp -= manaCost;
+        if (manaCost > 0) {
+          s.pl.mp -= manaCost;
+        }
         
         // Scale damage
         const finalDmg = Math.round(wp.dmg * (1 + (wp.type === 'ranged' ? (combatLvl - 1) * 0.05 : (alchemyLvl - 1) * 0.05)) * eventDmgBoost);
@@ -3944,7 +4131,7 @@ export default function SurvivalGame() {
       }
       
       addLog(`Equipped ${it.n}`, '#55aaff');
-    } else if (it.t === 'tool' || it.id) {
+    } else if (it.t === 'tool' || it.t === 'weapon' || it.id) {
        s.pl.weapon = k;
        addLog(`Selected ${it.n}`, '#ffffaa');
     } else if (it.t === 'struct') {
@@ -4380,6 +4567,16 @@ export default function SurvivalGame() {
             if (entry.rewardItem && entry.rewardQty) {
               s.pl.inv[entry.rewardItem] = (s.pl.inv[entry.rewardItem] || 0) + entry.rewardQty;
               addLog(`🎁 Discovered reward: +${IT[entry.rewardItem]?.n || entry.rewardItem} x${entry.rewardQty}!`, '#22c55e');
+            }
+
+            // Unlock a recipe from lore discovery
+            const currentRecipes = recipesRef.current.length > 0 ? recipesRef.current : recipes;
+            const lockedRecipes = currentRecipes.filter((r: any) => !r.discovered);
+            if (lockedRecipes.length > 0) {
+              const randomRecipe = lockedRecipes[Math.floor(Math.random() * lockedRecipes.length)];
+              randomRecipe.discovered = true;
+              setRecipes([...currentRecipes]);
+              addLog(`📖 LORE DECODED: Revealed "${randomRecipe.n}" crafting recipe!`, '#c084fc');
             }
 
             // Beautiful magical particle burst
@@ -5537,7 +5734,13 @@ export default function SurvivalGame() {
           <div className="text-xs text-blue-300 opacity-80">
             {MAPS[Math.floor((gameState?.pl.y || 0) / (ZH * TZ)) * ZCOLS + Math.floor((gameState?.pl.x || 0) / (ZW * TZ))]?.n || "Unknown"}
           </div>
-          <div className="text-[10px] text-orange-400">WAVE {gameState?.waveNum}/300</div>
+          <div className="text-[10px] font-mono text-orange-400 font-bold tracking-wider">
+            {gameState?.waveActive ? (
+              <span className="text-red-400 animate-pulse">⚠️ WAVE {gameState?.waveNum} ({gameState?.waveTimer}s left)</span>
+            ) : (
+              <span>WAVE {(gameState?.waveNum || 0) + 1} IN {gameState?.waveTimer}s</span>
+            )}
+          </div>
           <div className="w-32 h-1 bg-white/10 rounded-full mt-1 overflow-hidden">
             <div className="h-full bg-yellow-400" style={{ width: `${(gameState?.pl.xp / gameState?.pl.xpNext) * 100}%` }} />
           </div>
@@ -5557,6 +5760,13 @@ export default function SurvivalGame() {
             >
               <Hammer size={11} className="text-yellow-500" />
               <span>CRAFT</span>
+            </button>
+            <button 
+              onClick={() => setShowRecipeBook(true)}
+              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-amber-500/20 hover:border-amber-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-amber-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+            >
+              <Book size={11} className="text-amber-400" />
+              <span>RECIPES</span>
             </button>
             <button 
               onClick={() => setIsAutoCollapsed(prev => !prev)}
@@ -5720,9 +5930,9 @@ export default function SurvivalGame() {
       {/* --- Logs --- */}
       <div className="absolute top-24 left-[276px] flex flex-col gap-1 pointer-events-none z-10 max-w-sm">
         <AnimatePresence>
-          {logs.map((log, i) => (
+          {logs.map((log) => (
             <motion.div 
-              key={i}
+              key={log.id}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
@@ -5880,7 +6090,7 @@ export default function SurvivalGame() {
 
       {/* --- Controls --- */}
       {/* Bottom Center: Hotbar (Always centered at the bottom, pointer enabled, persistent floating design) */}
-      {(!showSkills && !showCraft && !showOracle && !showSaveMenu && !showWorldMenu && !showSpellbook && !showNFTMarket && !showShop && !showDeathScreen) && (
+      {(!showSkills && !showCraft && !showRecipeBook && !showOracle && !showSaveMenu && !showWorldMenu && !showSpellbook && !showNFTMarket && !showShop && !showDeathScreen) && (
         <div 
           className={`absolute left-1/2 -translate-x-1/2 pointer-events-auto select-none flex flex-col items-center gap-2 transition-all duration-300 ${
             showInv 
@@ -6328,7 +6538,7 @@ export default function SurvivalGame() {
                           <span className="text-xs font-black text-white truncate">{it.n}</span>
                           <span className="text-[8px] tracking-wider text-zinc-400 uppercase mt-0.5 leading-none">
                             {it.t === 'armor' ? `🛡️ Body Armor (${it.sl})` : 
-                             it.t === 'tool' || it.id ? '⚔️ Weapon / Tool' :
+                             it.t === 'tool' || it.t === 'weapon' || it.id ? '⚔️ Weapon / Tool' :
                              it.t === 'food' || it.t === 'pot' || selectedInvItem === 'mana_crystal' ? '🧪 Consumable' : '🪵 Crafting Material'}
                           </span>
                         </div>
@@ -6342,7 +6552,7 @@ export default function SurvivalGame() {
                         </div>
 
                         {/* Weapon specific stats */}
-                        {(it.id || it.t === 'tool') && (
+                        {(it.id || it.t === 'tool' || it.t === 'weapon') && (
                           <div className="flex flex-col gap-1 text-[10px] border-t border-white/5 pt-2 mt-1">
                             <div className="flex justify-between">
                               <span className="opacity-50">Base Damage:</span>
@@ -6452,7 +6662,7 @@ export default function SurvivalGame() {
                             ❌ Unequip Item
                           </button>
                         ) : (
-                          (it.t === 'armor' || it.id || it.t === 'tool' || it.t === 'food' || it.t === 'pot' || selectedInvItem === 'mana_crystal') && (
+                          (it.t === 'armor' || it.t === 'weapon' || it.id || it.t === 'tool' || it.t === 'food' || it.t === 'pot' || selectedInvItem === 'mana_crystal') && (
                             <button
                               onClick={() => {
                                 handleUse(selectedInvItem);
@@ -6460,7 +6670,7 @@ export default function SurvivalGame() {
                               className="w-full py-2.5 bg-green-500 hover:bg-green-400 text-black rounded-xl text-xs font-black uppercase transition-all active:scale-[0.98] cursor-pointer text-center shadow-lg shadow-green-500/10"
                             >
                               {it.t === 'armor' ? '🛡️ Equip Armor' : 
-                               it.id || it.t === 'tool' ? '⚔️ Equip Weapon' : '🧪 Consume / Use'}
+                               it.t === 'weapon' || it.id || it.t === 'tool' ? '⚔️ Equip Weapon' : '🧪 Consume / Use'}
                             </button>
                           )
                         )}
@@ -6595,6 +6805,259 @@ export default function SurvivalGame() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {showRecipeBook && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/95 flex flex-col font-mono"
+          >
+            <div className="p-6 flex justify-between items-center border-b border-white/10 shrink-0">
+              <h2 className="text-xl font-bold tracking-widest text-amber-400 flex items-center gap-2">
+                <Book className="text-amber-400" /> CHRONICLES OF DISCOVERY & RECIPES
+              </h2>
+              <button onClick={() => setShowRecipeBook(false)} className="p-2 hover:bg-white/10 rounded-full cursor-pointer transition-all text-white">
+                <X />
+              </button>
+            </div>
+
+            <div className="flex-1 p-6 overflow-y-auto max-w-5xl mx-auto w-full flex flex-col gap-6">
+              {/* Stat Cards & Explainer Banner */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 bg-zinc-950 border border-amber-500/20 rounded-2xl flex flex-col justify-center">
+                  <div className="text-[10px] uppercase opacity-40 font-bold tracking-wider">Formulae Decoded</div>
+                  <div className="text-2xl font-bold text-amber-400 mt-1 flex items-baseline gap-2">
+                    {recipes.filter(r => r.discovered).length} <span className="text-xs opacity-50">/ {recipes.length}</span>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 ml-auto">{Math.round((recipes.filter(r => r.discovered).length / recipes.length) * 100)}%</span>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-zinc-950 border border-amber-500/20 rounded-2xl flex flex-col justify-center">
+                  <div className="text-[10px] uppercase opacity-40 font-bold tracking-wider">Total Items Crafted</div>
+                  <div className="text-2xl font-bold text-yellow-400 mt-1 flex items-baseline gap-2">
+                    {recipes.reduce((sum, r) => sum + (r.craftCount || 0), 0)} <span className="text-xs opacity-50">items</span>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-300 ml-auto">Master Artisan</span>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-zinc-950 border border-teal-500/20 rounded-2xl flex flex-col justify-center">
+                  <div className="text-[10px] uppercase opacity-40 font-bold tracking-wider">Explored Zones</div>
+                  <div className="text-2xl font-bold text-teal-400 mt-1 flex items-baseline gap-2">
+                    {gameState?.exploredSectors?.length || 1} <span className="text-xs opacity-50">sectors</span>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded bg-teal-500/10 text-teal-300 ml-auto">Voyager</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Explainer / Guide Banner */}
+              <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-500/20 text-xs text-amber-300/90 leading-relaxed">
+                💡 <span className="font-bold text-amber-400">Survivalist Clue:</span> Discover rare crafting formulas by stepping onto new procedural biome sectors across the world map, or by unearthing glowing <span className="text-purple-400 font-bold">Lore Nodes 📜</span> hidden in dangerous ruins.
+              </div>
+
+              {/* Filter Bar */}
+              <div className="bg-zinc-950 border border-white/10 p-4 rounded-2xl flex flex-col gap-4">
+                {/* Search Bar */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 text-zinc-500" size={16} />
+                  <input
+                    type="text"
+                    placeholder="Search discovered recipes by name or materials..."
+                    value={recipeSearch}
+                    onChange={(e) => setRecipeSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-zinc-900/60 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                  {recipeSearch && (
+                    <button 
+                      onClick={() => setRecipeSearch('')}
+                      className="absolute right-3 top-2 text-zinc-400 hover:text-white"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Categories Tabs */}
+                <div className="flex flex-wrap gap-1.5 border-b border-white/5 pb-1">
+                  {['All', 'Weapons', 'Armor', 'Food', 'Potions', 'Materials', 'Structures'].map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => setRecipeFilter(cat)}
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                        recipeFilter === cat 
+                          ? 'bg-amber-500 text-black shadow-md' 
+                          : 'bg-zinc-900 border border-white/5 text-zinc-400 hover:text-white hover:border-white/10'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Grid of Recipes */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {recipes.filter(r => {
+                  if (recipeFilter !== 'All' && r.cat !== recipeFilter) return false;
+                  if (recipeSearch.trim() !== '') {
+                    const term = recipeSearch.toLowerCase();
+                    if (r.discovered) {
+                      const nameMatch = r.n.toLowerCase().includes(term);
+                      const outputMatch = r.out.toLowerCase().includes(term);
+                      const materialsMatch = Object.keys(r.c).some(m => (IT[m]?.n || m).toLowerCase().includes(term));
+                      return nameMatch || outputMatch || materialsMatch;
+                    } else {
+                      return "locked".includes(term) || "???".includes(term);
+                    }
+                  }
+                  return true;
+                }).length > 0 ? (
+                  recipes.filter(r => {
+                    if (recipeFilter !== 'All' && r.cat !== recipeFilter) return false;
+                    if (recipeSearch.trim() !== '') {
+                      const term = recipeSearch.toLowerCase();
+                      if (r.discovered) {
+                        const nameMatch = r.n.toLowerCase().includes(term);
+                        const outputMatch = r.out.toLowerCase().includes(term);
+                        const materialsMatch = Object.keys(r.c).some(m => (IT[m]?.n || m).toLowerCase().includes(term));
+                        return nameMatch || outputMatch || materialsMatch;
+                      } else {
+                        return "locked".includes(term) || "???".includes(term);
+                      }
+                    }
+                    return true;
+                  }).map((rc, idx) => {
+                    const itemDef = IT[rc.out];
+                    const discovered = rc.discovered;
+
+                    return (
+                      <div 
+                        key={rc.n + '-' + idx}
+                        className={`p-5 rounded-2xl border transition-all duration-300 flex flex-col gap-4 relative overflow-hidden ${
+                          discovered 
+                            ? 'bg-zinc-950 border-white/10 hover:border-amber-500/35 hover:shadow-[0_0_20px_rgba(245,158,11,0.05)]' 
+                            : 'bg-zinc-950/40 border-zinc-900 border-dashed text-zinc-500 opacity-75'
+                        }`}
+                      >
+                        {discovered && rc.craftCount > 0 && (
+                          <div className="absolute right-3 top-3 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-[9px] text-emerald-400 font-bold uppercase tracking-wider">
+                            Crafted {rc.craftCount}x
+                          </div>
+                        )}
+
+                        <div className="flex items-start gap-3.5">
+                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 ${
+                            discovered 
+                              ? 'bg-amber-500/10 border border-amber-500/20 text-amber-400' 
+                              : 'bg-zinc-900 border border-zinc-800 text-zinc-600'
+                          }`}>
+                            {discovered ? (itemDef?.ico || '📦') : '🔒'}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`font-bold text-sm truncate ${discovered ? 'text-white' : 'text-zinc-600 font-mono italic'}`}>
+                                {discovered ? rc.n : '??? Locked Formula'}
+                              </span>
+                              {discovered && rc.req && (
+                                <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400">
+                                  {IT[rc.req]?.n || rc.req}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mt-0.5">
+                              {rc.cat}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Required Materials */}
+                        <div className="bg-black/30 border border-white/[0.03] p-3 rounded-xl flex flex-col gap-2">
+                          <div className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider">Required Materials:</div>
+                          <div className="grid grid-cols-2 gap-2 mt-1">
+                            {Object.entries(rc.c).map(([mKey, reqQty]) => {
+                              const matDef = IT[mKey];
+                              const currentQty = gameState?.pl?.inv[mKey] || 0;
+                              const hasEnough = currentQty >= (reqQty as number);
+                              return (
+                                <div 
+                                  key={mKey}
+                                  className="flex items-center justify-between text-xs font-mono p-1 rounded hover:bg-white/[0.02]"
+                                >
+                                  <span className={`truncate flex items-center gap-1.5 ${discovered ? 'text-zinc-300' : 'text-zinc-600'}`}>
+                                    <span>{matDef?.ico || '▪️'}</span>
+                                    <span>{discovered ? (matDef?.n || mKey) : '???'}</span>
+                                  </span>
+                                  <span className={`font-bold shrink-0 ${
+                                    !discovered 
+                                      ? 'text-zinc-700' 
+                                      : hasEnough 
+                                        ? 'text-emerald-400' 
+                                        : 'text-red-400'
+                                  }`}>
+                                    {discovered ? `${currentQty}/${reqQty}` : `?/${reqQty}`}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Specs or Hints */}
+                        {discovered ? (
+                          <div className="text-xs text-zinc-400 leading-normal flex flex-wrap gap-x-4 gap-y-1.5 border-t border-white/5 pt-3 mt-auto font-sans">
+                            {itemDef?.dmg !== undefined && (
+                              <span className="font-mono text-[10px] text-yellow-400 font-bold bg-yellow-900/10 border border-yellow-500/20 px-2 py-0.5 rounded">
+                                ⚔️ DMG: {itemDef.dmg}
+                              </span>
+                            )}
+                            {itemDef?.def !== undefined && (
+                              <span className="font-mono text-[10px] text-teal-400 font-bold bg-teal-900/10 border border-teal-500/20 px-2 py-0.5 rounded">
+                                🛡️ DEF: {itemDef.def}
+                              </span>
+                            )}
+                            {itemDef?.hpBonus !== undefined && (
+                              <span className="font-mono text-[10px] text-emerald-400 font-bold bg-emerald-900/10 border border-emerald-500/20 px-2 py-0.5 rounded">
+                                ❤️ HP: +{itemDef.hpBonus}
+                              </span>
+                            )}
+                            {itemDef?.mpBonus !== undefined && (
+                              <span className="font-mono text-[10px] text-purple-400 font-bold bg-purple-900/10 border border-purple-500/20 px-2 py-0.5 rounded">
+                                🔮 MP: +{itemDef.mpBonus}
+                              </span>
+                            )}
+                            {itemDef?.spdBonus !== undefined && (
+                              <span className="font-mono text-[10px] text-cyan-400 font-bold bg-cyan-900/10 border border-cyan-500/20 px-2 py-0.5 rounded">
+                                ⚡ SPEED: +{itemDef.spdBonus}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-amber-500/60 leading-relaxed font-sans italic border-t border-dashed border-zinc-900 pt-3 mt-auto flex items-center gap-1.5">
+                            🔍 Search unexplored biomes & activate lore relics to decode this blueprint.
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="col-span-1 md:col-span-2 py-12 text-center text-zinc-500 text-xs">
+                    No recipes found matching current filters.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-white/10 shrink-0 flex justify-end">
+              <button 
+                onClick={() => setShowRecipeBook(false)}
+                className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl text-xs uppercase tracking-widest active:scale-95 transition-all cursor-pointer shadow-lg"
+              >
+                Close Chronicles
+              </button>
+            </div>
+          </motion.div>
+        )}
 
         {showSkills && (
           <motion.div 
@@ -7804,44 +8267,46 @@ export default function SurvivalGame() {
                 <p className="text-[10px] opacity-40 uppercase">The map is a {ZCOLS}x{ZROWS} cluster of continuous biomes. Below is the mapped layout:</p>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-5 gap-3.5 mt-2">
-                  {Array.from({ length: ZROWS }).map((_, zr) => {
-                    return Array.from({ length: ZCOLS }).map((_, zc) => {
-                      const M = getProceduralBiomeForZone(zc, zr, worldSeed);
-                      const isStart = zc === 0 && zr === 0;
-                      return (
-                        <div 
-                          key={`${zc}-${zr}`}
-                          className={`p-3 rounded-xl border flex flex-col justify-between transition-all relative ${
-                            isStart 
-                              ? 'bg-emerald-500/15 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.15)]' 
-                              : 'bg-white/[0.02] border-white/5 hover:border-white/15'
-                          }`}
-                        >
-                          {isStart && (
-                            <span className="absolute top-1 right-1 text-[7px] bg-emerald-500 text-black px-1 rounded font-sans font-bold uppercase">
-                              START
-                            </span>
-                          )}
-                          <div>
-                            <div className="text-[10px] text-zinc-500 font-mono">Zone ({zc}, {zr})</div>
-                            <div className="text-xs font-extrabold text-white mt-1 flex items-center gap-1.5">
-                              <span>{M.n.split(' ').map((word: string) => word[0]).join('')}</span>
-                              <span className="text-lg">{M.n.includes('Desert') ? '🏜️' : M.n.includes('Forest') ? '🌲' : M.n.includes('Frozen') ? '❄️' : M.n.includes('Scorched') ? '🌋' : M.n.includes('Celestial') ? '🌌' : '🌾'}</span>
-                            </div>
-                            <div className="text-[9px] text-zinc-400 mt-1 truncate">{M.n}</div>
-                          </div>
-                          
-                          <div className="mt-2 pt-2 border-t border-white/5 flex flex-wrap gap-1 text-[8px] opacity-60">
-                            {Object.keys(M.dr).slice(0, 3).map(k => (
-                              <span key={k} className="bg-white/5 px-1 rounded">
-                                {IT[k]?.ico || '📦'}
+                  {Array.from({ length: ZROWS }).map((_, zr) => (
+                    <React.Fragment key={`row-${zr}`}>
+                      {Array.from({ length: ZCOLS }).map((_, zc) => {
+                        const M = getProceduralBiomeForZone(zc, zr, worldSeed);
+                        const isStart = zc === 0 && zr === 0;
+                        return (
+                          <div 
+                            key={`${zc}-${zr}`}
+                            className={`p-3 rounded-xl border flex flex-col justify-between transition-all relative ${
+                              isStart 
+                                ? 'bg-emerald-500/15 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.15)]' 
+                                : 'bg-white/[0.02] border-white/5 hover:border-white/15'
+                            }`}
+                          >
+                            {isStart && (
+                              <span className="absolute top-1 right-1 text-[7px] bg-emerald-500 text-black px-1 rounded font-sans font-bold uppercase">
+                                START
                               </span>
-                            ))}
+                            )}
+                            <div>
+                              <div className="text-[10px] text-zinc-500 font-mono">Zone ({zc}, {zr})</div>
+                              <div className="text-xs font-extrabold text-white mt-1 flex items-center gap-1.5">
+                                <span>{M.n.split(' ').map((word: string) => word[0]).join('')}</span>
+                                <span className="text-lg">{M.n.includes('Desert') ? '🏜️' : M.n.includes('Forest') ? '🌲' : M.n.includes('Frozen') ? '❄️' : M.n.includes('Scorched') ? '🌋' : M.n.includes('Celestial') ? '🌌' : '🌾'}</span>
+                              </div>
+                              <div className="text-[9px] text-zinc-400 mt-1 truncate">{M.n}</div>
+                            </div>
+                            
+                            <div className="mt-2 pt-2 border-t border-white/5 flex flex-wrap gap-1 text-[8px] opacity-60">
+                              {Object.keys(M.dr).slice(0, 3).map(k => (
+                                <span key={k} className="bg-white/5 px-1 rounded">
+                                  {IT[k]?.ico || '📦'}
+                                </span>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    });
-                  })}
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
                 </div>
               </div>
             </div>
