@@ -64,3 +64,44 @@ export async function testConnection() {
     }
   }
 }
+
+/**
+ * Specifically retrieves user inventory data from Firestore.
+ * This reads the game save document under /users/{userId}/saves/{slotId},
+ * parses the inner `saveData` JSON string, and extracts the `pl.inv` inventory object.
+ * 
+ * @param userId - The user's UID
+ * @param slotId - The save slot ID (defaults to 'autosave')
+ * @returns The player inventory object (Record<string, number>) or null if not found
+ */
+export async function getUserInventoryFromFirestore(userId: string, slotId: string = 'autosave'): Promise<Record<string, number> | null> {
+  if (!userId) {
+    throw new Error("userId is required to retrieve inventory data.");
+  }
+  
+  const path = `users/${userId}/saves/${slotId}`;
+  try {
+    const saveDocRef = doc(db, 'users', userId, 'saves', slotId);
+    const docSnap = await getDoc(saveDocRef);
+    if (!docSnap.exists()) {
+      return null;
+    }
+    
+    const data = docSnap.data();
+    if (data && data.saveData) {
+      try {
+        const parsedSave = JSON.parse(data.saveData);
+        if (parsedSave && parsedSave.pl && parsedSave.pl.inv) {
+          return parsedSave.pl.inv as Record<string, number>;
+        }
+      } catch (parseErr) {
+        console.error("Failed to parse cloud saveData JSON:", parseErr);
+        return null;
+      }
+    }
+    return null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return null;
+  }
+}

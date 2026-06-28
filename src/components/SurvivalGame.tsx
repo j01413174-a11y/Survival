@@ -41,6 +41,7 @@ import { getOracleGuidance, generateWorldEvent, castSpell } from '../services/ge
 import { auth, googleProvider, db, handleFirestoreError, testConnection, OperationType } from '../services/firebase';
 import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import { doc, setDoc, getDoc, getDocs, deleteDoc, collection, query } from 'firebase/firestore';
+import Shop from './Shop';
 
 // --- Constants & Types ---
 const TZ = 32;
@@ -112,15 +113,9 @@ function lzw_decode(s: string): string {
 
 function safeSetItem(key: string, value: string): void {
   try {
-    const compressed = "lz:" + lzw_encode(value);
-    localStorage.setItem(key, compressed);
+    localStorage.setItem(key, value);
   } catch (err) {
-    console.error("Failed to set item in localStorage, falling back to raw...", err);
-    try {
-      localStorage.setItem(key, value);
-    } catch (innerErr) {
-      console.error("Even raw storage failed! Storage quota exceeded completely.", innerErr);
-    }
+    console.error("Failed to set item in localStorage", err);
   }
 }
 
@@ -137,6 +132,73 @@ function safeGetItem(key: string): string | null {
   }
   return raw;
 }
+
+// --- Efficient Object Serialization & Compression for saving space ---
+function compressObjs(objs: any[]): any[] {
+  if (!objs) return [];
+  return objs.map((o) => {
+    if (!o) return null;
+    if (o.type === 'tree') {
+      return [0, o.tx, o.ty, o.hp, o.mhp, o.ico, o.subtype];
+    }
+    if (o.type === 'rock') {
+      return [1, o.tx, o.ty, o.hp, o.mhp, o.ico, o.subtype];
+    }
+    if (o.type === 'drop') {
+      return [2, o.tx, o.ty, o.item, o.qty];
+    }
+    if (o.type === 'fishing_hotspot') {
+      return [3, o.tx, o.ty, o.hp, o.ico, o.subtype];
+    }
+    if (o.type === 'animal_track') {
+      return [4, o.tx, o.ty, o.hp, o.ico, o.subtype];
+    }
+    // General case
+    const arr: any[] = [5, o.type, o.tx, o.ty, o.hp, o.mhp, o.ico, o.subtype, o.item, o.qty];
+    while (arr.length > 0 && arr[arr.length - 1] === undefined) {
+      arr.pop();
+    }
+    return arr;
+  }).filter(Boolean);
+}
+
+function decompressObjs(compressed: any[]): any[] {
+  if (!compressed) return [];
+  return compressed.map((arr) => {
+    if (!Array.isArray(arr)) return arr; // Fallback for legacy save format support
+    const kind = arr[0];
+    if (kind === 0) {
+      return { type: 'tree', tx: arr[1], ty: arr[2], hp: arr[3], mhp: arr[4], ico: arr[5], subtype: arr[6] };
+    }
+    if (kind === 1) {
+      return { type: 'rock', tx: arr[1], ty: arr[2], hp: arr[3], mhp: arr[4], ico: arr[5], subtype: arr[6] };
+    }
+    if (kind === 2) {
+      return { type: 'drop', tx: arr[1], ty: arr[2], item: arr[3], qty: arr[4] };
+    }
+    if (kind === 3) {
+      return { type: 'fishing_hotspot', tx: arr[1], ty: arr[2], hp: arr[3], ico: arr[4], subtype: arr[5] };
+    }
+    if (kind === 4) {
+      return { type: 'animal_track', tx: arr[1], ty: arr[2], hp: arr[3], ico: arr[4], subtype: arr[5] };
+    }
+    if (kind === 5) {
+      return {
+        type: arr[1],
+        tx: arr[2],
+        ty: arr[3],
+        hp: arr[4] ?? undefined,
+        mhp: arr[5] ?? undefined,
+        ico: arr[6] ?? undefined,
+        subtype: arr[7] ?? undefined,
+        item: arr[8] ?? undefined,
+        qty: arr[9] ?? undefined
+      };
+    }
+    return arr;
+  });
+}
+
 
 // --- Game Data ---
 const MAPS = [
@@ -187,6 +249,163 @@ const ET: Record<string, any> = {
   alpha_wolf: { n: 'Alpha Wolf', ico: '🐺', hp: 130, spd: 2.1, dmg: 24, acd: 50, xp: 55, lo: { meat: 2.0, leather: 1.5, alpha_pelt: 1.0 }, ran: false, boss: 1 },
 };
 
+// --- Procedural Theme Definitions based on Biomes ---
+const THEMES = [
+  {
+    id: 'medieval',
+    name: 'Medieval Kingdom',
+    prefixes: ['Crusader', 'Templar', 'Paladin', 'Gilded', 'Monarch', 'Chivalry', 'Dreadknight', 'Kingsguard', 'Baronial', 'Excalibur', 'Feudal', 'Lancelot', 'Royal', 'Sovereign', 'Valorous'],
+    suffixes: ['Honor', 'Valor', 'Justice', 'Chivalry', 'Sovereignty', 'the Crown', 'the Citadel', 'the Keep', 'the Realm', 'the Throne', 'Fealty', 'Lords', 'Kingdom', 'Camelot', 'Gilead'],
+    weapons: [
+      { n: 'Broadsword', ico: '⚔️', type: 'melee', dmg: 28, spd: 22, rng: 54 },
+      { n: 'Halberd', ico: '🪓', type: 'melee', dmg: 34, spd: 28, rng: 64 },
+      { n: 'Crossbow', ico: '🏹', type: 'ranged', dmg: 29, spd: 35, rng: 230 },
+      { n: 'Lance', ico: '🔱', type: 'melee', dmg: 36, spd: 30, rng: 70 },
+    ],
+    armors: [
+      { n: 'Greathelm', ico: '🪖', sl: 'head', def: 6, hpBonus: 10 },
+      { n: 'Gilded Chestplate', ico: '🛡️', sl: 'chest', def: 15 },
+      { n: 'Steel Greaves', ico: '👖', sl: 'legs', def: 10 },
+      { n: 'Iron Sabatons', ico: '🥾', sl: 'feet', def: 6, spdBonus: 0.15 },
+      { n: 'Signet Ring', ico: '💍', sl: 'ring', def: 1, hpBonus: 15, mpBonus: 10 }
+    ],
+    desc: 'Forged in the Royal Foundries of Camelot. It bears the crest of the High King and shines with chivalrous honor.'
+  },
+  {
+    id: 'forest',
+    name: 'Verdant Forest',
+    prefixes: ['Elven', 'Mossclad', 'Oakheart', 'Sylvan', 'Dryad', 'Elderwood', 'Greenwood', 'Sprout', 'Briar', 'Verdant', 'Moonlit', 'Ranger', 'Bramblewood', 'Wildgrove', 'Thornheart'],
+    suffixes: ['the Woods', 'the Druids', 'the Rangers', 'the Boughs', 'the Glade', 'Moss', 'Vines', 'Bark', 'Oak', 'Faeries', 'Sylvan Whispers', 'Deepwood', 'Verdant Canopy', 'the Grove'],
+    weapons: [
+      { n: 'Longbow', ico: '🏹', type: 'ranged', dmg: 24, spd: 24, rng: 260 },
+      { n: 'Druidic Staff', ico: '🪄', type: 'magic', dmg: 34, spd: 38, rng: 280, mp: 10, fx: 'poison', col: '#22c55e' },
+      { n: 'Leaf Dagger', ico: '🗡️', type: 'melee', dmg: 22, spd: 18, rng: 48 },
+    ],
+    armors: [
+      { n: 'Leafy Crown', ico: '👑', sl: 'head', def: 4, hpBonus: 16 },
+      { n: 'Ranger Tunic', ico: '🧥', sl: 'chest', def: 10, spdBonus: 0.2 },
+      { n: 'Bark Greaves', ico: '👖', sl: 'legs', def: 7 },
+      { n: 'Sylvan Boots', ico: '🥾', sl: 'feet', def: 4, spdBonus: 0.3 },
+      { n: 'Emerald Band', ico: '💍', sl: 'ring', def: 1, hpBonus: 20 }
+    ],
+    desc: 'Grown from the roots of the ancient World Tree. It hums with the wild magic of the woodland sprites.'
+  },
+  {
+    id: 'tundra',
+    name: 'Frozen Tundra',
+    prefixes: ['Viking', 'Glacial', 'Iceborn', 'Boreal', 'Winter', 'Rime', 'Blizzard', 'Permafrost', 'Avalanche', 'Polar', 'Yeti', 'Aurora', 'Fjord', 'Frostbite', 'Norse'],
+    suffixes: ['the North', 'the Glacier', 'the Fjord', 'Blizzards', 'the Yeti', 'the Frost Giant', 'Aurora Borealis', 'Ice Runes', 'Permafrost', 'Rime', 'Winter Frost', 'the Ice King'],
+    weapons: [
+      { n: 'Battleaxe', ico: '🪓', type: 'melee', dmg: 34, spd: 28, rng: 56 },
+      { n: 'Frost Staff', ico: '🪄', type: 'magic', dmg: 36, spd: 40, rng: 270, mp: 15, fx: 'slow', col: '#38bdf8' },
+      { n: 'Glacial Harpoon', ico: '🔱', type: 'melee', dmg: 32, spd: 26, rng: 65 }
+    ],
+    armors: [
+      { n: 'Fur Helm', ico: '🪖', sl: 'head', def: 5, hpBonus: 18 },
+      { n: 'Heavy Fur Coat', ico: '🧥', sl: 'chest', def: 13, spdBonus: -0.05 },
+      { n: 'Insulated Pants', ico: '👖', sl: 'legs', def: 9 },
+      { n: 'Icebound Boots', ico: '🥾', sl: 'feet', def: 5, spdBonus: 0.1 },
+      { n: 'Glacier Ring', ico: '💍', sl: 'ring', def: 2, mpBonus: 20 }
+    ],
+    desc: 'Molded from eternal black ice from the tallest frozen peaks. The air crackles with freezing mist around it.'
+  },
+  {
+    id: 'desert',
+    name: 'Sandy Desert',
+    prefixes: ['Bedouin', 'Mirage', 'Sultan', 'Scarab', 'Oasis', 'Dune', 'Sandstorm', 'Pharaoh', 'Anubis', 'Ra', 'Nomad', 'Dust', 'Desert', 'Kamil', 'Sahara'],
+    suffixes: ['the Desert', 'the Pyramids', 'the Oasis', 'the Sultan', 'the Sphinx', 'the Sandstorm', 'Mirages', 'Anubis', 'the Sun God', 'Scarabs', 'Dunes', 'the Sands'],
+    weapons: [
+      { n: 'Scimitar', ico: '🗡️', type: 'melee', dmg: 28, spd: 18, rng: 50 },
+      { n: 'Sand Scepter', ico: '🪄', type: 'magic', dmg: 38, spd: 42, rng: 290, mp: 18, fx: 'blind', col: '#eab308' },
+      { n: 'Nomad Bow', ico: '🏹', type: 'ranged', dmg: 25, spd: 22, rng: 250 }
+    ],
+    armors: [
+      { n: 'Golden Turban', ico: '👑', sl: 'head', def: 4, mpBonus: 20 },
+      { n: 'Nomadic Cloak', ico: '🧥', sl: 'chest', def: 9, spdBonus: 0.25 },
+      { n: 'Light Pantaloons', ico: '👖', sl: 'legs', def: 7 },
+      { n: 'Mirage Sandals', ico: '🥾', sl: 'feet', def: 3, spdBonus: 0.35 },
+      { n: 'Scarab Band', ico: '💍', sl: 'ring', def: 1, hpBonus: 15, mpBonus: 15 }
+    ],
+    desc: 'Forged in the hidden forge of an oasis under a blazing sky. It carries the warmth of the sands.'
+  },
+  {
+    id: 'swamp',
+    name: 'Misty Swamp',
+    prefixes: ['Mire', 'Bog', 'Plague', 'Venom', 'Witchcraft', 'Fungal', 'Rot', 'Mud', 'Serpent', 'Hydra', 'Voodoo', 'Malaria', 'Spore', 'Damp', 'Mossy'],
+    suffixes: ['the Bog', 'the Witch', 'the Leech', 'the Serpent', 'the Plague', 'Spore Cloud', 'Rotting Mud', 'Ooze', 'the Hydra', 'Hexes', 'Voodoo', 'the Mire'],
+    weapons: [
+      { n: 'Venom Dagger', ico: '🗡️', type: 'melee', dmg: 24, spd: 15, rng: 45 },
+      { n: 'Plague Staff', ico: '🪄', type: 'magic', dmg: 42, spd: 48, rng: 310, mp: 25, fx: 'poison', col: '#a855f7' },
+      { n: 'Spore Bow', ico: '🏹', type: 'ranged', dmg: 27, spd: 30, rng: 210 }
+    ],
+    armors: [
+      { n: 'Plague Mask', ico: '🪖', sl: 'head', def: 5, mpBonus: 25 },
+      { n: 'Swamp Jerkin', ico: '🧥', sl: 'chest', def: 11, hpBonus: 10 },
+      { n: 'Bog Greaves', ico: '👖', sl: 'legs', def: 8 },
+      { n: 'Wading Boots', ico: '🥾', sl: 'feet', def: 4, spdBonus: 0.15 },
+      { n: 'Viper Band', ico: '💍', sl: 'ring', def: 1, hpBonus: 10, mpBonus: 25 }
+    ],
+    desc: 'Coated in a layer of glowing swamp toxins and moss. Its power derives from the dark witch of the fen.'
+  },
+  {
+    id: 'volcanic',
+    name: 'Volcanic Waste',
+    prefixes: ['Obsidian', 'Magma', 'Infernal', 'Cinder', 'Embers', 'Eruption', 'Ashen', 'Sulfur', 'Lava', 'Pyroclastic', 'Salamander', 'Hellfire', 'Basalt', 'Blaze', 'Phoenix'],
+    suffixes: ['the Forge', 'the Volcano', 'Lava', 'Infernal Fire', 'Hellfire', 'Magma Core', 'Sulfur', 'the Phoenix', 'Embers', 'Eruptions', 'Ashen Skies', 'the Salamander'],
+    weapons: [
+      { n: 'Magma Greatsword', ico: '⚔️', type: 'melee', dmg: 38, spd: 34, rng: 58 },
+      { n: 'Phoenix Wand', ico: '🪄', type: 'magic', dmg: 44, spd: 46, rng: 300, mp: 22, fx: 'burn', col: '#ef4444' },
+      { n: 'Ashen Longbow', ico: '🏹', type: 'ranged', dmg: 29, spd: 26, rng: 250 }
+    ],
+    armors: [
+      { n: 'Lava Crown', ico: '👑', sl: 'head', def: 6, hpBonus: 25 },
+      { n: 'Obsidian Plate', ico: '🛡️', sl: 'chest', def: 18, spdBonus: -0.1 },
+      { n: 'Basalt Greaves', ico: '👖', sl: 'legs', def: 12 },
+      { n: 'Magma Treads', ico: '🥾', sl: 'feet', def: 6, spdBonus: 0.2 },
+      { n: 'Cinder Ring', ico: '💍', sl: 'ring', def: 2, hpBonus: 30 }
+    ],
+    desc: 'Submerged in volcanic rivers for a century. The molten core keeps radiating intense blazing energy.'
+  },
+  {
+    id: 'mountain',
+    name: 'Mountain Pass',
+    prefixes: ['Dwarven', 'Runic', 'Stoneheart', 'Mithril', 'Boulder', 'Cavern', 'Ironclad', 'Echo', 'Crest', 'Peak', 'Mine', 'Summit', 'Gravel', 'Avalanche', 'Rock'],
+    suffixes: ['the Mountain', 'the Caverns', 'the Deep Mines', 'Runes', 'the Anvil', 'the Peak', 'Boulders', 'Stonehearts', 'Dwarven Lords', 'the Mine', 'Echoes', 'Glacier Heights'],
+    weapons: [
+      { n: 'Warhammer', ico: '🔨', type: 'melee', dmg: 36, spd: 32, rng: 52 },
+      { n: 'Mithril Pick', ico: '⛏️', type: 'melee', dmg: 28, spd: 16, rng: 50 },
+      { n: 'Runic Staff', ico: '🪄', type: 'magic', dmg: 40, spd: 44, rng: 280, mp: 20, fx: 'shield', col: '#a855f7' }
+    ],
+    armors: [
+      { n: 'Mithril Helm', ico: '🪖', sl: 'head', def: 7, hpBonus: 15 },
+      { n: 'Runic Breastplate', ico: '🛡️', sl: 'chest', def: 16 },
+      { n: 'Mithril Leggings', ico: '👖', sl: 'legs', def: 11 },
+      { n: 'Steel Toe Boots', ico: '🥾', sl: 'feet', def: 7, spdBonus: 0.1 },
+      { n: 'Deep Mine Ring', ico: '💍', sl: 'ring', def: 3, hpBonus: 20 }
+    ],
+    desc: 'Mined from the pristine veins of the highest mountain passes. Highly polished, sturdy, and nearly indestructible.'
+  },
+  {
+    id: 'celestial',
+    name: 'Celestial Realm',
+    prefixes: ['Astral', 'Celestial', 'Cosmic', 'Solar', 'Lunar', 'Stardust', 'Nebula', 'Zenith', 'Void', 'Galaxy', 'Supernova', 'Orion', 'Eternity', 'Starfall', 'Horizon'],
+    suffixes: ['the Stars', 'the Cosmos', 'the Void', 'Stardust', 'Nebulas', 'Eternity', 'the Galaxies', 'the Sun', 'the Moon', 'Zeniths', 'the Astral Void', 'Space'],
+    weapons: [
+      { n: 'Star-Scepter', ico: '🪄', type: 'magic', dmg: 48, spd: 48, rng: 330, mp: 30, fx: 'void', col: '#3b82f6' },
+      { n: 'Solar Glaive', ico: '⚔️', type: 'melee', dmg: 42, spd: 28, rng: 62 },
+      { n: 'Lunar Bow', ico: '🏹', type: 'ranged', dmg: 35, spd: 24, rng: 290 }
+    ],
+    armors: [
+      { n: 'Stardust Diadem', ico: '👑', sl: 'head', def: 6, mpBonus: 35 },
+      { n: 'Celestial Raiment', ico: '🧥', sl: 'chest', def: 13, spdBonus: 0.3 },
+      { n: 'Nebula Trousers', ico: '👖', sl: 'legs', def: 10 },
+      { n: 'Astral Slippers', ico: '🥾', sl: 'feet', def: 5, spdBonus: 0.4 },
+      { n: 'Cosmic Loop', ico: '💍', sl: 'ring', def: 2, hpBonus: 25, mpBonus: 25 }
+    ],
+    desc: 'Beaming with cosmic radiation and celestial light from the higher dimensions. Highly treasured and mythical.'
+  }
+];
+
 // --- Procedural NFT Item Generator (10,000 unique weapons & armor) ---
 export function getNFTItem(tokenId: number): any {
   // A simple deterministic hash function from seed
@@ -199,6 +418,8 @@ export function getNFTItem(tokenId: number): any {
   const r2 = hash(tokenId * 31);
   const r3 = hash(tokenId * 79);
   const r4 = hash(tokenId * 103);
+  const r5 = hash(tokenId * 137);
+  const r6 = hash(tokenId * 257);
 
   // Rarity distribution:
   // Mythic: top 0.5%
@@ -234,26 +455,14 @@ export function getNFTItem(tokenId: number): any {
     statMult = 1.15;
   }
 
+  // Pick deterministic theme from THEMES (medieval/biomes)
+  const theme = THEMES[Math.floor(r3 * THEMES.length)];
+
   // Categories: Weapons or Armors
   const category = r2 < 0.45 ? 'weapon' : 'armor';
 
-  const prefixes = [
-    'Satoshi', 'Vitalik', 'Crypto', 'Web3', 'Bored', 'Hype', 'Ether', 'Solana',
-    'MetaMask', 'Ledger', 'Giga', 'Alpha', 'Cyber', 'Decentralized', 'Immutable',
-    'OpenSea', 'Phantom', 'Genesis', 'DAO', 'Polygon', 'SmartContract', 'Yield',
-    'Gasless', 'Altcoin', 'Bullish', 'Laser-Eye', 'Airdrop', 'Hodler', 'Node',
-    'Cosmological', 'Quantum', 'Glitch', 'Neo', 'Hyper', 'Defi', 'Pixel', 'Voxel'
-  ];
-
-  const suffixes = [
-    'Ape', 'Oracle', 'Node', 'Block', 'Contract', 'Shard', 'Ledger', 'Key',
-    'Vanguard', 'Harbinger', 'Glitch', 'Relic', 'Beacon', 'Matrix', 'Engine',
-    'Overlord', 'Sentinel', 'Reaper', 'Specter', 'Zealot', 'Cyberpunk', 'Hustler',
-    'Protocol', 'Validator', 'Foundry', 'Sovereign', 'Degen', 'Arbitrageur'
-  ];
-
-  const p = prefixes[Math.floor(r3 * prefixes.length)];
-  const sName = suffixes[Math.floor(r4 * suffixes.length)];
+  const prefix = theme.prefixes[Math.floor(r4 * theme.prefixes.length)];
+  const suffix = theme.suffixes[Math.floor(r5 * theme.suffixes.length)];
 
   let item: any = {
     id: `nft_${tokenId}`,
@@ -261,32 +470,14 @@ export function getNFTItem(tokenId: number): any {
     rarity,
     rarityColor,
     isNFT: true,
+    themeId: theme.id,
+    themeName: theme.name,
+    desc: `${theme.desc} (Theme: ${theme.name} | Rarity: ${rarity})`
   };
 
-  // Base types for weapons
-  const weaponTypes = [
-    { n: 'Blade', ico: '⚔️', type: 'melee', dmg: 25, spd: 25, rng: 50 },
-    { n: 'Katana', ico: '🗡️', type: 'melee', dmg: 30, spd: 20, rng: 52 },
-    { n: 'Bow', ico: '🏹', type: 'ranged', dmg: 22, spd: 32, rng: 240 },
-    { n: 'Scepter', ico: '🪄', type: 'magic', dmg: 35, spd: 45, rng: 280, mp: 15, fx: 'burn', col: '#ff5500' },
-    { n: 'Orb', ico: '🔮', type: 'magic', dmg: 45, spd: 50, rng: 300, mp: 25, fx: 'void', col: '#aa00ff' },
-  ];
-
-  // Base types for armors
-  const armorTypes = [
-    { n: 'Crown', ico: '👑', sl: 'head', def: 5, hpBonus: 12 },
-    { n: 'Visor', ico: '🪖', sl: 'head', def: 6, mpBonus: 15 },
-    { n: 'Plate', ico: '🛡️', sl: 'chest', def: 14 },
-    { n: 'Vest', ico: '🧥', sl: 'chest', def: 8, spdBonus: 0.15 },
-    { n: 'Leggings', ico: '👖', sl: 'legs', def: 8 },
-    { n: 'Greaves', ico: '👖', sl: 'legs', def: 11 },
-    { n: 'Boots', ico: '🥾', sl: 'feet', def: 5, spdBonus: 0.25 },
-    { n: 'Ring', ico: '💍', sl: 'ring', def: 1, hpBonus: 15, mpBonus: 15 },
-  ];
-
   if (category === 'weapon') {
-    const base = weaponTypes[Math.floor(r2 * weaponTypes.length)];
-    item.n = `${p}'s NFT ${base.n} #${tokenId}`;
+    const base = theme.weapons[Math.floor(r6 * theme.weapons.length)];
+    item.n = `${prefix} ${base.n} of ${suffix} #${tokenId}`;
     item.ico = base.ico;
     item.t = 'weapon';
     item.type = base.type;
@@ -299,8 +490,8 @@ export function getNFTItem(tokenId: number): any {
       item.col = base.col;
     }
   } else {
-    const base = armorTypes[Math.floor(r2 * armorTypes.length)];
-    item.n = `${p}'s NFT ${base.n} #${tokenId}`;
+    const base = theme.armors[Math.floor(r6 * theme.armors.length)];
+    item.n = `${prefix} ${base.n} of ${suffix} #${tokenId}`;
     item.ico = base.ico;
     item.t = 'armor';
     item.sl = base.sl;
@@ -324,6 +515,237 @@ export function getNFTItem(tokenId: number): any {
   item.price = Math.round(range[0] + offset * (range[1] - range[0]));
 
   return item;
+}
+
+// --- Procedural NFT/Collectible Artwork Component ---
+export function NFTCollectibleArt({ item }: { item: any }) {
+  const isNFT = !!item.isNFT;
+  const tokenId = item.tokenId !== undefined ? item.tokenId : (() => {
+    // Deterministic tokenId from item.id or item.n
+    const str = item.id || item.n || "";
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+      h = (h << 5) - h + str.charCodeAt(i);
+      h |= 0;
+    }
+    return Math.abs(h) % 10000;
+  })();
+
+  const rarity = item.rarity || 'Common';
+  
+  // Custom color lookup for regular items
+  const getColorForItem = (it: any) => {
+    if (it.rarityColor) return it.rarityColor;
+    const id = (it.id || "").toLowerCase();
+    if (id.includes("wood")) return "#b45309";
+    if (id.includes("stone")) return "#64748b";
+    if (id.includes("iron")) return "#94a3b8";
+    if (id.includes("coal")) return "#18181b";
+    if (id.includes("fiber")) return "#10b981";
+    if (id.includes("flint")) return "#14b8a6";
+    if (id.includes("gold_ore") || id.includes("goldbar")) return "#fbbf24";
+    if (id.includes("coin") || id.includes("gold_coins")) return "#eab308";
+    if (id.includes("meat_cooked")) return "#ea580c";
+    if (id.includes("meat")) return "#ef4444";
+    if (id.includes("leather")) return "#d97706";
+    if (id.includes("feather")) return "#38bdf8";
+    if (id.includes("bone")) return "#e4e4e7";
+    if (id.includes("sulfur")) return "#ca8a04";
+    if (id.includes("crystal") || id.includes("mana_crystal")) return "#3b82f6";
+    if (id.includes("gem")) return "#ec4899";
+    if (id.includes("magic_essence") || id.includes("essence")) return "#6366f1";
+    if (id.includes("apple")) return "#dc2626";
+    if (id.includes("cloth")) return "#a1a1aa";
+    if (id.includes("venom")) return "#22c55e";
+    if (id.includes("silk")) return "#e4e4e7";
+    if (id.includes("potion") || id.includes("pot")) return "#ec4899";
+    if (id.includes("sword") || id.includes("blade") || id.includes("katana") || id.includes("axe") || id.includes("pickaxe")) return "#3b82f6";
+    if (id.includes("crown") || id.includes("ring")) return "#fbbf24";
+    if (id.includes("shield") || id.includes("plate") || id.includes("greaves")) return "#94a3b8";
+    return "#475569";
+  };
+
+  const rarityColor = getColorForItem(item);
+  const ico = item.ico || '❓';
+  const t = item.t || 'mat';
+
+  // Deterministic values for generative visuals from tokenId
+  const seedHash = (mult: number) => {
+    let val = Math.sin(tokenId * mult) * 10000;
+    return val - Math.floor(val);
+  };
+
+  const ringCount = 2 + Math.floor(seedHash(13.7) * 3); // 2 to 4 rings
+  const particleCount = 6 + Math.floor(seedHash(43.1) * 8); // 6 to 13 particles
+  const patternType = seedHash(7.9) < 0.33 ? 'circles' : seedHash(7.9) < 0.66 ? 'diamonds' : 'cross';
+  const rotationAngle = Math.round(seedHash(51.2) * 360);
+  
+  // Generating particles
+  const particles = Array.from({ length: particleCount }).map((_, i) => {
+    const angle = (i / particleCount) * Math.PI * 2 + seedHash(i * 3.1) * 0.5;
+    const distance = 25 + seedHash(i * 7.4) * 35; // distance from center
+    const size = 1.5 + seedHash(i * 11.9) * 3;
+    const x = 50 + Math.cos(angle) * distance;
+    const y = 50 + Math.sin(angle) * distance;
+    const opacity = 0.3 + seedHash(i * 19.3) * 0.6;
+    return { x, y, size, opacity };
+  });
+
+  // Generative background mesh
+  const gridLines = 5 + Math.floor(seedHash(29.1) * 6);
+
+  return (
+    <div className="relative w-full aspect-square rounded-xl bg-zinc-950/90 overflow-hidden border border-white/10 flex items-center justify-center group/art select-none shadow-2xl mb-1">
+      {/* Background glow base */}
+      <div 
+        className="absolute inset-0 opacity-20 filter blur-xl transition-all duration-700 group-hover/art:opacity-35"
+        style={{
+          background: `radial-gradient(circle, ${rarityColor} 0%, rgba(9,9,11,0) 75%)`
+        }}
+      />
+      
+      {/* Neon border glow based on rarity */}
+      <div 
+        className="absolute inset-x-0 bottom-0 h-[2px] opacity-70"
+        style={{
+          background: `linear-gradient(90deg, transparent 0%, ${rarityColor} 50%, transparent 100%)`
+        }}
+      />
+
+      {/* SVG Procedural Generative Canvas */}
+      <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100">
+        <defs>
+          <radialGradient id={`glowGrad-${tokenId}`} cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor={rarityColor} stopOpacity="0.45" />
+            <stop offset="100%" stopColor="#09090b" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+
+        {/* Generative Tech-Grid / Circuit Mesh */}
+        <g opacity="0.1" stroke={rarityColor} strokeWidth="0.25">
+          {Array.from({ length: gridLines }).map((_, idx) => {
+            const spacing = 100 / (gridLines - 1);
+            const coord = idx * spacing;
+            return (
+              <g key={idx}>
+                <line x1={coord} y1="0" x2={coord} y2="100" />
+                <line x1="0" y1={coord} x2="100" y2={coord} />
+              </g>
+            );
+          })}
+        </g>
+
+        {/* Central Ambient Glow */}
+        <circle cx="50" cy="50" r="38" fill={`url(#glowGrad-${tokenId})`} />
+
+        {/* Orbit Rings (Tech / Magical Circles) */}
+        {Array.from({ length: ringCount }).map((_, i) => {
+          const r = 16 + i * 8;
+          const strokeDash = i % 2 === 0 ? "4, 4" : "12, 4, 1, 4";
+          return (
+            <circle
+              key={i}
+              cx="50"
+              cy="50"
+              r={r}
+              fill="none"
+              stroke={rarityColor}
+              strokeWidth={0.25 + (i === 0 ? 0.15 : 0)}
+              strokeOpacity={0.15 + (1 - i / ringCount) * 0.35}
+              strokeDasharray={strokeDash}
+              transform={`rotate(${rotationAngle + (i % 2 === 0 ? 1 : -1) * (tokenId % 360)}, 50, 50)`}
+              className="origin-center"
+              style={{
+                transformOrigin: '50px 50px',
+              }}
+            />
+          );
+        })}
+
+        {/* Generative Corner Borders */}
+        <g stroke={rarityColor} strokeWidth="0.5" strokeOpacity="0.4" fill="none">
+          <path d="M 6,12 L 6,6 L 12,6" />
+          <path d="M 94,12 L 94,6 L 88,6" />
+          <path d="M 6,88 L 6,94 L 12,94" />
+          <path d="M 94,88 L 94,94 L 88,94" />
+        </g>
+
+        {/* Procedural Pattern Nodes in background */}
+        <g opacity="0.2" stroke={rarityColor} strokeWidth="0.35" fill="none">
+          {patternType === 'circles' && (
+            <>
+              <circle cx="15" cy="15" r="2" />
+              <circle cx="85" cy="15" r="2" />
+              <circle cx="15" cy="85" r="2" />
+              <circle cx="85" cy="85" r="2" />
+            </>
+          )}
+          {patternType === 'diamonds' && (
+            <>
+              <polygon points="15,13 17,15 15,17 13,15" />
+              <polygon points="85,13 87,15 85,17 83,15" />
+              <polygon points="15,83 17,85 15,87 13,85" />
+              <polygon points="85,83 87,85 85,87 83,85" />
+            </>
+          )}
+          {patternType === 'cross' && (
+            <>
+              <path d="M12,15 H18 M15,12 V18" />
+              <path d="M82,15 H88 M85,12 V18" />
+              <path d="M12,85 H18 M15,82 V88" />
+              <path d="M82,85 H88 M85,82 V88" />
+            </>
+          )}
+        </g>
+
+        {/* Dynamic floating particles */}
+        {particles.map((p, i) => (
+          <circle
+            key={i}
+            cx={p.x}
+            cy={p.y}
+            r={p.size}
+            fill={rarityColor}
+            opacity={p.opacity}
+          />
+        ))}
+      </svg>
+
+      {/* Main Asset Emoji Showcase with heavy stylization */}
+      <div className="relative z-10 select-none transform transition-all duration-500 group-hover/art:scale-115 group-hover/art:rotate-6 flex flex-col items-center">
+        {/* Soft shadow duplicate underneath */}
+        <span 
+          className="text-5xl sm:text-6xl absolute blur-md opacity-30 select-none pointer-events-none translate-y-1"
+          style={{ color: rarityColor }}
+        >
+          {ico}
+        </span>
+        
+        {/* Primary sharp emoji */}
+        <span className="text-5xl sm:text-6xl drop-shadow-[0_0_15px_rgba(255,255,255,0.15)]">
+          {ico}
+        </span>
+      </div>
+
+      {/* Floating Hologram Stats Ribbon */}
+      <div 
+        className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[7px] font-mono tracking-widest text-white/50 border border-white/5 bg-black/80 uppercase scale-90"
+      >
+        {isNFT ? `MINT #${tokenId}` : `SERIAL #${tokenId}`}
+      </div>
+
+      <div 
+        className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded text-[7px] font-mono tracking-widest text-white/50 border border-white/5 bg-black/80 uppercase scale-90"
+        style={{ color: rarityColor, borderColor: `${rarityColor}22` }}
+      >
+        {isNFT ? (rarity) : (
+          t === 'armor' ? 'ARMOR' : 
+          t === 'tool' || item.id ? 'WEAPON' :
+          t === 'food' || t === 'pot' ? 'CONSUMABLE' : 'RESOURCE'
+        )}
+      </div>
+    </div>
+  );
 }
 
 const baseIT: Record<string, any> = {
@@ -441,6 +863,13 @@ const baseIT: Record<string, any> = {
   celestial_blade: { id: 'celestial_blade', n: 'Celestial Blade', ico: '⚔️', dmg: 75, spd: 15, rng: 65, type: 'melee', mp: 0 },
   void_reaver_bow: { id: 'void_reaver_bow', n: 'Void Reaver Bow', ico: '🏹', dmg: 65, spd: 18, rng: 320, type: 'ranged', mp: 0 },
   harbinger_staff: { id: 'harbinger_staff', n: 'Harbinger Staff', ico: '🪄', dmg: 95, spd: 42, rng: 380, type: 'magic', mp: 35, fx: 'void', col: '#ff00aa' },
+
+  // --- Alchemy Transmutation Lab Exclusives ---
+  aether_pickaxe: { id: 'aether_pickaxe', n: 'Aether Pickaxe', ico: '⛏️', dmg: 55, spd: 15, rng: 60, type: 'melee', mp: 0 },
+  sunfire_aegis: { ico: '🔥', n: 'Sunfire Aegis', t: 'armor', sl: 'chest', def: 32, hpBonus: 40 },
+  chrono_watch: { ico: '⏰', n: 'Chrono Watch', t: 'armor', sl: 'ring', def: 2, spdBonus: 0.6, mpBonus: 20 },
+  philosophers_stone: { ico: '🧪', n: "Philosopher's Stone", t: 'pot' },
+  immortality_elixir: { ico: '🌌', n: 'Immortality Elixir', t: 'pot' },
 };
 
 export const IT = new Proxy(baseIT, {
@@ -448,7 +877,7 @@ export const IT = new Proxy(baseIT, {
     if (typeof prop === 'string' && prop.startsWith('nft_')) {
       if (!(prop in target)) {
         const tokenId = parseInt(prop.replace('nft_', ''), 10);
-        if (!isNaN(tokenId) && tokenId >= 1 && tokenId <= 10000) {
+        if (!isNaN(tokenId) && tokenId >= 1) {
           target[prop] = getNFTItem(tokenId);
         }
       }
@@ -667,11 +1096,12 @@ export default function SurvivalGame() {
   const [gameState, setGameState] = useState<any>(null);
   const [showInv, setShowInv] = useState(false);
   const [showNFTMarket, setShowNFTMarket] = useState(false);
+  const [showShop, setShowShop] = useState(false);
   const [nftSearchToken, setNftSearchToken] = useState<string>('');
   const [nftRarityFilter, setNftRarityFilter] = useState<string>('All');
   const [nftTypeFilter, setNftTypeFilter] = useState<string>('All');
   const [nftPage, setNftPage] = useState<number>(0);
-  const [invCategory, setInvCategory] = useState<'all' | 'weapon' | 'armor' | 'food' | 'mat'>('all');
+  const [invCategory, setInvCategory] = useState<'all' | 'weapon' | 'armor' | 'food' | 'mat' | 'nft'>('all');
   const [selectedInvItem, setSelectedInvItem] = useState<string | null>(null);
   const [showCraft, setShowCraft] = useState(false);
   const [showSkills, setShowSkills] = useState(false);
@@ -685,6 +1115,13 @@ export default function SurvivalGame() {
     { n: 'Mana Potion', out: 'mana_potion', cnt: 1, cat: 'Potions', c: { herb: 1, magic_essence: 2 }, discovered: false, craftCount: 0 },
     { n: 'Void Essence', out: 'void_essence', cnt: 1, cat: 'Materials', c: { void_crystal: 2, magic_essence: 4 }, req: 'magic_altar', discovered: false, craftCount: 0 },
     { n: 'Star Shield', out: 'iron_chest', cnt: 1, cat: 'Armor', c: { steel_bar: 3, gem: 1, celestial_shard: 1 }, req: 'workbench', discovered: false, craftCount: 0 },
+    
+    // --- Magical Lab Discoveries (Undiscovered by default) ---
+    { n: 'Aether Pickaxe', out: 'aether_pickaxe', cnt: 1, cat: 'Weapons', c: { stick: 2, celestial_shard: 2, void_crystal: 1 }, req: 'magic_altar', discovered: false, craftCount: 0 },
+    { n: 'Sunfire Aegis', out: 'sunfire_aegis', cnt: 1, cat: 'Armor', c: { dragon_scale: 2, sulfur: 3, gem: 1 }, req: 'magic_altar', discovered: false, craftCount: 0 },
+    { n: 'Chrono Watch', out: 'chrono_watch', cnt: 1, cat: 'Armor', c: { gold_bar: 2, crystal: 2, magic_essence: 5 }, req: 'magic_altar', discovered: false, craftCount: 0 },
+    { n: "Philosopher's Stone", out: 'philosophers_stone', cnt: 1, cat: 'Potions', c: { magic_essence: 8, crystal: 5, void_crystal: 2 }, req: 'magic_altar', discovered: false, craftCount: 0 },
+    { n: 'Immortality Elixir', out: 'immortality_elixir', cnt: 1, cat: 'Potions', c: { herb: 8, magic_essence: 10, celestial_shard: 1 }, req: 'magic_altar', discovered: false, craftCount: 0 },
   ]);
   const [craftSearch, setCraftSearch] = useState('');
   const [craftCategory, setCraftCategory] = useState('All');
@@ -865,7 +1302,7 @@ export default function SurvivalGame() {
       s.pl.discoveredChunks = data.pl.discoveredChunks || {};
 
       // 2. Restore World Objects
-      s.objs = data.objs || [];
+      s.objs = decompressObjs(data.objs) || [];
 
       // 3. Restore Companions safely
       s.companions = (data.companions || []).map((c: any) => ({
@@ -934,7 +1371,7 @@ export default function SurvivalGame() {
           skills: s.pl.skills,
           discoveredChunks: s.pl.discoveredChunks || {}
         },
-        objs: s.objs,
+        objs: compressObjs(s.objs),
         companions: s.companions.map((c: any) => ({
           n: c.n,
           ico: c.ico,
@@ -1227,7 +1664,7 @@ export default function SurvivalGame() {
           skills: s.pl.skills,
           discoveredChunks: s.pl.discoveredChunks || {}
         },
-        objs: s.objs,
+        objs: compressObjs(s.objs),
         companions: s.companions.map((c: any) => ({
           n: c.n,
           ico: c.ico,
@@ -2020,7 +2457,7 @@ export default function SurvivalGame() {
       if (s.pl.ifr > 0) s.pl.ifr--;
 
       // Enemy Spawning
-      if (s.ticks % 300 === 0 && s.enemies.length < 10) {
+      if (s.ticks % 150 === 0 && s.enemies.length < 24) {
         const mapIdx = Math.floor(s.pl.y / (ZH * TZ)) * ZCOLS + Math.floor(s.pl.x / (ZW * TZ));
         const M = MAPS[mapIdx] || MAPS[0];
         const eid = M.ef[Math.floor(Math.random() * M.ef.length)];
@@ -2066,6 +2503,13 @@ export default function SurvivalGame() {
         }
 
         const d = dist(e, s.pl);
+
+        // Despawn if too far off-screen to recycle enemies around the active player zone
+        if (d > 1400) {
+          s.enemies.splice(i, 1);
+          continue;
+        }
+
         const spd = e.slowTicks > 0 ? e.spd * 0.5 : e.spd;
 
         let shouldChase = true;
@@ -3202,11 +3646,29 @@ export default function SurvivalGame() {
     const it = IT[k];
     if (!it || (s.pl.inv[k] || 0) <= 0) return;
 
-    if (it.t === 'food' || it.t === 'pot' || k === 'mana_crystal') {
+    if (it.t === 'food' || it.t === 'pot' || k === 'mana_crystal' || k === 'philosophers_stone' || k === 'immortality_elixir') {
       if (k === 'mana_crystal') {
         s.pl.mp = Math.min(s.pl.mmp, s.pl.mp + 40);
         s.pl.inv[k]--;
         addLog(`Used Mana Crystal: restored 40 MP 🔮`, '#c084fc');
+      } else if (k === 'philosophers_stone') {
+        s.pl.inv[k]--;
+        // Transmute common resources in backpack into Gold Coins!
+        const woodTransmuted = Math.min(s.pl.inv['wood'] || 0, 10);
+        const stoneTransmuted = Math.min(s.pl.inv['stone'] || 0, 10);
+        if (woodTransmuted > 0) s.pl.inv['wood'] -= woodTransmuted;
+        if (stoneTransmuted > 0) s.pl.inv['stone'] -= stoneTransmuted;
+        const goldGain = 120 + (woodTransmuted + stoneTransmuted) * 12;
+        s.pl.inv['gold_coins'] = (s.pl.inv['gold_coins'] || 0) + goldGain;
+        addSkillXPDirect(s, 'alchemy', 150);
+        addLog(`✨ Philosopher's Stone dissolved: Transmuted common elements into +${goldGain} Gold Coins!`, '#fbbf24');
+      } else if (k === 'immortality_elixir') {
+        s.pl.inv[k]--;
+        s.pl.mhp += 20;
+        s.pl.hp = s.pl.mhp; // Full heal!
+        s.pl.mp = s.pl.mmp; // Full mana!
+        addSkillXPDirect(s, 'alchemy', 300);
+        addLog(`🌌 Consumed Immortality Elixir: Max HP permanently increased by 20! Stats fully restored!`, '#ec4899');
       } else {
         if (it.t === 'food') {
           // Eating food only heals your health (combining hp and hu values as a substantial direct heal)
@@ -3769,6 +4231,20 @@ export default function SurvivalGame() {
     setGameState({ ...s });
   };
 
+  const handleAwardNFTs = (nftIds: number[]) => {
+    const s = stateRef.current;
+    if (!s) return;
+    
+    nftIds.forEach((tokenId) => {
+      const nftKey = `nft_${tokenId}`;
+      s.pl.inv[nftKey] = (s.pl.inv[nftKey] || 0) + 1;
+      const nft = getNFTItem(tokenId);
+      addLog(`⭐ Unwrapped ${nft.n} from Premium Bundle!`, '#f59e0b');
+    });
+    
+    setGameState({ ...s });
+  };
+
   const handleSellItem = (itemKey: string, sellQty: number = 1) => {
     const s = stateRef.current;
     if (!s) return;
@@ -4018,6 +4494,34 @@ export default function SurvivalGame() {
     }));
 
     setGameState({ ...s });
+  };
+
+  const loadRecipeReactants = (recipe: any) => {
+    const s = stateRef.current;
+    if (!s) return;
+    
+    const toLoad: { itemKey: string; qty: number }[] = [];
+    let canLoadAll = true;
+    const missing: string[] = [];
+    
+    for (const [k, qtyNeeded] of Object.entries(recipe.c)) {
+      const held = s.pl.inv[k] || 0;
+      const reqQty = qtyNeeded as number;
+      if (held < reqQty) {
+        canLoadAll = false;
+        missing.push(`${reqQty - held}x ${IT[k]?.n || k}`);
+      }
+      toLoad.push({ itemKey: k, qty: reqQty });
+    }
+    
+    if (!canLoadAll) {
+      addLog(`⚠️ Cannot auto-load: Missing ${missing.join(', ')}!`, '#ef4444');
+      setLabStatus({ success: false, msg: `Cannot auto-load "${recipe.n}": Missing ${missing.join(', ')}!` });
+      return;
+    }
+    
+    setLabReactants(toLoad);
+    setLabStatus({ success: true, msg: `Loaded ingredients for ${recipe.n}! Ready to transmute.` });
   };
 
   const combineMaterials = () => {
@@ -4362,7 +4866,7 @@ export default function SurvivalGame() {
       if (!it) return false;
       
       if (invCategory === 'weapon') {
-        return it.t === 'tool' || !!it.id;
+        return it.t === 'tool' || it.t === 'weapon' || (!!it.id && it.t !== 'armor');
       }
       if (invCategory === 'armor') {
         return it.t === 'armor';
@@ -4372,6 +4876,9 @@ export default function SurvivalGame() {
       }
       if (invCategory === 'mat') {
         return it.t === 'mat' && k !== 'mana_crystal';
+      }
+      if (invCategory === 'nft') {
+        return k.startsWith('nft_') || !!it.isNFT;
       }
       return true;
     });
@@ -4852,6 +5359,13 @@ export default function SurvivalGame() {
               <Cpu size={11} className="text-cyan-400" />
               <span>NFT SHOP</span>
             </button>
+            <button 
+              onClick={() => setShowShop(true)}
+              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-500/40 hover:border-yellow-400 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-yellow-400 hover:text-yellow-300 hover:scale-105 active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(245,158,11,0.15)] hover:shadow-[0_0_25px_rgba(245,158,11,0.3)]"
+            >
+              <Sparkles size={11} className="text-yellow-400" />
+              <span>💎 SHOP</span>
+            </button>
           </div>
         </div>
       </div>
@@ -5114,7 +5628,7 @@ export default function SurvivalGame() {
 
       {/* --- Controls --- */}
       {/* Bottom Center: Hotbar (Always centered at the bottom, pointer enabled, persistent floating design) */}
-      {(!showSkills && !showCraft && !showOracle && !showSaveMenu && !showWorldMenu && !showSpellbook && !showNFTMarket && !showDeathScreen) && (
+      {(!showSkills && !showCraft && !showOracle && !showSaveMenu && !showWorldMenu && !showSpellbook && !showNFTMarket && !showShop && !showDeathScreen) && (
         <div 
           className={`absolute left-1/2 -translate-x-1/2 pointer-events-auto select-none flex flex-col items-center gap-2 transition-all duration-300 ${
             showInv 
@@ -5448,6 +5962,7 @@ export default function SurvivalGame() {
                       { id: 'armor', n: '🛡️ Armor' },
                       { id: 'food', n: '🧪 Consumables' },
                       { id: 'mat', n: '🪵 Materials' },
+                      { id: 'nft', n: '💎 NFTs' },
                     ].map((tab) => (
                       <button
                         key={tab.id}
@@ -5539,6 +6054,9 @@ export default function SurvivalGame() {
 
                   return (
                     <div className="flex flex-col gap-4 text-left">
+                      {/* Beautiful Holographic Collectible Art */}
+                      <NFTCollectibleArt item={{ ...it, id: selectedInvItem }} />
+
                       {/* Logo and Name header */}
                       <div className="flex items-center gap-3 bg-white/[0.02] border border-white/5 p-3 rounded-xl">
                         <span className="text-4xl bg-white/5 p-2 rounded-xl border border-white/5">{it.ico}</span>
@@ -5640,6 +6158,13 @@ export default function SurvivalGame() {
                           </div>
                         )}
                       </div>
+
+                      {it.desc && (
+                        <div className="bg-white/[0.02] border border-white/5 p-3 rounded-xl text-[10px] text-zinc-300 leading-relaxed">
+                          <span className="text-[9px] text-zinc-500 font-bold block uppercase tracking-wider mb-1">📜 Relic Lore</span>
+                          "{it.desc}"
+                        </div>
+                      )}
 
                       {/* Equip/Use/Unequip Primary Actions CTA */}
                       <div className="flex flex-col gap-2 mt-2">
@@ -5909,16 +6434,17 @@ export default function SurvivalGame() {
         )}
 
         {showCraft && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/95 flex flex-col font-mono"
-          >
-            {/* Header */}
-            <div className="p-4 sm:p-6 flex justify-between items-center border-b border-white/10 shrink-0">
-              <div className="flex items-center gap-3">
-                <Hammer className="text-yellow-400" />
+          <div className="fixed inset-0 z-50 bg-zinc-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-6 font-mono overflow-hidden">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="relative w-full max-w-6xl h-[88vh] sm:h-[85vh] bg-zinc-900/95 border border-white/10 rounded-2xl flex flex-col shadow-[0_0_50px_rgba(0,0,0,0.85)] overflow-hidden"
+            >
+              {/* Header */}
+              <div className="p-4 sm:p-5 flex justify-between items-center border-b border-white/10 shrink-0">
+                <div className="flex items-center gap-3">
+                  <Hammer className="text-yellow-400" />
                 <div>
                   <h2 className="text-lg sm:text-xl font-bold tracking-widest text-yellow-400">
                     CRAFTING & ALCHEMY
@@ -6287,67 +6813,186 @@ export default function SurvivalGame() {
                 </div>
               ) : (
                 /* --- TRANSMUTATION LAB TAB --- */
-                <div className="h-full flex flex-col md:flex-row p-4 sm:p-6 gap-6 overflow-y-auto">
+                <div className="h-full flex flex-col md:flex-row p-4 gap-4 overflow-y-auto">
                   
-                  {/* Left Column: Mixer & Feedback */}
-                  <div className="flex-1 flex flex-col gap-4 bg-white/[0.02] border border-white/10 p-4 sm:p-6 rounded-2xl">
-                    <div className="flex items-center gap-2 border-b border-white/5 pb-3">
-                      <FlaskConical className="text-cyan-400 animate-pulse" />
-                      <div>
-                        <h3 className="font-bold text-white text-sm sm:text-base tracking-wider uppercase">
-                          Alchemy Compounder Pot
-                        </h3>
-                        <p className="text-[9px] opacity-40 uppercase">Define ratios and transmute reactants</p>
+                  {/* Left Column: Alchemy Formulas Book */}
+                  <div className="w-full md:w-80 shrink-0 flex flex-col gap-3 bg-white/[0.01] border border-white/5 p-4 rounded-xl max-h-[300px] md:max-h-none overflow-hidden">
+                    <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1">
+                        <BookOpen size={13} /> Formula Book
+                      </span>
+                      <span className="text-[8px] opacity-40 uppercase font-bold">Lab Recipes</span>
+                    </div>
+                    
+                    <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-2">
+                      {recipes
+                        .filter(r => !RC.some(rc => rc.out === r.out)) // Only show magic lab exclusive creations here
+                        .map((r, idx) => {
+                          const heldCount = gameState?.pl?.inv[r.out] || 0;
+                          const hasIngredients = Object.entries(r.c).every(([k, v]) => (gameState?.pl?.inv[k] || 0) >= (v as number));
+                          return (
+                            <div 
+                              key={idx}
+                              className={`p-2.5 rounded-lg border text-left transition-all ${
+                                r.discovered 
+                                  ? 'bg-cyan-950/20 border-cyan-500/20 hover:border-cyan-500/40' 
+                                  : 'bg-zinc-950/30 border-white/5 opacity-70'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-1.5 mb-1.5">
+                                <div className="truncate">
+                                  <div className="text-[10px] font-bold text-white flex items-center gap-1.5 truncate">
+                                    <span className="text-sm select-none">{r.discovered ? IT[r.out]?.ico : '🔒'}</span>
+                                    <span className="truncate">{r.discovered ? r.n : 'Locked Formula'}</span>
+                                  </div>
+                                  <p className="text-[8px] opacity-40 uppercase tracking-wider mt-0.5">
+                                    {r.discovered ? `HELD: ${heldCount}x` : 'Combine raw elements to unlock'}
+                                  </p>
+                                </div>
+                                
+                                {hasIngredients && (
+                                  <button
+                                    onClick={() => loadRecipeReactants(r)}
+                                    className="px-1.5 py-0.5 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 hover:border-cyan-500/50 rounded text-[8px] font-bold text-cyan-300 uppercase tracking-wider transition-all cursor-pointer"
+                                    title="Auto-load required resources into the Alchemy pot"
+                                  >
+                                    LOAD
+                                  </button>
+                                )}
+                              </div>
+                              
+                              {/* Ratios Preview */}
+                              <div className="flex flex-wrap gap-1">
+                                {Object.entries(r.c).map(([k, v]) => {
+                                  const held = gameState?.pl?.inv[k] || 0;
+                                  const needed = v as number;
+                                  return (
+                                    <span 
+                                      key={k} 
+                                      className={`text-[8px] px-1 py-0.5 rounded flex items-center gap-1 ${
+                                        held >= needed ? 'bg-emerald-500/5 border border-emerald-500/15 text-emerald-400 font-bold' : 'bg-red-500/5 border border-red-500/15 text-red-400'
+                                      }`}
+                                    >
+                                      <span>{r.discovered ? IT[k]?.ico : '❓'}</span>
+                                      <span>{needed}</span>
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+
+                  {/* Center Column: Interactive Mixing Pot & Crucible */}
+                  <div className="flex-1 flex flex-col gap-4 bg-white/[0.02] border border-white/10 p-4 sm:p-5 rounded-xl min-w-0">
+                    <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                      <div className="flex items-center gap-2">
+                        <FlaskConical className="text-cyan-400 animate-pulse animate-[pulse_2s_infinite]" size={18} />
+                        <div>
+                          <h3 className="font-bold text-white text-xs sm:text-sm tracking-wider uppercase leading-none">
+                            Transmutation Crucible
+                          </h3>
+                          <p className="text-[8px] opacity-40 uppercase tracking-widest mt-1">Combine raw reagents in specific ratios</p>
+                        </div>
                       </div>
+                      
+                      {labReactants.length > 0 && (
+                        <button 
+                          onClick={() => setLabReactants([])}
+                          className="px-2 py-1 hover:bg-red-500/10 text-red-400 border border-red-500/20 hover:border-red-500/30 rounded-lg text-[9px] font-bold uppercase transition-all flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 size={10} /> CLEAR ALL
+                        </button>
+                      )}
                     </div>
 
-                    {/* Fusing Crucible list */}
-                    <div className="flex-1 min-h-[140px] border border-dashed border-white/15 rounded-xl p-4 flex flex-col justify-center items-center gap-3 relative overflow-y-auto bg-black/40">
-                      {labReactants.length === 0 ? (
-                        <div className="text-center p-4">
-                          <div className="w-12 h-12 rounded-full border border-dashed border-white/20 flex items-center justify-center mx-auto mb-2 opacity-30 text-2xl">
-                            🧪
-                          </div>
-                          <p className="text-xs text-white/40">Crucible is empty</p>
-                          <p className="text-[10px] text-white/30 mt-1">Tap materials from the palette on the right to load reactants</p>
+                    {/* Fusing Crucible list & Glyphs */}
+                    <div className="flex-1 min-h-[180px] border border-dashed border-white/10 rounded-xl p-4 flex flex-col justify-center items-center gap-4 relative overflow-y-auto bg-black/40">
+                      
+                      {/* Magical Alchemical Glyph rotating circle and bubbles! */}
+                      <div className="relative w-44 h-44 flex items-center justify-center my-1 mx-auto shrink-0 select-none">
+                        <svg className="absolute w-full h-full text-cyan-500/15 animate-[spin_60s_linear_infinite]" viewBox="0 0 100 100">
+                          <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="0.75" strokeDasharray="5,3" />
+                          <circle cx="50" cy="50" r="38" fill="none" stroke="currentColor" strokeWidth="0.5" />
+                          <polygon points="50,12 83,68 17,68" fill="none" stroke="currentColor" strokeWidth="0.5" />
+                          <polygon points="50,88 83,32 17,32" fill="none" stroke="currentColor" strokeWidth="0.5" />
+                        </svg>
+                        
+                        {/* Interactive Reactant bubbles floating around alchemical sigils */}
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          {labReactants.length === 0 ? (
+                            <div className="text-center p-2">
+                              <span className="text-4xl animate-pulse block">🧪</span>
+                              <span className="text-[8px] uppercase tracking-widest opacity-35 block mt-2 animate-pulse">POT EMPTY</span>
+                            </div>
+                          ) : (
+                            <div className="relative w-full h-full flex items-center justify-center">
+                              {labReactants.map((react, index) => {
+                                const angle = (index / labReactants.length) * 2 * Math.PI;
+                                const radius = 52; // px radius
+                                const x = Math.cos(angle) * radius;
+                                const y = Math.sin(angle) * radius;
+                                return (
+                                  <motion.div
+                                    key={react.itemKey}
+                                    initial={{ scale: 0, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1, x, y }}
+                                    className="absolute bg-zinc-950/95 border border-cyan-400/30 p-2 rounded-full shadow-[0_0_12px_rgba(34,211,238,0.2)] flex flex-col items-center justify-center w-[38px] h-[38px]"
+                                  >
+                                    <span className="text-base select-none leading-none">{IT[react.itemKey]?.ico || '🍀'}</span>
+                                    <span className="text-[8px] font-mono text-cyan-400 leading-none font-black mt-0.5">{react.qty}</span>
+                                  </motion.div>
+                                );
+                              })}
+                              <div className="absolute w-12 h-12 rounded-full bg-cyan-500/5 border border-cyan-400/20 flex items-center justify-center animate-pulse shadow-[0_0_15px_rgba(34,211,238,0.4)]">
+                                <Sparkles className="text-cyan-400 animate-spin animate-[spin_12s_linear_infinite]" size={14} />
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      ) : (
-                        <div className="w-full flex flex-col gap-2">
+                      </div>
+
+                      {/* Reactant items list with +/- adjustment sliders */}
+                      {labReactants.length > 0 && (
+                        <div className="w-full flex flex-col gap-1.5 max-h-[140px] overflow-y-auto pr-1">
                           {labReactants.map((react) => {
                             const maxInventory = gameState?.pl.inv[react.itemKey] || 0;
                             return (
                               <div 
                                 key={react.itemKey}
-                                className="flex justify-between items-center bg-white/5 p-3 rounded-lg border border-white/10 text-white"
+                                className="flex justify-between items-center bg-white/[0.02] p-2 rounded-lg border border-white/5 text-white"
                               >
-                                <div className="flex items-center gap-2">
-                                  <span className="text-2xl">{IT[react.itemKey]?.ico || '🍀'}</span>
-                                  <div>
-                                    <div className="text-xs font-bold text-cyan-300">{IT[react.itemKey]?.n || react.itemKey}</div>
-                                    <div className="text-[9px] opacity-40">Available: {maxInventory}</div>
+                                <div className="flex items-center gap-2 truncate">
+                                  <span className="text-xl select-none shrink-0">{IT[react.itemKey]?.ico || '🍀'}</span>
+                                  <div className="truncate">
+                                    <div className="text-[10px] font-bold text-cyan-400 truncate">{IT[react.itemKey]?.n || react.itemKey}</div>
+                                    <div className="text-[8px] opacity-40 uppercase">Held: {maxInventory}</div>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-2 shrink-0">
+                                <div className="flex items-center gap-1.5 shrink-0">
                                   <button 
                                     onClick={() => adjustReactantQty(react.itemKey, -1)}
-                                    className="p-1 px-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-md text-xs font-sans hover:text-cyan-400 transition-all font-bold"
+                                    className="w-6 h-6 flex items-center justify-center bg-white/5 hover:bg-white/10 border border-white/10 rounded-md text-xs font-sans hover:text-cyan-400 transition-all font-black cursor-pointer"
                                   >
                                     -
                                   </button>
-                                  <span className="text-sm font-sans font-bold text-white px-2 min-w-[20px] text-center">
+                                  <span className="text-xs font-mono font-bold text-white px-1.5 min-w-[16px] text-center">
                                     {react.qty}
                                   </span>
                                   <button 
                                     onClick={() => adjustReactantQty(react.itemKey, 1)}
-                                    className="p-1 px-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-md text-xs font-sans hover:text-cyan-400 transition-all font-bold"
+                                    className="w-6 h-6 flex items-center justify-center bg-white/5 hover:bg-white/10 border border-white/10 rounded-md text-xs font-sans hover:text-cyan-400 transition-all font-black cursor-pointer"
                                   >
                                     +
                                   </button>
                                   <button 
                                     onClick={() => removeReactant(react.itemKey)}
-                                    className="p-1.5 hover:bg-red-500/20 text-red-400/85 hover:text-red-400 rounded-md transition-all ml-1"
+                                    className="p-1 hover:bg-red-500/20 text-red-400 rounded transition-all ml-1 cursor-pointer"
+                                    title="Remove from pot"
                                   >
-                                    <Trash2 size={14} />
+                                    <Trash2 size={12} />
                                   </button>
                                 </div>
                               </div>
@@ -6357,42 +7002,42 @@ export default function SurvivalGame() {
                       )}
                     </div>
 
-                    {/* Transmute action */}
+                    {/* Transmute action button */}
                     <button 
                       onClick={combineMaterials}
-                      className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white py-3 rounded-xl font-bold font-mono tracking-widest text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg hover:shadow-cyan-500/20 transition-all active:scale-95"
+                      className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white py-2.5 rounded-xl font-bold font-mono tracking-widest text-xs flex items-center justify-center gap-1.5 shadow-md hover:shadow-cyan-500/10 transition-all active:scale-95 cursor-pointer shrink-0"
                     >
-                      <Sparkles size={16} /> TRANSMUTE
+                      <Sparkles size={14} /> TRANSMUTE REAGENTS
                     </button>
 
                     {/* Action result panel */}
                     {labStatus && (
-                      <div className={`p-4 rounded-xl border text-xs leading-relaxed ${labStatus.success ? 'bg-green-500/10 border-green-500/30 text-green-400 font-sans' : 'bg-red-500/10 border-red-500/30 text-red-400 font-sans'}`}>
-                        <div className="font-bold mb-1 flex items-center gap-1.5 text-xs tracking-wider uppercase font-mono">
-                          {labStatus.success ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
-                          {labStatus.success ? 'TRANSMUTATION COMPATIBLE' : 'ALCHEMY REACTION UNSTABLE'}
+                      <div className={`p-3 rounded-xl border text-[10px] leading-relaxed shrink-0 ${labStatus.success ? 'bg-green-500/10 border-green-500/20 text-green-400 font-sans' : 'bg-red-500/10 border-red-500/20 text-red-400 font-sans'}`}>
+                        <div className="font-bold mb-1 flex items-center gap-1.5 text-[9px] tracking-wider uppercase font-mono">
+                          {labStatus.success ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                          {labStatus.success ? 'TRANSMUTATION COMPATIBLE' : 'ALCHEMY UNSTABLE'}
                         </div>
-                        <p className="opacity-95">{labStatus.msg}</p>
+                        <p className="opacity-90">{labStatus.msg}</p>
                       </div>
                     )}
                   </div>
 
-                  {/* Right Column: Ingredient Palette */}
-                  <div className="flex-1 flex flex-col gap-4 bg-white/[0.02] border border-white/10 p-4 sm:p-6 rounded-2xl">
-                    <div className="flex justify-between items-center border-b border-white/5 pb-3">
+                  {/* Right Column: Reactant Ingredient Palette */}
+                  <div className="w-full md:w-64 shrink-0 flex flex-col gap-3 bg-white/[0.01] border border-white/5 p-4 rounded-xl max-h-[300px] md:max-h-none overflow-hidden">
+                    <div className="flex justify-between items-center border-b border-white/5 pb-2">
                       <div>
-                        <h3 className="font-bold text-white text-sm sm:text-base tracking-wider uppercase flex items-center gap-1.5">
+                        <h3 className="font-bold text-white text-xs tracking-wider uppercase flex items-center gap-1">
                           💼 Lab Palette
                         </h3>
-                        <p className="text-[9px] opacity-40 uppercase">Raw material reactants in your pouch</p>
+                        <p className="text-[8px] opacity-40 uppercase mt-0.5">Ingredients in bag</p>
                       </div>
-                      <span className="text-[10px] bg-white/5 px-2 py-0.5 rounded-full text-white/50">
+                      <span className="text-[8px] bg-white/5 px-2 py-0.5 rounded-full text-white/50">
                         {Object.entries(gameState?.pl.inv || {}).filter(([k, v]) => (v as number) > 0 && IT[k]?.t === 'mat').length} Types
                       </span>
                     </div>
 
                     <div className="flex-1 overflow-y-auto pr-1">
-                      <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-3 xl:grid-cols-4 gap-2.5 pb-6">
+                      <div className="grid grid-cols-3 md:grid-cols-2 gap-2 pb-6">
                         {Object.entries(gameState?.pl.inv || {})
                           .filter(([k, v]) => (v as number) > 0 && IT[k]?.t === 'mat')
                           .map(([k, v]) => {
@@ -6415,14 +7060,23 @@ export default function SurvivalGame() {
                                   });
                                   setLabStatus(null);
                                 }}
-                                className={`p-3 rounded-xl border flex flex-col items-center gap-1 transition-all cursor-pointer ${isSelected ? 'bg-cyan-500/10 border-cyan-400 hover:border-cyan-300 shadow-md shadow-cyan-500/5' : 'bg-white/5 border-white/10 hover:border-white/20'}`}
+                                className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 transition-all cursor-pointer ${
+                                  isSelected 
+                                    ? 'bg-cyan-500/10 border-cyan-400 hover:border-cyan-300 shadow-md shadow-cyan-500/5' 
+                                    : 'bg-white/5 border-white/5 hover:border-white/10'
+                                }`}
                               >
-                                <span className="text-3xl select-none">{IT[k]?.ico || '💎'}</span>
-                                <span className="text-[10px] font-bold truncate max-w-full text-center">{IT[k]?.n || k}</span>
-                                <span className="text-[9px] text-cyan-400 font-sans font-bold">Qty: {v as number}</span>
+                                <span className="text-2xl select-none">{IT[k]?.ico || '💎'}</span>
+                                <span className="text-[9px] font-bold truncate max-w-full text-center leading-none mt-1">{IT[k]?.n || k}</span>
+                                <span className="text-[8px] text-cyan-400 font-mono font-bold">Qty: {v as number}</span>
                               </div>
                             );
                           })}
+                        {Object.entries(gameState?.pl.inv || {}).filter(([k, v]) => (v as number) > 0 && IT[k]?.t === 'mat').length === 0 && (
+                          <div className="col-span-full text-[9px] text-white/30 italic text-center py-8">
+                            No raw materials available. Explore the map to collect iron ore, crystals, and celestial shards!
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -6431,7 +7085,8 @@ export default function SurvivalGame() {
               )}
             </div>
           </motion.div>
-        )}
+        </div>
+      )}
 
         {showOracle && (
           <motion.div 
@@ -7205,20 +7860,22 @@ export default function SurvivalGame() {
                                 />
 
                                 <div>
-                                  <div className="flex justify-between items-start">
-                                    <span className="text-2xl p-1 bg-white/5 rounded-xl">{item.ico}</span>
+                                  <div className="flex justify-between items-center mb-3">
                                     <span 
                                       style={{ color: item.rarityColor, borderColor: `${item.rarityColor}33` }}
                                       className="text-[8px] font-black uppercase border px-1.5 py-0.5 rounded tracking-widest bg-white/[0.01]"
                                     >
                                       {item.rarity}
                                     </span>
+                                    <span className="text-[9px] opacity-40 font-mono">TOKEN ID: #{item.tokenId}</span>
                                   </div>
+
+                                  {/* Beautiful Generative Holographic Asset Art */}
+                                  <NFTCollectibleArt item={item} />
 
                                   <h3 className="text-xs font-bold text-white mt-3 truncate group-hover:text-cyan-300 transition-colors">
                                     {item.n}
                                   </h3>
-                                  <p className="text-[9px] opacity-40 mt-0.5">TOKEN ID: #{item.tokenId}</p>
 
                                   {/* Stats details */}
                                   <div className="mt-2.5 bg-black/40 p-2 rounded-xl text-[9px] flex flex-col gap-1 text-white/80">
@@ -7404,6 +8061,17 @@ export default function SurvivalGame() {
             </div>
           </motion.div>
         )}
+
+      <AnimatePresence>
+        {showShop && (
+          <Shop 
+            onClose={() => setShowShop(false)} 
+            playerGold={gameState?.pl?.inv?.gold_coins || 0} 
+            onAwardNFTs={handleAwardNFTs} 
+            addLog={addLog} 
+          />
+        )}
+      </AnimatePresence>
 
       {/* --- Death Screen --- */}
       <AnimatePresence>
