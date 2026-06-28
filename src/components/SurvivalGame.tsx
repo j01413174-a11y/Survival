@@ -1012,6 +1012,7 @@ const baseIT: Record<string, any> = {
   harbinger_staff: { id: 'harbinger_staff', n: 'Harbinger Staff', ico: '🪄', dmg: 95, spd: 42, rng: 380, type: 'magic', mp: 35, fx: 'void', col: '#ff00aa' },
 
   // --- Alchemy Transmutation Lab Exclusives ---
+  star_shield: { ico: '🛡️', n: 'Star Shield', t: 'armor', sl: 'chest', def: 28, hpBonus: 25 },
   aether_pickaxe: { id: 'aether_pickaxe', n: 'Aether Pickaxe', ico: '⛏️', dmg: 55, spd: 15, rng: 60, type: 'melee', mp: 0 },
   sunfire_aegis: { ico: '🔥', n: 'Sunfire Aegis', t: 'armor', sl: 'chest', def: 32, hpBonus: 40 },
   chrono_watch: { ico: '⏰', n: 'Chrono Watch', t: 'armor', sl: 'ring', def: 2, spdBonus: 0.6, mpBonus: 20 },
@@ -1325,7 +1326,7 @@ export default function SurvivalGame() {
     ...RC.map(r => ({ ...r, discovered: true, craftCount: 0 })),
     { n: 'Mana Potion', out: 'mana_potion', cnt: 1, cat: 'Potions', c: { herb: 1, magic_essence: 2 }, discovered: false, craftCount: 0 },
     { n: 'Void Essence', out: 'void_essence', cnt: 1, cat: 'Materials', c: { void_crystal: 2, magic_essence: 4 }, req: 'magic_altar', discovered: false, craftCount: 0 },
-    { n: 'Star Shield', out: 'iron_chest', cnt: 1, cat: 'Armor', c: { steel_bar: 3, gem: 1, celestial_shard: 1 }, req: 'workbench', discovered: false, craftCount: 0 },
+    { n: 'Star Shield', out: 'star_shield', cnt: 1, cat: 'Armor', c: { steel_bar: 3, gem: 1, celestial_shard: 1 }, req: 'workbench', discovered: false, craftCount: 0 },
     
     // --- Magical Lab Discoveries (Undiscovered by default) ---
     { n: 'Aether Pickaxe', out: 'aether_pickaxe', cnt: 1, cat: 'Weapons', c: { stick: 2, celestial_shard: 2, void_crystal: 1 }, req: 'magic_altar', discovered: false, craftCount: 0 },
