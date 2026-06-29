@@ -80,6 +80,17 @@ export default function Shop({ onClose, playerGold, onAwardNFTs, addLog }: ShopP
       color: 'from-amber-500/25 to-yellow-500/25 border-amber-500/40 text-amber-400',
       badge: 'Best Value • Save 40%',
       glow: 'shadow-[0_0_35px_rgba(245,158,11,0.25)]'
+    },
+    {
+      id: 'legion_1000',
+      name: 'Omnipotent Celestial Legion Vault',
+      qty: 1000,
+      price: '$49.99',
+      oldPrice: '$249.90',
+      desc: 'Premium legion-grade crate containing 1,000 ultra-fast minted dynamic NFTs to dominate. Highly optimized metadata!',
+      color: 'from-rose-500/25 to-pink-500/25 border-rose-500/40 text-rose-400',
+      badge: '1000x Vault • SAVE 80%',
+      glow: 'shadow-[0_0_40px_rgba(244,63,94,0.35)] animate-pulse border-rose-400/60'
     }
   ];
 
@@ -423,7 +434,7 @@ export default function Shop({ onClose, playerGold, onAwardNFTs, addLog }: ShopP
                   </div>
                   
                   <div className="grid grid-cols-2 gap-2">
-                    {mintedNfts.map((id, index) => (
+                    {mintedNfts.slice(0, 12).map((id, index) => (
                       <div key={index} className="bg-white/[0.02] border border-white/5 p-2 rounded-lg text-left flex items-center gap-2">
                         <span className="text-lg select-none">💎</span>
                         <div>
@@ -432,6 +443,11 @@ export default function Shop({ onClose, playerGold, onAwardNFTs, addLog }: ShopP
                         </div>
                       </div>
                     ))}
+                    {mintedNfts.length > 12 && (
+                      <div className="col-span-2 bg-rose-500/10 border border-rose-500/30 p-2.5 rounded-lg text-center font-bold text-[9px] text-rose-400 uppercase tracking-widest animate-pulse">
+                        ⭐ AND {mintedNfts.length - 12} MORE CELESTIAL NFTS DELIVERED TO YOUR BAG! ⭐
+                      </div>
+                    )}
                   </div>
                 </div>
 

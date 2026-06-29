@@ -43,6 +43,9 @@ import { auth, googleProvider, db, handleFirestoreError, testConnection, Operati
 import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import { doc, setDoc, getDoc, getDocs, deleteDoc, collection, query } from 'firebase/firestore';
 import Shop from './Shop';
+import TerrainGenerator from './TerrainGenerator';
+import { musicEngine } from '../services/audioService';
+import { Music, Play, Pause, Volume2, VolumeX } from 'lucide-react';
 
 // --- Constants & Types ---
 const TZ = 32;
@@ -1317,6 +1320,24 @@ export default function SurvivalGame() {
   const [recipeSearch, setRecipeSearch] = useState('');
   const [recipeFilter, setRecipeFilter] = useState('All');
   const [showSkills, setShowSkills] = useState(false);
+  
+  // Music & Synthesizer States
+  const [isMusicPlaying, setIsMusicPlaying] = useState(false);
+  const [musicVolume, setMusicVolume] = useState(0.25);
+  const [musicTrack, setMusicTrack] = useState<'ethereal' | 'verdant' | 'cosmic'>('ethereal');
+  const [showMusicMenu, setShowMusicMenu] = useState(false);
+
+  useEffect(() => {
+    musicEngine.setVolume(musicVolume);
+  }, [musicVolume]);
+
+  useEffect(() => {
+    if (isMusicPlaying) {
+      musicEngine.play(musicTrack);
+    } else {
+      musicEngine.pause();
+    }
+  }, [isMusicPlaying, musicTrack]);
   
   // Fishing Mini-game States
   const [isFishing, setIsFishing] = useState(false);
@@ -5829,6 +5850,13 @@ export default function SurvivalGame() {
               <Sparkles size={11} className="text-yellow-400" />
               <span>💎 SHOP</span>
             </button>
+            <button 
+              onClick={() => setShowMusicMenu(true)}
+              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-rose-500/20 hover:border-rose-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-rose-400 hover:text-rose-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+            >
+              <Music size={11} className={isMusicPlaying ? "animate-bounce text-rose-400" : "text-rose-400"} />
+              <span>MUSIC</span>
+            </button>
           </div>
         </div>
       </div>
@@ -8310,6 +8338,20 @@ export default function SurvivalGame() {
                   ))}
                 </div>
               </div>
+
+              {/* Interactive Procedural Noise 2D Grid Section */}
+              <div className="border-t border-white/10 pt-6 mt-2 flex flex-col gap-3">
+                <div className="text-xs font-bold uppercase tracking-wider text-emerald-400">Interactive Micro-Terrain Noise Simulator</div>
+                <p className="text-[10px] opacity-40 uppercase">Fine-tune the mathematical parameters of the Fractional Brownian Motion noise generator below:</p>
+                <TerrainGenerator 
+                  currentWorldSeed={worldSeed} 
+                  onApplySeed={(newSeed) => {
+                    setWorldSeed(newSeed);
+                    addLog(`🌍 Synchronized core seed to mathematical noise output: ${newSeed}`, '#34d399');
+                  }} 
+                />
+              </div>
+
             </div>
           </motion.div>
         )}
@@ -8893,6 +8935,142 @@ export default function SurvivalGame() {
             onAwardNFTs={handleAwardNFTs} 
             addLog={addLog} 
           />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showMusicMenu && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-black/95 backdrop-blur-md flex items-center justify-center p-4"
+          >
+            <div className="max-w-xl w-full bg-zinc-950 border border-rose-500/30 rounded-3xl p-6 md:p-8 flex flex-col gap-6 shadow-[0_0_50px_rgba(244,63,94,0.15)] text-white font-mono pointer-events-auto">
+              <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <Music size={22} className="text-rose-400" />
+                  <div>
+                    <h2 className="text-xl font-bold uppercase tracking-wider text-rose-400 font-mono">PROCEDURAL SYNTHESIZER</h2>
+                    <p className="text-[10px] opacity-50 uppercase mt-0.5 font-mono">Real-time Web Audio Synthesizer Loop & FX Station</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowMusicMenu(false)}
+                  className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Music Playback Status Bar */}
+              <div className="bg-white/[0.01] border border-white/5 p-5 rounded-2xl flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setIsMusicPlaying(!isMusicPlaying)}
+                      className={`w-12 h-12 rounded-full border flex items-center justify-center transition-all cursor-pointer ${
+                        isMusicPlaying 
+                          ? 'bg-rose-500 text-black border-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.4)] hover:bg-rose-400' 
+                          : 'bg-zinc-900 text-rose-400 border-rose-500/30 hover:bg-zinc-800'
+                      }`}
+                    >
+                      {isMusicPlaying ? <Pause size={20} /> : <Play size={20} className="ml-1" />}
+                    </button>
+                    <div>
+                      <div className="text-xs font-extrabold uppercase tracking-wider text-white">
+                        {isMusicPlaying ? 'SYNTH ENGINE ACTIVE' : 'SYNTH ENGINE MUTED'}
+                      </div>
+                      <div className="text-[9px] text-zinc-400 uppercase tracking-widest mt-0.5 font-mono">
+                        {isMusicPlaying ? 'Generating real-time synth waves...' : 'Click play to initialize Web Audio API'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Animated soundwave bars */}
+                  {isMusicPlaying && (
+                    <div className="flex items-end gap-1.5 h-6">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <div 
+                          key={i} 
+                          className="w-1 bg-rose-400 rounded-full animate-bounce [animation-duration:0.6s]" 
+                          style={{ 
+                            height: `${[40, 90, 60, 100, 50][i-1]}%`,
+                            animationDelay: `${i * 0.12}s`
+                          }} 
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Volume Controller Slider */}
+                <div className="flex items-center gap-3 border-t border-white/5 pt-4 mt-2">
+                  <span className="text-rose-400 shrink-0">
+                    {musicVolume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
+                  </span>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="0.80" 
+                    step="0.05" 
+                    value={musicVolume}
+                    onChange={(e) => setMusicVolume(parseFloat(e.target.value))}
+                    className="accent-rose-500 flex-1 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <span className="text-[10px] font-bold text-zinc-300 w-10 text-right">
+                    {Math.round(musicVolume * 125)}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Track Selection Grid */}
+              <div className="flex flex-col gap-2.5">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Available Synthesizer Presets</span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {[
+                    { id: 'ethereal', n: 'Ethereal Whispers', ico: '🌌', col: 'border-fuchsia-500/20 text-fuchsia-400 hover:border-fuchsia-400/50 bg-fuchsia-950/5', desc: 'A-minor pad progression with floating pentatonic melodies' },
+                    { id: 'verdant', n: 'Verdant Forest', ico: '🌲', col: 'border-emerald-500/20 text-emerald-400 hover:border-emerald-400/50 bg-emerald-950/5', desc: 'Warm sine-wave pluck chords with bright G-major plucks' },
+                    { id: 'cosmic', n: 'Cosmic Expedition', ico: '🚀', col: 'border-cyan-500/20 text-cyan-400 hover:border-cyan-400/50 bg-cyan-950/5', desc: 'Cybernetic space chords with deep retro sweeps and plucks' },
+                  ].map((track) => {
+                    const active = musicTrack === track.id;
+                    return (
+                      <button
+                        key={track.id}
+                        onClick={() => {
+                          setMusicTrack(track.id as any);
+                          setIsMusicPlaying(true);
+                        }}
+                        className={`p-4 rounded-2xl border text-left transition-all active:scale-95 flex flex-col justify-between gap-3 h-32 cursor-pointer ${track.col} ${
+                          active 
+                            ? 'border-rose-500 bg-rose-500/5 text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.1)]' 
+                            : 'border-white/5 opacity-60 hover:opacity-100'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start w-full">
+                          <span className="text-xl">{track.ico}</span>
+                          {active && (
+                            <span className="text-[7px] bg-rose-500 text-black px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                              ACTIVE
+                            </span>
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-black uppercase tracking-wider text-white">{track.n}</div>
+                          <p className="text-[8px] opacity-50 lowercase tracking-tight leading-normal mt-0.5 font-sans font-medium">{track.desc}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Engine Technical Explainer */}
+              <div className="bg-zinc-900/50 border border-white/5 p-4 rounded-2xl text-[9px] text-zinc-500 uppercase leading-relaxed font-sans">
+                💡 <span className="text-rose-400/80 font-mono font-bold">Procedural Synthesis Engine:</span> Unlike standard static audio streams, this engine utilizes raw browser oscillator nodes, envelope shaping, lowpass filter sweeping, and custom feedback delay lines to construct non-repeating, dynamic background tracks dynamically.
+              </div>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
