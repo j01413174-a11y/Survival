@@ -1338,6 +1338,141 @@ export default function SurvivalGame() {
       musicEngine.pause();
     }
   }, [isMusicPlaying, musicTrack]);
+
+  // --- Auto-Equip Best Weapons and Armor System ---
+  const lastInvRef = useRef<Record<string, number>>({});
+  const justManualUnequippedRef = useRef<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!gameState || !gameState.pl || !gameState.pl.inv) return;
+    
+    const s = stateRef.current;
+    if (!s || !s.pl) return;
+    
+    const currentInv = gameState.pl.inv;
+    const prevInv = lastInvRef.current;
+    
+    let receivedNewItem = false;
+    const itemsToCheck: string[] = [];
+
+    for (const k of Object.keys(currentInv)) {
+      const currentQty = currentInv[k] || 0;
+      const prevQty = prevInv[k] || 0;
+      
+      if (currentQty > prevQty) {
+        // Quantity increased! Check if this was a manual unequip
+        if (justManualUnequippedRef.current[k]) {
+          // Clear manual unequip flag and skip
+          justManualUnequippedRef.current[k] = false;
+        } else {
+          receivedNewItem = true;
+          itemsToCheck.push(k);
+        }
+      }
+    }
+
+    // Save current inventory as previous for the next tick
+    lastInvRef.current = { ...currentInv };
+
+    if (!receivedNewItem || itemsToCheck.length === 0) return;
+
+    // Check if any of the newly received items is a better weapon or armor
+    let stateChanged = false;
+
+    // Helper to evaluate weapon/armor scores
+    const getWeaponDmgValue = (itemKey: string | null) => {
+      if (!itemKey) return 0;
+      const it = IT[itemKey];
+      return it?.dmg || 0;
+    };
+
+    const getArmorScore = (itemKey: string | null) => {
+      if (!itemKey) return -1;
+      const it = IT[itemKey];
+      if (!it) return -1;
+      const def = it.def || 0;
+      const hpBonus = it.hpBonus || 0;
+      const mpBonus = it.mpBonus || 0;
+      const spdBonus = it.spdBonus || 0;
+      return def * 10 + hpBonus * 0.5 + mpBonus * 0.3 + spdBonus * 20;
+    };
+
+    for (const k of itemsToCheck) {
+      const it = IT[k];
+      if (!it) continue;
+
+      // 1. Check if it's a weapon/tool and better than current weapon
+      const isWeapon = it.t === 'tool' || it.t === 'weapon' || (!!it.id && it.t !== 'armor');
+      if (isWeapon) {
+        const currentWeaponKey = s.pl.weapon || 'fists';
+        const currentDmg = getWeaponDmgValue(currentWeaponKey);
+        const newDmg = it.dmg || 0;
+        
+        if (newDmg > currentDmg) {
+          s.pl.weapon = k;
+          addLog(`🛡️ [Auto-Equip] Equipped stronger weapon: ${it.n} (Dmg: ${newDmg})`, '#38bdf8');
+          stateChanged = true;
+        }
+      }
+
+      // 2. Check if it's armor and better than current armor in its slot
+      if (it.t === 'armor') {
+        const slot = it.sl || 'chest';
+        const currentEquippedKey = s.pl.equip[slot];
+        const currentScore = getArmorScore(currentEquippedKey);
+        const newScore = getArmorScore(k);
+
+        if (newScore > currentScore) {
+          // Revert current equipped stats if exists
+          if (currentEquippedKey) {
+            const oldItem = IT[currentEquippedKey];
+            if (oldItem) {
+              s.pl.inv[currentEquippedKey] = (s.pl.inv[currentEquippedKey] || 0) + 1;
+              if (oldItem.def) s.pl.def = Math.max(0, (s.pl.def || 0) - oldItem.def);
+              if (oldItem.hpBonus) {
+                s.pl.mhp = Math.max(10, s.pl.mhp - oldItem.hpBonus);
+                s.pl.hp = Math.min(s.pl.mhp, s.pl.hp);
+              }
+              if (oldItem.mpBonus) {
+                s.pl.mmp = Math.max(10, s.pl.mmp - oldItem.mpBonus);
+                s.pl.mp = Math.min(s.pl.mmp, s.pl.mp);
+              }
+              if (oldItem.spdBonus) {
+                s.pl.spd = Math.max(1.0, s.pl.spd - oldItem.spdBonus);
+              }
+            }
+          }
+
+          // Equip new item
+          s.pl.equip[slot] = k;
+          s.pl.inv[k]--;
+
+          // Apply new item stats
+          if (it.def) s.pl.def = (s.pl.def || 0) + it.def;
+          if (it.hpBonus) {
+            s.pl.mhp += it.hpBonus;
+            s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + it.hpBonus);
+          }
+          if (it.mpBonus) {
+            s.pl.mmp += it.mpBonus;
+            s.pl.mp = Math.min(s.pl.mmp, s.pl.mp + it.mpBonus);
+          }
+          if (it.spdBonus) {
+            s.pl.spd += it.spdBonus;
+          }
+
+          addLog(`🛡️ [Auto-Equip] Equipped stronger ${slot}: ${it.n} (Def: ${it.def || 0})`, '#38bdf8');
+          stateChanged = true;
+        }
+      }
+    }
+
+    if (stateChanged) {
+      // Sync lastInvRef before updating gameState to avoid immediate re-checks of stats
+      lastInvRef.current = { ...s.pl.inv };
+      setGameState({ ...s });
+    }
+  }, [gameState]);
   
   // Fishing Mini-game States
   const [isFishing, setIsFishing] = useState(false);
@@ -4173,6 +4308,9 @@ export default function SurvivalGame() {
     if (!s || !s.pl || !s.pl.equip) return;
     const oldKey = s.pl.equip[slot];
     if (!oldKey) return;
+
+    // Mark as manually unequipped for the auto-equip check
+    justManualUnequippedRef.current[oldKey] = true;
 
     const oldItem = IT[oldKey];
     if (oldItem) {
@@ -8296,46 +8434,44 @@ export default function SurvivalGame() {
                 <p className="text-[10px] opacity-40 uppercase">The map is a {ZCOLS}x{ZROWS} cluster of continuous biomes. Below is the mapped layout:</p>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-5 gap-3.5 mt-2">
-                  {Array.from({ length: ZROWS }).map((_, zr) => (
-                    <React.Fragment key={`row-${zr}`}>
-                      {Array.from({ length: ZCOLS }).map((_, zc) => {
-                        const M = getProceduralBiomeForZone(zc, zr, worldSeed);
-                        const isStart = zc === 0 && zr === 0;
-                        return (
-                          <div 
-                            key={`${zc}-${zr}`}
-                            className={`p-3 rounded-xl border flex flex-col justify-between transition-all relative ${
-                              isStart 
-                                ? 'bg-emerald-500/15 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.15)]' 
-                                : 'bg-white/[0.02] border-white/5 hover:border-white/15'
-                            }`}
-                          >
-                            {isStart && (
-                              <span className="absolute top-1 right-1 text-[7px] bg-emerald-500 text-black px-1 rounded font-sans font-bold uppercase">
-                                START
-                              </span>
-                            )}
-                            <div>
-                              <div className="text-[10px] text-zinc-500 font-mono">Zone ({zc}, {zr})</div>
-                              <div className="text-xs font-extrabold text-white mt-1 flex items-center gap-1.5">
-                                <span>{M.n.split(' ').map((word: string) => word[0]).join('')}</span>
-                                <span className="text-lg">{M.n.includes('Desert') ? '🏜️' : M.n.includes('Forest') ? '🌲' : M.n.includes('Frozen') ? '❄️' : M.n.includes('Scorched') ? '🌋' : M.n.includes('Celestial') ? '🌌' : '🌾'}</span>
-                              </div>
-                              <div className="text-[9px] text-zinc-400 mt-1 truncate">{M.n}</div>
-                            </div>
-                            
-                            <div className="mt-2 pt-2 border-t border-white/5 flex flex-wrap gap-1 text-[8px] opacity-60">
-                              {Object.keys(M.dr).slice(0, 3).map(k => (
-                                <span key={k} className="bg-white/5 px-1 rounded">
-                                  {IT[k]?.ico || '📦'}
-                                </span>
-                              ))}
-                            </div>
+                  {Array.from({ length: ZROWS * ZCOLS }).map((_, i) => {
+                    const zr = Math.floor(i / ZCOLS);
+                    const zc = i % ZCOLS;
+                    const M = getProceduralBiomeForZone(zc, zr, worldSeed);
+                    const isStart = zc === 0 && zr === 0;
+                    return (
+                      <div 
+                        key={`${zc}-${zr}`}
+                        className={`p-3 rounded-xl border flex flex-col justify-between transition-all relative ${
+                          isStart 
+                            ? 'bg-emerald-500/15 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.15)]' 
+                            : 'bg-white/[0.02] border-white/5 hover:border-white/15'
+                        }`}
+                      >
+                        {isStart && (
+                          <span className="absolute top-1 right-1 text-[7px] bg-emerald-500 text-black px-1 rounded font-sans font-bold uppercase">
+                            START
+                          </span>
+                        )}
+                        <div>
+                          <div className="text-[10px] text-zinc-500 font-mono">Zone ({zc}, {zr})</div>
+                          <div className="text-xs font-extrabold text-white mt-1 flex items-center gap-1.5">
+                            <span>{M.n.split(' ').map((word: string) => word[0]).join('')}</span>
+                            <span className="text-lg">{M.n.includes('Desert') ? '🏜️' : M.n.includes('Forest') ? '🌲' : M.n.includes('Frozen') ? '❄️' : M.n.includes('Scorched') ? '🌋' : M.n.includes('Celestial') ? '🌌' : '🌾'}</span>
                           </div>
-                        );
-                      })}
-                    </React.Fragment>
-                  ))}
+                          <div className="text-[9px] text-zinc-400 mt-1 truncate">{M.n}</div>
+                        </div>
+                        
+                        <div className="mt-2 pt-2 border-t border-white/5 flex flex-wrap gap-1 text-[8px] opacity-60">
+                          {Object.keys(M.dr).slice(0, 3).map(k => (
+                            <span key={k} className="bg-white/5 px-1 rounded">
+                              {IT[k]?.ico || '📦'}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

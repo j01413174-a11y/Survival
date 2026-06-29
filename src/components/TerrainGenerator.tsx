@@ -430,23 +430,21 @@ export default function TerrainGenerator({ onApplySeed, currentWorldSeed }: Terr
                 style={{ gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))` }}
                 className="grid gap-[2px] w-full max-w-[420px] aspect-square"
               >
-                {grid.map((row, y) => 
-                  row.map((tile, x) => {
-                    const isSelected = selectedTile?.x === x && selectedTile?.y === y;
-                    return (
-                      <button
-                        key={`${x}-${y}`}
-                        onClick={() => setSelectedTile(tile)}
-                        className={`aspect-square flex items-center justify-center text-[10px] sm:text-xs rounded border transition-all select-none hover:scale-110 active:scale-95 cursor-pointer ${tile.bgClass} ${
-                          isSelected ? 'scale-115 shadow-[0_0_12px_rgba(255,255,255,0.15)] ring-1 ring-white/60 z-10' : ''
-                        }`}
-                        title={`(${x}, ${y}) - ${tile.label}`}
-                      >
-                        {tile.emoji}
-                      </button>
-                    );
-                  })
-                )}
+                {grid.flat().map((tile) => {
+                  const isSelected = selectedTile?.x === tile.x && selectedTile?.y === tile.y;
+                  return (
+                    <button
+                      key={`${tile.x}-${tile.y}`}
+                      onClick={() => setSelectedTile(tile)}
+                      className={`aspect-square flex items-center justify-center text-[10px] sm:text-xs rounded border transition-all select-none hover:scale-110 active:scale-95 cursor-pointer ${tile.bgClass} ${
+                        isSelected ? 'scale-115 shadow-[0_0_12px_rgba(255,255,255,0.15)] ring-1 ring-white/60 z-10' : ''
+                      }`}
+                      title={`(${tile.x}, ${tile.y}) - ${tile.label}`}
+                    >
+                      {tile.emoji}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
