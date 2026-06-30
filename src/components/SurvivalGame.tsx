@@ -51,22 +51,22 @@ import { Music, Play, Pause, Volume2, VolumeX } from 'lucide-react';
 const TZ = 32;
 const ZW = 80;
 const ZH = 80;
-const ZCOLS = 5;
-const ZROWS = 5; // Increased to 5x5 for more maps
+const ZCOLS = 8;
+const ZROWS = 8; // Expanded to a vast 8x8 grid (64 distinct continuous maps/biomes!)
 const WW = ZW * ZCOLS;
 const WH = ZH * ZROWS;
 
 const TG = 0, TD = 1, TS = 2, TW = 3, TSA = 4, TSN = 5, TLV = 6, TSW = 7, TCR = 8; // TCR = Celestial Realm
 const TC: Record<number, string[]> = {
-  0: ['#2d5a1b', '#355f20', '#1a3310'], // Grass
-  1: ['#6b4c2a', '#7a5530', '#4a331a'], // Dirt
-  2: ['#555566', '#4a4a5a', '#333344'], // Stone
-  3: ['#1a3d6e', '#1e4577', '#0d1f38'], // Water
-  4: ['#c2a06a', '#cfab72', '#8a704a'], // Sand
-  5: ['#d4eaf5', '#deeef8', '#a0c4d8'], // Snow
-  6: ['#cc4400', '#dd5511', '#882200'], // Lava
-  7: ['#2a4020', '#344a28', '#1a2a14'], // Swamp
-  8: ['#1a0a3a', '#2a1a4a', '#4a1a8a'], // Celestial
+  0: ['#1c4013', '#254e1b', '#0f290b'], // Rich Grass
+  1: ['#553a1f', '#644528', '#382512'], // Dark Soil
+  2: ['#444452', '#3a3a46', '#262631'], // Obsidian Stone
+  3: ['#102c5c', '#15366d', '#081734'], // Deep Water
+  4: ['#b08d56', '#be9b62', '#7b5f35'], // Dunes Sand
+  5: ['#cbe3f0', '#d8ebf7', '#93b6cd'], // Crisp Snow
+  6: ['#a63300', '#bd3c00', '#6b1c00'], // Molten Lava
+  7: ['#1f3316', '#294020', '#101c0b'], // Murky Swamp
+  8: ['#11052c', '#1d0c3e', '#320d6d'], // Astral Void
 };
 
 export interface LoreEntry {
@@ -373,6 +373,16 @@ const MAPS = [
   { id: 18, n: "Dragon's Domain", s: 19555, m: TS, f: TLV, r: TS, w: TLV, wf: .11, rf: .09, sky: '#440000', ef: ['dragon', 'troll', 'orc_chief', 'dark_mage'], dr: { gem: .022, crystal: .016, magic_essence: .016, sulfur: .022, bone: .016 } },
   { id: 19, n: 'Corrupted Lands', s: 20001, m: TD, f: TD, r: TS, w: TLV, wf: .09, rf: .09, sky: '#080810', ef: ['dragon', 'dark_mage', 'wraith', 'orc_chief', 'bandit_chief'], dr: { magic_essence: .027, crystal: .022, sulfur: .016, bone: .027, gem: .011 } },
   { id: 20, n: 'Celestial Realm', s: 99999, m: TCR, f: TCR, r: TS, w: TW, wf: .05, rf: .05, sky: '#1a0a3a', ef: ['celestial_guardian', 'void_wraith', 'star_golem'], dr: { magic_essence: .05, crystal: .04, gem: .03, void_crystal: .02, celestial_shard: .01 } },
+  { id: 21, n: 'Neon Cyber-Grid', s: 30101, m: TCR, f: TS, r: TS, w: TW, wf: .04, rf: .06, sky: '#000011', ef: ['star_golem', 'void_wraith', 'golem'], dr: { void_crystal: .025, crystal: .03, gem: .02, magic_essence: .035 } },
+  { id: 22, n: 'Fungal Caverns', s: 40202, m: TSW, f: TD, r: TS, w: TW, wf: .15, rf: .10, sky: '#1a0d1a', ef: ['spider', 'zombie', 'wraith'], dr: { mushroom: .04, venom: .02, herb: .018, crystal: .015 } },
+  { id: 23, n: 'Deep Trench', s: 50303, m: TW, f: TW, r: TS, w: TW, wf: .40, rf: .02, sky: '#001122', ef: ['spider', 'wraith', 'dark_mage'], dr: { fish: .05, bone: .02, magic_essence: .015 } },
+  { id: 24, n: 'Steampunk Ruins', s: 60404, m: TS, f: TD, r: TS, w: TW, wf: .05, rf: .15, sky: '#221a11', ef: ['golem', 'bandit', 'archer', 'bandit_chief'], dr: { iron_ore: .035, coal: .025, stone: .04, copper_ore: .03 } },
+  { id: 25, n: 'Prismatic Oasis', s: 70505, m: TSA, f: TG, r: TS, w: TW, wf: .12, rf: .04, sky: '#33ffaa', ef: ['celestial_guardian', 'fox', 'deer'], dr: { gem: .035, astral_flower: .03, magic_essence: .03, gold_ore: .025 } },
+  { id: 26, n: 'Obsidian Spire', s: 80606, m: TLV, f: TS, r: TS, w: TLV, wf: .08, rf: .18, sky: '#110500', ef: ['troll', 'golem', 'dragon'], dr: { sulfur: .04, coal: .035, iron_ore: .025, crystal: .02 } },
+  { id: 27, n: 'Void Rift', s: 90707, m: TCR, f: TCR, r: TS, w: TLV, wf: .05, rf: .05, sky: '#050011', ef: ['void_wraith', 'star_golem', 'dragon'], dr: { void_crystal: .04, magic_essence: .04, celestial_shard: .02 } },
+  { id: 28, n: 'Atlantis Ruins', s: 10808, m: TW, f: TS, r: TS, w: TW, wf: .30, rf: .10, sky: '#0a2a3a', ef: ['skeleton', 'golem', 'wraith'], dr: { ancient_rune: .015, magic_essence: .02, crystal: .025, stone: .03 } },
+  { id: 29, n: 'Sakura Garden', s: 11909, m: TG, f: TG, r: TS, w: TW, wf: .10, rf: .05, sky: '#ffcccc', ef: ['fox', 'deer', 'pheasant', 'dark_mage'], dr: { astral_flower: .04, herb: .03, wood: .03, fiber: .025 } },
+  { id: 30, n: 'Sky Archipelago', s: 121010, m: TCR, f: TG, r: TS, w: TW, wf: .05, rf: .05, sky: '#88ccff', ef: ['celestial_guardian', 'void_wraith', 'star_golem'], dr: { celestial_shard: .03, magic_essence: .03, gem: .025, crystal: .025 } }
 ];
 
 const ET: Record<string, any> = {
@@ -2371,6 +2381,7 @@ export default function SurvivalGame() {
       waveTimer: 300,
       waveActive: false,
       cam: { x: initialPl.x - window.innerWidth / 2, y: initialPl.y - window.innerHeight / 2 },
+      camShake: 0,
       zoneMaps,
       worldSeed: currentSeed
     };
@@ -3218,6 +3229,7 @@ export default function SurvivalGame() {
           }
           const dmg = Math.max(1, e.dmg - finalDef);
           s.pl.hp -= dmg;
+          s.camShake = (s.camShake || 0) + 12;
           s.pl.ifr = 40;
           e.cd = e.acd;
           addLog(`Hit by ${ET[e.eid].n}! -${dmg} HP`, '#f44');
@@ -3343,6 +3355,7 @@ export default function SurvivalGame() {
           if (dist(p, e) < 22) {
             e.hp -= p.dmg;
             e.flashTicks = 12; // Trigger red damage glow!
+            s.camShake = (s.camShake || 0) + 3;
 
             if (p.vamp && p.vamp > 0) {
               const heal = Math.round(p.dmg * p.vamp);
@@ -3565,6 +3578,18 @@ export default function SurvivalGame() {
       // --- Draw ---
       ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
       
+      ctx.save();
+      // Apply camera shake if any
+      let shakeX = 0;
+      let shakeY = 0;
+      if (s.camShake && s.camShake > 0) {
+        shakeX = (Math.random() - 0.5) * s.camShake;
+        shakeY = (Math.random() - 0.5) * s.camShake;
+        s.camShake *= 0.88; // decay
+        if (s.camShake < 0.1) s.camShake = 0;
+      }
+      ctx.translate(shakeX, shakeY);
+
       // Tiles
       const sx0 = Math.max(0, Math.floor(s.cam.x / TZ) - 1);
       const sy0 = Math.max(0, Math.floor(s.cam.y / TZ) - 1);
@@ -3578,10 +3603,37 @@ export default function SurvivalGame() {
           ctx.fillStyle = (x + y) % 2 === 0 ? tc[0] : tc[1];
           ctx.fillRect(x * TZ - s.cam.x, y * TZ - s.cam.y, TZ, TZ);
           
+          // Subtle grid lines to elevate styling
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.015)';
+          ctx.lineWidth = 0.5;
+          ctx.strokeRect(x * TZ - s.cam.x, y * TZ - s.cam.y, TZ, TZ);
+
           // Celestial Realm Glow
           if (t === TCR) {
-            ctx.fillStyle = `rgba(168, 85, 247, ${0.05 + Math.sin(s.ticks * 0.05 + x + y) * 0.02})`;
+            ctx.fillStyle = `rgba(168, 85, 247, ${0.08 + Math.sin(s.ticks * 0.05 + x + y) * 0.03})`;
             ctx.fillRect(x * TZ - s.cam.x, y * TZ - s.cam.y, TZ, TZ);
+          } else if (t === TW) {
+            // Draw subtle wave lines
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            const wx0 = x * TZ - s.cam.x;
+            const wy0 = y * TZ - s.cam.y;
+            const waveY = wy0 + TZ/2 + Math.sin(s.ticks * 0.04 + x + y) * 3;
+            ctx.moveTo(wx0 + 4, waveY);
+            ctx.lineTo(wx0 + TZ - 4, waveY);
+            ctx.stroke();
+          } else if (t === TLV) {
+            // Draw heated lava heatwaves
+            ctx.strokeStyle = 'rgba(255, 100, 0, 0.15)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            const lx0 = x * TZ - s.cam.x;
+            const ly0 = y * TZ - s.cam.y;
+            const heatX = lx0 + TZ/2 + Math.cos(s.ticks * 0.05 + x + y) * 4;
+            ctx.moveTo(heatX, ly0 + 4);
+            ctx.lineTo(heatX, ly0 + TZ - 4);
+            ctx.stroke();
           }
         }
       }
@@ -3608,9 +3660,37 @@ export default function SurvivalGame() {
           ctx.arc(ox, oy, ringRad, s.ticks * 0.02, s.ticks * 0.02 + Math.PI * 2);
           ctx.stroke();
           ctx.restore();
-        } else if (o.type === 'tree') ico = '🌲';
-        else if (o.type === 'rock') ico = '🪨';
-        else if (o.type === 'drop') ico = IT[o.item]?.ico || '•';
+        } else if (o.type === 'tree') {
+          ico = '🌲';
+          // Tree drop shadow
+          ctx.save();
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+          ctx.beginPath();
+          ctx.ellipse(ox, oy + 10, 8, 4, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        } else if (o.type === 'rock') {
+          ico = '🪨';
+          // Rock drop shadow
+          ctx.save();
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+          ctx.beginPath();
+          ctx.ellipse(ox, oy + 8, 10, 5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        } else if (o.type === 'drop') {
+          ico = IT[o.item]?.ico || '•';
+          // Pulsating glow aura for items so they are easily visible
+          const pulse = 4 + Math.sin(s.ticks * 0.12) * 2.5;
+          ctx.save();
+          ctx.shadowColor = '#ffffff';
+          ctx.shadowBlur = pulse;
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+          ctx.beginPath();
+          ctx.arc(ox, oy, 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
         else if (o.type === 'magic_altar') ico = '🕋';
         else if (o.type === 'fishing_hotspot') {
           ico = o.ico;
@@ -3691,8 +3771,29 @@ export default function SurvivalGame() {
       }
 
       // Player
-      ctx.font = `${TZ + 4}px serif`;
       if (s.pl.ifr > 0 && s.ticks % 10 < 5) ctx.globalAlpha = 0.5;
+      
+      // Draw a sleek soft circle shadow beneath the player
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.beginPath();
+      ctx.ellipse(s.pl.x - s.cam.x, s.pl.y - s.cam.y + 11, 10, 4.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Subtle magic shield if healing sanctuary is active
+      if (s.activeSpells?.healingSanctuaryTimer > 0) {
+        ctx.strokeStyle = 'rgba(16, 185, 129, 0.65)';
+        ctx.lineWidth = 2;
+        ctx.shadowColor = '#10b981';
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.arc(s.pl.x - s.cam.x, s.pl.y - s.cam.y, 20 + Math.sin(s.ticks * 0.1) * 3, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+      ctx.restore();
+
+      ctx.font = `${TZ + 4}px serif`;
       ctx.fillText('🧍', s.pl.x - s.cam.x, s.pl.y - s.cam.y);
       ctx.globalAlpha = 1;
 
@@ -3706,6 +3807,14 @@ export default function SurvivalGame() {
         const bob = Math.sin(s.ticks * 0.12 + e.id * 1.5) * 4;
         const squishX = 1 + Math.sin(s.ticks * 0.16 + e.id) * 0.06;
         const squishY = 1 - Math.sin(s.ticks * 0.16 + e.id) * 0.06;
+
+        // Shadow beneath enemy
+        ctx.save();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+        ctx.beginPath();
+        ctx.ellipse(ex, ey + 11, 10 * squishX, 4 * squishY, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
 
         ctx.save();
         ctx.translate(ex, ey + bob);
@@ -3854,6 +3963,66 @@ export default function SurvivalGame() {
         ctx.fill();
         ctx.globalCompositeOperation = 'source-over';
       }
+
+      // Draw procedural weather/atmospheric particles
+      const mapIdx = Math.floor(s.pl.y / (ZH * TZ)) * ZCOLS + Math.floor(s.pl.x / (ZW * TZ));
+      const bName = s.zoneMaps?.[mapIdx]?.n || MAPS[mapIdx]?.n || MAPS[0].n;
+      
+      if (bName.includes('Frozen') || bName.includes('Tundra')) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+        for (let i = 0; i < 40; i++) {
+          const px = ((Math.sin(i * 123.45) * 0.5 + 0.5) * ctx.canvas.width) % ctx.canvas.width;
+          const py = ((i * 45.67 + s.ticks * 1.5) % ctx.canvas.height);
+          ctx.beginPath();
+          ctx.arc(px, py, 1.5 + Math.sin(i + s.ticks * 0.05) * 0.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (bName.includes('Desert') || bName.includes('Waste') || bName.includes('Oasis')) {
+        ctx.fillStyle = 'rgba(219, 180, 110, 0.35)'; // Sand dust
+        for (let i = 0; i < 30; i++) {
+          const px = ((Math.sin(i * 54.32) * 0.5 + 0.5) * ctx.canvas.width - s.ticks * 2) % ctx.canvas.width;
+          const py = (i * 98.76) % ctx.canvas.height;
+          ctx.fillRect(px < 0 ? px + ctx.canvas.width : px, py, 3, 1.2);
+        }
+      } else if (bName.includes('Volcanic') || bName.includes('Scorched') || bName.includes('Spire')) {
+        ctx.fillStyle = `rgba(239, 68, 68, ${0.45 + Math.sin(s.ticks * 0.08) * 0.2})`; // Ash/ember glowing particles
+        for (let i = 0; i < 25; i++) {
+          const px = (Math.sin(i * 87.65) * 0.5 + 0.5) * ctx.canvas.width;
+          const py = (ctx.canvas.height - (i * 32.1 + s.ticks * 0.8) % ctx.canvas.height);
+          ctx.shadowColor = '#ef4444';
+          ctx.shadowBlur = 6;
+          ctx.beginPath();
+          ctx.arc(px, py, 1.2 + Math.abs(Math.sin(i + s.ticks * 0.1)) * 1.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+      } else if (bName.includes('Swamp') || bName.includes('Forest') || bName.includes('Grove') || bName.includes('Cavern') || bName.includes('Garden')) {
+        ctx.fillStyle = `rgba(132, 204, 22, ${0.55 + Math.sin(s.ticks * 0.05) * 0.3})`; // Glow flies
+        for (let i = 0; i < 20; i++) {
+          const px = ((Math.sin(i * 92.11) * 0.5 + 0.5) * ctx.canvas.width + Math.sin(s.ticks * 0.02 + i) * 30) % ctx.canvas.width;
+          const py = ((Math.cos(i * 41.22) * 0.5 + 0.5) * ctx.canvas.height + Math.cos(s.ticks * 0.02 + i) * 30) % ctx.canvas.height;
+          ctx.shadowColor = '#84cc16';
+          ctx.shadowBlur = 8;
+          ctx.beginPath();
+          ctx.arc(px < 0 ? px + ctx.canvas.width : px, py < 0 ? py + ctx.canvas.height : py, 1.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+      } else if (bName.includes('Celestial') || bName.includes('Void') || bName.includes('Ruins') || bName.includes('Archipelago') || bName.includes('Cyber-Grid')) {
+        ctx.fillStyle = `rgba(168, 85, 247, ${0.45 + Math.sin(s.ticks * 0.04) * 0.2})`; // Void cosmic stardust
+        for (let i = 0; i < 35; i++) {
+          const px = ((Math.sin(i * 111.11) * 0.5 + 0.5) * ctx.canvas.width + Math.sin(s.ticks * 0.01 + i) * 15) % ctx.canvas.width;
+          const py = ((Math.cos(i * 22.22) * 0.5 + 0.5) * ctx.canvas.height + Math.cos(s.ticks * 0.01 + i) * 15) % ctx.canvas.height;
+          ctx.shadowColor = '#a855f7';
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.arc(px < 0 ? px + ctx.canvas.width : px, py < 0 ? py + ctx.canvas.height : py, 1 + Math.abs(Math.sin(i + s.ticks * 0.05)) * 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+      }
+
+      ctx.restore();
 
       if (minimapCanvasRef.current && !isMinimapCollapsedRef.current) {
         drawMinimap(s);
@@ -4029,6 +4198,7 @@ export default function SurvivalGame() {
         if (dist(s.pl, e) < wp.rng) {
           e.hp -= finalDmg;
           e.flashTicks = 10;
+          s.camShake = (s.camShake || 0) + 4;
           spawnExplosion(s, e.x, e.y, '#f53b57', 12, 'pixel'); // Spectacular hit blood splash!
           if (wp.vamp && wp.vamp > 0) {
             const heal = Math.round(finalDmg * wp.vamp);
@@ -4844,12 +5014,20 @@ export default function SurvivalGame() {
     const s = stateRef.current;
     if (!s) return;
     
-    nftIds.forEach((tokenId) => {
-      const nftKey = `nft_${tokenId}`;
-      s.pl.inv[nftKey] = (s.pl.inv[nftKey] || 0) + 1;
-      const nft = getNFTItem(tokenId);
-      addLog(`⭐ Unwrapped ${nft.n} from Premium Bundle!`, '#f59e0b');
-    });
+    if (nftIds.length > 5) {
+      nftIds.forEach((tokenId) => {
+        const nftKey = `nft_${tokenId}`;
+        s.pl.inv[nftKey] = (s.pl.inv[nftKey] || 0) + 1;
+      });
+      addLog(`⭐ Unwrapped ${nftIds.length} Premium NFTs from Bundle! 🎉`, '#f59e0b');
+    } else {
+      nftIds.forEach((tokenId) => {
+        const nftKey = `nft_${tokenId}`;
+        s.pl.inv[nftKey] = (s.pl.inv[nftKey] || 0) + 1;
+        const nft = getNFTItem(tokenId);
+        addLog(`⭐ Unwrapped ${nft.n} from Premium Bundle!`, '#f59e0b');
+      });
+    }
     
     setGameState({ ...s });
   };
@@ -5892,7 +6070,7 @@ export default function SurvivalGame() {
         <div className="text-right flex flex-col items-end gap-1">
           <div className="font-bold text-yellow-400 text-lg tracking-widest">DAY {gameState?.day}</div>
           <div className="text-xs text-blue-300 opacity-80">
-            {MAPS[Math.floor((gameState?.pl.y || 0) / (ZH * TZ)) * ZCOLS + Math.floor((gameState?.pl.x || 0) / (ZW * TZ))]?.n || "Unknown"}
+            {gameState?.zoneMaps?.[Math.floor((gameState?.pl.y || 0) / (ZH * TZ)) * ZCOLS + Math.floor((gameState?.pl.x || 0) / (ZW * TZ))]?.n || "Unknown"}
           </div>
           <div className="text-[10px] font-mono text-orange-400 font-bold tracking-wider">
             {gameState?.waveActive ? (

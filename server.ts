@@ -283,7 +283,7 @@ async function callGeminiWithFallback(params: { contents: any; config: any }) {
   let lastError = null;
   for (const modelName of modelsToTry) {
     try {
-      console.warn(`Attempting Gemini API request with model: ${modelName}`);
+      console.log(`Attempting Gemini API request with model: ${modelName}`);
       const response = await ai.models.generateContent({
         model: modelName,
         contents: params.contents,
@@ -294,10 +294,10 @@ async function callGeminiWithFallback(params: { contents: any; config: any }) {
       }
     } catch (e: any) {
       lastError = e;
-      console.warn(`Gemini model ${modelName} failed or busy: ${e.message || e}`);
+      console.log(`Gemini model ${modelName} was busy or rate-limited. Trying another model...`);
     }
   }
-  throw lastError || new Error("All Gemini models failed to generate content.");
+  throw lastError || new Error("All fallback models were busy.");
 }
 
 // API endpoint for Oracle guidance
