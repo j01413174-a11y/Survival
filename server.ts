@@ -71,7 +71,9 @@ function getProceduralWorldEvent(gameState: any) {
           speedBoost: 1.2,
           dmgBoost: 1.0,
           manaRegen: 0,
-          healthDrain: 0.2
+          healthDrain: 0.2,
+          hungerDrain: 0.1,
+          thirstDrain: 0.1
         },
         spawnResource: "iron_ore"
       },
@@ -86,7 +88,9 @@ function getProceduralWorldEvent(gameState: any) {
             item: "crystal",
             qty: 3,
             xp: 50,
-            hpChange: -15
+            hpChange: -15,
+            huChange: -10,
+            thChange: -10
           }
         },
         {
@@ -99,7 +103,109 @@ function getProceduralWorldEvent(gameState: any) {
             item: "iron_bar",
             qty: 1,
             xp: 15,
-            hpChange: 0
+            hpChange: 0,
+            huChange: 0,
+            thChange: 0
+          }
+        }
+      ]
+    },
+    {
+      title: "Blistering Solar Flare",
+      narrative: "A blazing pulse of extreme cosmic radiation envelopes the biome, causing rapid dehydration and stamina depletion!",
+      durationSeconds: 50,
+      effect: {
+        type: "heatwave",
+        description: "+15% run speed, but -1.0 Thirst/sec and -0.2 Health/sec.",
+        statModifiers: {
+          speedBoost: 1.15,
+          dmgBoost: 1.0,
+          manaRegen: 0,
+          healthDrain: 0.2,
+          hungerDrain: 0.0,
+          thirstDrain: 1.0
+        },
+        spawnResource: "sulfur"
+      },
+      choices: [
+        {
+          id: "heat_choice_1",
+          text: "Guzzle Water Reserve",
+          requirement: "None",
+          isMet: true,
+          outcomeDescription: "You immediately hydrate yourself using pristine local dew, stabilizing your energy.",
+          reward: {
+            item: "none",
+            qty: 0,
+            xp: 25,
+            hpChange: 5,
+            huChange: 0,
+            thChange: 60
+          }
+        },
+        {
+          id: "heat_choice_2",
+          text: "Endure and Harvest Crystals",
+          requirement: "None",
+          isMet: true,
+          outcomeDescription: "You ignore the heat, pushing through severe dry throat to chisel out heat-resistant energy crystals.",
+          reward: {
+            item: "crystal",
+            qty: 2,
+            xp: 50,
+            hpChange: -10,
+            huChange: -15,
+            thChange: -40
+          }
+        }
+      ]
+    },
+    {
+      title: "Wandering Feast Caravan",
+      narrative: "A warm and inviting caravan of celestial merchant chefs arrives, setting up a majestic banquet of cosmic delicacies!",
+      durationSeconds: 40,
+      effect: {
+        type: "blessing",
+        description: "Rejuvenating environment: +2.0 Hunger recovery/sec and +2.0 Thirst recovery/sec.",
+        statModifiers: {
+          speedBoost: 1.0,
+          dmgBoost: 1.0,
+          manaRegen: 1.0,
+          healthDrain: -0.5, // heals!
+          hungerDrain: -2.0, // restores hunger!
+          thirstDrain: -2.0  // restores thirst!
+        },
+        spawnResource: "none"
+      },
+      choices: [
+        {
+          id: "merchant_choice_1",
+          text: "Partake in the Grand Feast",
+          requirement: "None",
+          isMet: true,
+          outcomeDescription: "You sit at the grand mahogany table, feasting on rich roasted celestial beasts and drinking pristine nectar! Your body and soul are completely replenished.",
+          reward: {
+            item: "cooked_meat",
+            qty: 2,
+            xp: 40,
+            hpChange: 50,
+            huChange: 100,
+            thChange: 100
+          }
+        },
+        {
+          id: "merchant_choice_2",
+          text: "Trade with the Spice Merchants",
+          requirement: "None",
+          isMet: true,
+          outcomeDescription: "You trade gold coins to buy a stock of rare nourishing provisions for the harsh journey ahead.",
+          reward: {
+            item: "celestial_fish",
+            qty: 1,
+            xp: 30,
+            hpChange: 10,
+            huChange: 40,
+            thChange: 40
           }
         }
       ]
@@ -115,7 +221,9 @@ function getProceduralWorldEvent(gameState: any) {
           speedBoost: 0.8,
           dmgBoost: 1.5,
           manaRegen: 1.0,
-          healthDrain: 0.5
+          healthDrain: 0.5,
+          hungerDrain: 0.2,
+          thirstDrain: 0.3
         },
         spawnResource: "void_crystal"
       },
@@ -130,7 +238,9 @@ function getProceduralWorldEvent(gameState: any) {
             item: "void_crystal",
             qty: 1,
             xp: 80,
-            hpChange: -30
+            hpChange: -30,
+            huChange: -15,
+            thChange: -15
           }
         },
         {
@@ -143,7 +253,9 @@ function getProceduralWorldEvent(gameState: any) {
             item: "magic_essence",
             qty: 2,
             xp: 30,
-            hpChange: 15
+            hpChange: 15,
+            huChange: 20,
+            thChange: 20
           }
         }
       ]
@@ -159,7 +271,9 @@ function getProceduralWorldEvent(gameState: any) {
           speedBoost: 1.15,
           dmgBoost: 1.0,
           manaRegen: 3.0,
-          healthDrain: 0
+          healthDrain: 0,
+          hungerDrain: 0.1,
+          thirstDrain: 0.1
         },
         spawnResource: "crystal"
       },
@@ -174,7 +288,9 @@ function getProceduralWorldEvent(gameState: any) {
             item: "mana_crystal",
             qty: 2,
             xp: 40,
-            hpChange: 0
+            hpChange: 0,
+            huChange: -5,
+            thChange: -10
           }
         },
         {
@@ -187,7 +303,9 @@ function getProceduralWorldEvent(gameState: any) {
             item: "magic_essence",
             qty: 3,
             xp: 25,
-            hpChange: 20
+            hpChange: 20,
+            huChange: 10,
+            thChange: 10
           }
         }
       ]
@@ -258,6 +376,22 @@ function getProceduralSpellResult(spellName: string, gameState: any) {
           durationSeconds: 45
         }
       }
+    };
+  }
+
+  if (spellName === "Flame Burst") {
+    return {
+      success: true,
+      message: "A roaring ring of elemental fire expands from your fingertips, burning and blasting back all nearby monsters! (Procedural blast)",
+      damage: 75
+    };
+  }
+
+  if (spellName === "Tectonic Rift") {
+    return {
+      success: true,
+      message: "The ground splits as intense magnetic rifts shatter nearby rock veins and uproot nearby trees, yielding pristine materials! (Procedural gathering)",
+      harvestRange: 150
     };
   }
 
@@ -373,9 +507,17 @@ app.post("/api/gemini/world-event", async (req, res) => {
       - Map Location: ${gameState?.mapName || "Celestial Plain"}
       - Level: ${gameState?.pl?.lvl || 1}
       - Health: ${gameState?.pl?.hp || 100}/${gameState?.pl?.mhp || 100}
+      - Hunger: ${gameState?.pl?.hu || 100}%
+      - Thirst: ${gameState?.pl?.th || 100}%
       - Inventory: ${JSON.stringify(gameState?.pl?.inv || {})}
 
-      Generate a creative narrative challenge or world change. It can be a storm, meteor rain, magical eclipse, alien monster invasion, ancient spirit encounter, or a blessing.
+      Generate a creative narrative challenge or world change. It can be a storm, heatwave, blizzard, merchant caravan arrival, cosmic eclipse, or mystical blessing.
+      CRITICAL REQUIREMENT: The event or the choices MUST modify or affect the player's health, hunger, or thirst levels.
+      For example:
+      - A solar heatwave might cause rapid Thirst depletion (positive thirstDrain) or damage (healthDrain).
+      - A celestial merchant arrival might offer nourishing food/potions (rewarding huChange or thChange).
+      - A wild sandstorm might cause physical distress, reducing Health (healthDrain) and Hunger.
+      
       Provide a title, an exciting narrative explanation, a duration in seconds, stat modifiers, resources that might fall from the sky, and two choices/decisions the player can make!
       Return the response in JSON format.
     `;
@@ -401,7 +543,9 @@ app.post("/api/gemini/world-event", async (req, res) => {
                     speedBoost: { type: Type.NUMBER, description: "Speed multiplier, default 1.0" },
                     dmgBoost: { type: Type.NUMBER, description: "Damage multiplier, default 1.0" },
                     manaRegen: { type: Type.NUMBER, description: "Flat mana regen bonus per tick, e.g. 0.5" },
-                    healthDrain: { type: Type.NUMBER, description: "Flat health drain per second, e.g. 1" }
+                    healthDrain: { type: Type.NUMBER, description: "Flat health drain per second, positive drains, negative restores. Default 0." },
+                    hungerDrain: { type: Type.NUMBER, description: "Flat hunger drain per second, positive drains hunger, negative restores. Default 0." },
+                    thirstDrain: { type: Type.NUMBER, description: "Flat thirst drain per second, positive drains thirst, negative restores. Default 0." }
                   }
                 },
                 spawnResource: { type: Type.STRING, description: "Optional resource key to spawn as meteors (e.g., 'iron_ore', 'crystal', 'void_crystal', 'gem', 'sulfur', 'none')" }
@@ -425,7 +569,9 @@ app.post("/api/gemini/world-event", async (req, res) => {
                       item: { type: Type.STRING, description: "Item key rewarded, e.g. 'magic_essence', 'crystal', 'heal_potion', 'none'" },
                       qty: { type: Type.INTEGER },
                       xp: { type: Type.INTEGER },
-                      hpChange: { type: Type.INTEGER, description: "e.g. -20 for damage or +30 for heal" }
+                      hpChange: { type: Type.INTEGER, description: "e.g. -20 for damage or +30 for heal" },
+                      huChange: { type: Type.INTEGER, description: "e.g. -20 for hunger drain or +35 for food, default 0" },
+                      thChange: { type: Type.INTEGER, description: "e.g. -25 for thirst drain or +40 for water, default 0" }
                     }
                   }
                 },
@@ -506,6 +652,16 @@ app.post("/api/gemini/cast-spell", async (req, res) => {
          Casts a direct focal mending spell.
          Return the restoration values: healHP (integer 35 to 55), foodBonus (0).
          Provide a warm, restorative, soothing description of wounds closing.
+
+      5. For "Flame Burst":
+         Unleashes a fierce circle of roaring fire, pushing back and searing all enemies nearby.
+         Return a "damage" field with an integer between 60 and 90, representing the heat damage.
+         Provide a dramatic description of the blazing shockwave incinerating the darkness.
+
+      6. For "Tectonic Rift":
+         Fissions the ground with localized magnetic earthquakes to instantly extract and drop ores and wood from any nearby trees, boulders, or mineral deposits.
+         Return a "harvestRange" field with value 150 (representing the radius of physical disruption).
+         Provide a heavy, physical description of the earth rumbling and ejecting raw resources from underground deposits.
          
       Return the response in JSON format.
     `;
@@ -519,6 +675,8 @@ app.post("/api/gemini/cast-spell", async (req, res) => {
           properties: {
             success: { type: Type.BOOLEAN, description: "True if spell succeeded" },
             message: { type: Type.STRING, description: "Narrative lore/description of the magical phenomenon." },
+            damage: { type: Type.INTEGER, description: "Direct elemental fire damage inflicted to nearby enemies (only for Flame Burst)." },
+            harvestRange: { type: Type.INTEGER, description: "The radius of geological disruption for resource gathering (only for Tectonic Rift)." },
             scoutedNodes: {
               type: Type.ARRAY,
               description: "List of rare resource nodes discovered near the player (only for Reveal Map).",
