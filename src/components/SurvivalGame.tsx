@@ -1336,6 +1336,7 @@ const rollProceduralMod = (itemKey: string) => {
 // --- Component ---
 export default function SurvivalGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mouseTileRef = useRef<{ tx: number; ty: number } | null>(null);
   const [gameState, setGameState] = useState<any>(null);
   const [showInv, setShowInv] = useState(false);
   const [showNFTMarket, setShowNFTMarket] = useState(false);
@@ -4257,6 +4258,89 @@ export default function SurvivalGame() {
         ctx.fillText(ico, ox, oy);
       }
 
+      // Draw hover reticle
+      if (mouseTileRef.current) {
+        const { tx, ty } = mouseTileRef.current;
+        const rx = tx * TZ - s.cam.x;
+        const ry = ty * TZ - s.cam.y;
+        
+        // Calculate distance from player in tiles
+        const px = Math.floor(s.pl.x / TZ);
+        const py = Math.floor(s.pl.y / TZ);
+        const distance = Math.abs(tx - px) + Math.abs(ty - py);
+        const inRange = distance <= 4;
+        
+        ctx.save();
+        if (inRange) {
+          // Check if there is an object on this tile
+          const o = s.objs.find((obj: any) => obj.tx === tx && obj.ty === ty);
+          if (o) {
+            ctx.strokeStyle = '#f43f5e'; // Red-orange for hitting an object
+            ctx.shadowColor = '#f43f5e';
+            ctx.lineWidth = 1.5;
+          } else {
+            ctx.strokeStyle = '#10b981'; // Green for gathering tile resource
+            ctx.shadowColor = '#10b981';
+            ctx.lineWidth = 1.2;
+          }
+          ctx.shadowBlur = 4;
+          
+          // Draw animated corners
+          const pad = 2;
+          const len = 6;
+          ctx.beginPath();
+          // Top Left
+          ctx.moveTo(rx + pad, ry + pad + len);
+          ctx.lineTo(rx + pad, ry + pad);
+          ctx.lineTo(rx + pad + len, ry + pad);
+          // Top Right
+          ctx.moveTo(rx + TZ - pad - len, ry + pad);
+          ctx.lineTo(rx + TZ - pad, ry + pad);
+          ctx.lineTo(rx + TZ - pad, ry + pad + len);
+          // Bottom Left
+          ctx.moveTo(rx + pad, ry + TZ - pad - len);
+          ctx.lineTo(rx + pad, ry + TZ - pad);
+          ctx.lineTo(rx + pad + len, ry + TZ - pad);
+          // Bottom Right
+          ctx.moveTo(rx + TZ - pad - len, ry + TZ - pad);
+          ctx.lineTo(rx + TZ - pad, ry + TZ - pad);
+          ctx.lineTo(rx + TZ - pad, ry + TZ - pad - len);
+          ctx.stroke();
+          
+          // Small text or indicator
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+          ctx.font = '8px monospace';
+          ctx.textAlign = 'center';
+          if (o) {
+            ctx.fillText(`HIT [HP:${o.hp || 1}]`, rx + TZ / 2, ry - 4);
+          } else {
+            // Get tile type text and emoji
+            const tileType = s.world[ty]?.[tx];
+            let label = "Dig";
+            if (tileType === TG) label = "🌿 Fiber";
+            else if (tileType === TD) label = "🪵 Stick";
+            else if (tileType === TS) label = "🪨 Stone";
+            else if (tileType === TW) label = "💧 Water";
+            else if (tileType === TSA) label = "🌾 Flint";
+            else if (tileType === TSN) label = "❄️ Ice";
+            else if (tileType === TCR) label = "✨ Essence";
+            
+            ctx.fillText(label, rx + TZ / 2, ry - 4);
+          }
+        } else {
+          // Out of range indicator
+          ctx.strokeStyle = 'rgba(156, 163, 175, 0.4)'; // Gray dashed box
+          ctx.setLineDash([2, 2]);
+          ctx.strokeRect(rx + 2, ry + 2, TZ - 4, TZ - 4);
+          ctx.fillStyle = 'rgba(156, 163, 175, 0.6)';
+          ctx.font = '8px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText("Too Far", rx + TZ / 2, ry - 4);
+        }
+        ctx.restore();
+      }
+
       // Draw Scouted Nodes on Radar (Reveal Map active)
       if (s.activeScoutedNodes && s.activeScoutedNodes.length > 0) {
         for (const sn of s.activeScoutedNodes) {
@@ -5427,6 +5511,346 @@ export default function SurvivalGame() {
         }
       });
     }
+  };
+
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // 1. Don't gather if a menu/modal is open
+    if (showSkills || showCraft || showRecipeBook || showOracle || showSaveMenu || showWorldMenu || showSpellbook || showNFTMarket || showShop || showDeathScreen || showInv || showMusicMenu || isFishing) {
+      return;
+    }
+
+    const s = stateRef.current;
+    if (!s || !canvasRef.current) return;
+
+    // Convert mouse coordinates to world tile
+    const rect = canvasRef.current.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const tx = Math.floor((mouseX + s.cam.x) / TZ);
+    const ty = Math.floor((mouseY + s.cam.y) / TZ);
+
+    // Bounds check
+    if (tx < 0 || tx >= WW || ty < 0 || ty >= WH) return;
+
+    // Distance check (Reach limit of 4 tiles)
+    const px = Math.floor(s.pl.x / TZ);
+    const py = Math.floor(s.pl.y / TZ);
+    const distTiles = Math.abs(tx - px) + Math.abs(ty - py);
+
+    if (distTiles > 4) {
+      addLog("That tile is too far away to harvest! Get closer.", "#ff8888");
+      return;
+    }
+
+    // Stamina check (harvesting requires stamina and consumes a bit)
+    if ((s.pl.sta || 100) < 5) {
+      addLog("Too exhausted to harvest! Rest a bit.", "#ff8888");
+      return;
+    }
+
+    // Spend stamina
+    s.pl.sta = Math.max(0, (s.pl.sta || 100) - 4);
+
+    // 2. Check if clicking on an object in s.objs
+    let objGathered = false;
+    for (let i = s.objs.length - 1; i >= 0; i--) {
+      const o = s.objs[i];
+      if (o.tx === tx && o.ty === ty) {
+        // Found an object on the clicked tile!
+        objGathered = true;
+
+        if (o.type === 'tree') {
+          // Calculate weapon damage bonus for chopping wood
+          const isAxe = s.pl.weapon && s.pl.weapon.includes('axe');
+          const isPick = s.pl.weapon && s.pl.weapon.includes('pickaxe');
+          const dmg = isAxe ? 3 : isPick ? 1 : 1;
+          
+          o.hp -= dmg;
+          gainSkillXP('woodcutting', 3);
+          spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#4ade80', 5, 'spark');
+
+          if (o.hp <= 0) {
+            s.objs.splice(i, 1);
+            const wcLvl = s.pl.skills?.woodcutting?.lvl || 1;
+            const baseLogs = 2 + Math.floor(Math.random() * 2);
+            const bonusLogs = Math.floor(Math.random() * (wcLvl * 0.5));
+            const q = baseLogs + bonusLogs;
+            s.pl.inv.wood = (s.pl.inv.wood || 0) + q;
+            addLog(`+Wood x${q} ${bonusLogs > 0 ? `(Skill Bonus +${bonusLogs})` : ''}`, '#22c55e');
+
+            // Biome-specific custom tree drops
+            if (o.subtype === 'cactus') {
+              if (Math.random() < 0.6) {
+                const qty = 1 + Math.floor(Math.random() * 2);
+                s.pl.inv.cactus_fruit = (s.pl.inv.cactus_fruit || 0) + qty;
+                addLog(`+Cactus Fruit x${qty}! 🌵`, '#eab308');
+              }
+            } else if (o.subtype === 'snowpine') {
+              if (Math.random() < 0.6) {
+                const qty = 1 + Math.floor(Math.random() * 2);
+                s.pl.inv.snowberry = (s.pl.inv.snowberry || 0) + qty;
+                addLog(`+Snowberry x${qty}! ❄️`, '#38bdf8');
+              }
+            } else if (o.subtype === 'blossom') {
+              if (Math.random() < 0.6) {
+                s.pl.inv.astral_flower = (s.pl.inv.astral_flower || 0) + 1;
+                addLog(`+Astral Flower x1! 🌸`, '#f472b6');
+              }
+            } else if (o.subtype === 'cosmic') {
+              if (Math.random() < 0.4) {
+                s.pl.inv.void_crystal = (s.pl.inv.void_crystal || 0) + 1;
+                addLog(`+Void Crystal x1! 🔮`, '#a855f7');
+              }
+              if (Math.random() < 0.5) {
+                const qty = 1 + Math.floor(Math.random() * 2);
+                s.pl.inv.magic_essence = (s.pl.inv.magic_essence || 0) + qty;
+                addLog(`+Magic Essence x${qty}! ✨`, '#22d3ee');
+              }
+            }
+
+            if (Math.random() < 0.2 + (wcLvl * 0.05)) {
+              const stickQty = 1 + Math.floor(Math.random() * wcLvl);
+              s.pl.inv.stick = (s.pl.inv.stick || 0) + stickQty;
+              addLog(`+Stick x${stickQty} (Chopping bonus!)`, '#4ade80');
+            }
+            if (Math.random() < 0.1 + (wcLvl * 0.02)) {
+              s.pl.inv.herb = (s.pl.inv.herb || 0) + 1;
+              addLog(`+Herb x1 (Hidden in branches!)`, '#4ade80');
+            }
+            gainSkillXP('woodcutting', 15);
+            spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#22c55e', 12, 'spark');
+          } else {
+            addLog(`Chopping ${o.subtype || 'tree'}... ${o.hp} left`, '#ffe88a');
+          }
+        } else if (o.type === 'rock') {
+          // Calculate weapon damage bonus for mining rocks
+          const isPick = s.pl.weapon && s.pl.weapon.includes('pickaxe');
+          const dmg = isPick ? 3 : 1;
+
+          o.hp -= dmg;
+          gainSkillXP('mining', 3);
+          spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#9ca3af', 5, 'spark');
+
+          if (o.hp <= 0) {
+            s.objs.splice(i, 1);
+            const mineLvl = s.pl.skills?.mining?.lvl || 1;
+            const baseStones = 3;
+            const bonusStones = Math.floor(Math.random() * (mineLvl * 0.6));
+            s.pl.inv.stone = (s.pl.inv.stone || 0) + baseStones + bonusStones;
+            addLog(`+Stone x${baseStones + bonusStones} ${bonusStones > 0 ? `(Skill Bonus +${bonusStones})` : ''}`, '#22c55e');
+
+            // Biome-specific custom rock drops
+            if (o.subtype === 'copper') {
+              const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.3);
+              s.pl.inv.copper_ore = (s.pl.inv.copper_ore || 0) + qty;
+              addLog(`+Copper Ore x${qty}! 🪙`, '#fb923c');
+            } else if (o.subtype === 'iron') {
+              const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.3);
+              s.pl.inv.iron_ore = (s.pl.inv.iron_ore || 0) + qty;
+              addLog(`+Iron Ore x${qty}! ⚙️`, '#818cf8');
+            } else if (o.subtype === 'coal') {
+              const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.3);
+              s.pl.inv.coal = (s.pl.inv.coal || 0) + qty;
+              addLog(`+Coal x${qty}! 🖤`, '#4b5563');
+            } else if (o.subtype === 'gold') {
+              const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.2);
+              s.pl.inv.gold_ore = (s.pl.inv.gold_ore || 0) + qty;
+              addLog(`+Gold Ore x${qty}! ⭐`, '#facc15');
+            } else if (o.subtype === 'mithril') {
+              const qty = 1 + Math.floor(Math.random() * 1) + Math.floor(mineLvl * 0.15);
+              s.pl.inv.mithril_ore = (s.pl.inv.mithril_ore || 0) + qty;
+              addLog(`+Mithril Ore x${qty}! 🪐`, '#22d3ee');
+            } else if (o.subtype === 'sulfur') {
+              const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.2);
+              s.pl.inv.sulfur = (s.pl.inv.sulfur || 0) + qty;
+              addLog(`+Sulfur x${qty}! 🟡`, '#facc15');
+            } else if (o.subtype === 'mana_crystal') {
+              const qty = 1 + Math.floor(Math.random() * 2);
+              s.pl.inv.mana_crystal = (s.pl.inv.mana_crystal || 0) + qty;
+              addLog(`+Mana Crystal x${qty}! 🧿`, '#a78bfa');
+            } else if (o.subtype === 'crystal') {
+              const qty = 1 + Math.floor(Math.random() * 2);
+              s.pl.inv.crystal = (s.pl.inv.crystal || 0) + qty;
+              addLog(`+Crystal x${qty}! 💎`, '#38bdf8');
+              if (Math.random() < 0.4) {
+                s.pl.inv.mana_crystal = (s.pl.inv.mana_crystal || 0) + 1;
+                addLog(`+Mana Crystal x1! 🧿`, '#a78bfa');
+              }
+            } else if (o.subtype === 'void_crystal') {
+              const qty = 1 + Math.floor(Math.random() * 1);
+              s.pl.inv.void_crystal = (s.pl.inv.void_crystal || 0) + qty;
+              addLog(`+Void Crystal x${qty}! 🔮`, '#c084fc');
+              if (Math.random() < 0.5) {
+                s.pl.inv.mana_crystal = (s.pl.inv.mana_crystal || 0) + 1;
+                addLog(`+Mana Crystal x1! 🧿`, '#a78bfa');
+              }
+            } else if (o.subtype === 'celestial') {
+              s.pl.inv.celestial_shard = (s.pl.inv.celestial_shard || 0) + 1;
+              addLog(`+Celestial Shard x1! ✨`, '#67e8f9');
+              if (Math.random() < 0.3) {
+                s.pl.inv.gem = (s.pl.inv.gem || 0) + 1;
+                addLog(`💎 Stellar Gem discovered!`, '#ec4899');
+              }
+            } else {
+              // Standard Rock drops
+              if (Math.random() < 0.15 + (mineLvl * 0.05)) {
+                const ironQty = 1 + Math.floor(Math.random() * (mineLvl / 2));
+                s.pl.inv.iron_ore = (s.pl.inv.iron_ore || 0) + ironQty;
+                addLog(`+Iron Ore x${ironQty}!`, '#818cf8');
+              }
+              if (Math.random() < 0.1 + (mineLvl * 0.04)) {
+                s.pl.inv.coal = (s.pl.inv.coal || 0) + 1;
+                addLog(`+Coal x1!`, '#4b5563');
+              }
+              if (Math.random() < 0.02 + (mineLvl * 0.01)) {
+                s.pl.inv.gem = (s.pl.inv.gem || 0) + 1;
+                addLog(`💎 Found a rare Gem!`, '#ec4899');
+              }
+            }
+
+            gainSkillXP('mining', 15);
+            spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#ffd700', 12, 'spark');
+          } else {
+            addLog(`Mining ${o.subtype || 'rock'}... ${o.hp} left`, '#ffe88a');
+          }
+        } else if (o.type === 'animal_track') {
+          s.objs.splice(i, 1);
+          const huntLvl = s.pl.skills?.hunting?.lvl || 1;
+          const xp = 15 + huntLvl * 2;
+          const trackerMessages = [
+            "🐾 Fresh tracks! A wild deer was sprinting south-west through the brush.",
+            "🐾 Large, deep claw marks. An old forest bear was searching for honey nearby.",
+            "🐾 Narrow claw marks. A quick wild pheasant was scratching for seeds.",
+            "🐾 Heavy, wallowing indentations. A sturdy boar passed by here recently."
+          ];
+          const msg = trackerMessages[Math.floor(Math.random() * trackerMessages.length)];
+          addLog(msg, '#f472b6');
+          addSkillXPDirect(s, 'hunting', xp);
+          spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#f472b6', 10, 'spark');
+        } else if (o.type === 'drop') {
+          s.pl.inv[o.item] = (s.pl.inv[o.item] || 0) + o.qty;
+          addLog(`+${IT[o.item]?.n || o.item} x${o.qty}`, '#ccffaa');
+          s.objs.splice(i, 1);
+          spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#ccffaa', 8, 'spark');
+        } else if (o.type === 'cave_treasure') {
+          s.objs.splice(i, 1);
+          const goldBonus = 150 + Math.floor(Math.random() * 250);
+          s.pl.inv.gold_coins = (s.pl.inv.gold_coins || 0) + goldBonus;
+          s.pl.inv.void_crystal = (s.pl.inv.void_crystal || 0) + 3;
+          s.pl.inv.mana_crystal = (s.pl.inv.mana_crystal || 0) + 3;
+          s.pl.inv.celestial_shard = (s.pl.inv.celestial_shard || 0) + 1;
+          addLog(`👑 Opened Cave Treasure! +🪙${goldBonus} Gold, +3 Void Crystal, +3 Mana Crystal, +1 Celestial Shard!`, '#a855f7');
+          spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#ec4899', 15, 'spark');
+        } else if (o.type === 'cave_entrance') {
+          enterCave(s, 'forgotten_cave');
+        } else if (o.type === 'cave_exit') {
+          exitCave(s);
+        }
+        break; // Process one object click per pointer down
+      }
+    }
+
+    // 3. If no object was clicked, harvest the raw tile directly from the terrain!
+    if (!objGathered) {
+      const tileType = s.world[ty]?.[tx];
+      let collectedName = "";
+      let collectedKey = "";
+      let colVal = "#ffffff";
+      let xpCategory = "";
+
+      if (tileType === TG || tileType === TD) {
+        // Grass / Soil: Harvest wood (stick) or fiber or herb
+        const r = Math.random();
+        if (r < 0.45) {
+          collectedKey = "fiber";
+          collectedName = "Fiber";
+          colVal = "#a3e635";
+        } else if (r < 0.8) {
+          collectedKey = "stick";
+          collectedName = "Stick";
+          colVal = "#b45309";
+        } else {
+          collectedKey = "herb";
+          collectedName = "Herb";
+          colVal = "#22c55e";
+        }
+        xpCategory = "woodcutting";
+      } else if (tileType === TS || tileType === TSN) {
+        // Stone / Snow: Harvest stone or flint
+        const r = Math.random();
+        if (r < 0.6) {
+          collectedKey = "stone";
+          collectedName = "Stone";
+          colVal = "#9ca3af";
+        } else if (r < 0.9) {
+          collectedKey = "flint";
+          collectedName = "Flint";
+          colVal = "#6b7280";
+        } else {
+          collectedKey = "coal";
+          collectedName = "Coal";
+          colVal = "#4b5563";
+        }
+        xpCategory = "mining";
+      } else if (tileType === TSA) {
+        // Sand: Harvest flint or sand/crystal
+        const r = Math.random();
+        if (r < 0.65) {
+          collectedKey = "flint";
+          collectedName = "Flint";
+          colVal = "#d97706";
+        } else {
+          collectedKey = "crystal";
+          collectedName = "Crystal";
+          colVal = "#38bdf8";
+        }
+        xpCategory = "mining";
+      } else if (tileType === TW) {
+        // Water: Gather water or clay
+        const r = Math.random();
+        if (r < 0.7) {
+          collectedKey = "herb";
+          collectedName = "River Herb";
+          colVal = "#2dd4bf";
+        } else {
+          collectedKey = "mana_crystal";
+          collectedName = "River Crystal";
+          colVal = "#818cf8";
+        }
+        xpCategory = "alchemy";
+      } else if (tileType === TCR) {
+        // Celestial Realm: Harvest mana_crystal or void_crystal or magic_essence
+        const r = Math.random();
+        if (r < 0.5) {
+          collectedKey = "magic_essence";
+          collectedName = "Magic Essence";
+          colVal = "#c084fc";
+        } else if (r < 0.8) {
+          collectedKey = "mana_crystal";
+          collectedName = "Mana Crystal";
+          colVal = "#a78bfa";
+        } else {
+          collectedKey = "void_crystal";
+          collectedName = "Void Crystal";
+          colVal = "#e879f9";
+        }
+        xpCategory = "alchemy";
+      }
+
+      if (collectedKey) {
+        const qty = 1;
+        s.pl.inv[collectedKey] = (s.pl.inv[collectedKey] || 0) + qty;
+        addLog(`+${collectedName} x${qty} (Gathered from ground)`, colVal);
+        
+        if (xpCategory) {
+          gainSkillXP(xpCategory, 2);
+        }
+        
+        spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, colVal, 6, 'spark');
+      }
+    }
+
+    setGameState({ ...s });
   };
 
   const handleGather = () => {
@@ -6637,7 +7061,25 @@ export default function SurvivalGame() {
         ref={canvasRef} 
         width={window.innerWidth} 
         height={window.innerHeight}
-        className="block"
+        className="block cursor-crosshair"
+        onPointerDown={handleCanvasClick}
+        onPointerMove={(e) => {
+          const s = stateRef.current;
+          if (!s || !canvasRef.current) return;
+          const rect = canvasRef.current.getBoundingClientRect();
+          const mouseX = e.clientX - rect.left;
+          const mouseY = e.clientY - rect.top;
+          const tx = Math.floor((mouseX + s.cam.x) / TZ);
+          const ty = Math.floor((mouseY + s.cam.y) / TZ);
+          if (tx >= 0 && tx < WW && ty >= 0 && ty < WH) {
+            mouseTileRef.current = { tx, ty };
+          } else {
+            mouseTileRef.current = null;
+          }
+        }}
+        onPointerLeave={() => {
+          mouseTileRef.current = null;
+        }}
       />
 
       {/* --- Fishing active mini-game overlay --- */}
