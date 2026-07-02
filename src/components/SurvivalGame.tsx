@@ -413,16 +413,74 @@ const ET: Record<string, any> = {
 
   // --- Wild game huntable animals ---
   deer: { n: 'Wild Deer', ico: '🦌', hp: 25, spd: 2.2, dmg: 0, acd: 100, xp: 12, lo: { meat: 1.0, leather: .6 }, ran: false },
-  boar: { n: 'Wild Boar', ico: '🐗', hp: 45, spd: 1.4, dmg: 14, acd: 70, xp: 18, lo: { meat: 1.0, leather: .8 }, ran: false },
+  boar: { n: 'Wild Boar', ico: '🐗', hp: 45, spd: 1.4, dmg: 14, acd: 70, xp: 18, lo: { meat: 1.0, leather: .8, boar_tusk: .45 }, ran: false },
   pheasant: { n: 'Wild Pheasant', ico: '🦃', hp: 12, spd: 1.8, dmg: 0, acd: 100, xp: 8, lo: { meat: .6, feather: 1.0 }, ran: false },
   alpha_wolf: { n: 'Alpha Wolf', ico: '🐺', hp: 130, spd: 2.1, dmg: 24, acd: 50, xp: 55, lo: { meat: 2.0, leather: 1.5, alpha_pelt: 1.0 }, ran: false, boss: 1 },
 };
 
-const NON_HOSTILE_ENEMY_IDS = new Set(['deer', 'fox', 'pheasant', 'boar']);
+const TRACKABLE_WILDLIFE_IDS = ['deer', 'fox', 'pheasant', 'boar', 'wolf', 'bear', 'alpha_wolf'] as const;
+const TRACKABLE_WILDLIFE_SET = new Set<string>(TRACKABLE_WILDLIFE_IDS);
+const PASSIVE_WILDLIFE_IDS = new Set(['deer', 'fox', 'pheasant']);
+const TERRITORIAL_WILDLIFE_IDS = new Set(['boar']);
+const HOSTILE_WILDLIFE_IDS = new Set(['wolf', 'bear', 'alpha_wolf']);
+
+const WILDLIFE_TRACK_MESSAGES: Record<string, string[]> = {
+  deer: [
+    "🐾 Fresh hoofprints. A wild deer bolted through the underbrush moments ago.",
+    "🐾 Light, nervous tracks. A deer herd is grazing somewhere ahead."
+  ],
+  fox: [
+    "🐾 Tiny padded tracks. A fox is weaving between the brush nearby.",
+    "🐾 Clever little paw marks. A fox has been scavenging close to camp."
+  ],
+  pheasant: [
+    "🐾 Narrow scratch marks. A wild pheasant was pecking through the grass here.",
+    "🐾 Faint claw traces and scattered feathers. A pheasant flushed from cover."
+  ],
+  boar: [
+    "🐾 Heavy, wallowing indentations. A sturdy boar passed by here recently.",
+    "🐾 Deep gouges and churned mud. A territorial boar is still close."
+  ],
+  wolf: [
+    "🐾 Fresh lupine tracks. A hunting wolf pack is stalking this biome.",
+    "🐾 Sharp claw marks and a musky scent. Wolves are circling nearby."
+  ],
+  bear: [
+    "🐾 Large claw marks. An old forest bear was searching for honey nearby.",
+    "🐾 Massive prints sink deep into the soil. A bear is roaming close."
+  ],
+  alpha_wolf: [
+    "🐾 Enormous wolf prints. An alpha is commanding a pack somewhere close.",
+    "🐾 Deep predatory tracks. A dominant alpha wolf is patrolling nearby."
+  ]
+};
+
+const WILDLIFE_TRACK_AMBUSH_CHANCE: Record<string, number> = {
+  boar: 0.35,
+  wolf: 0.45,
+  bear: 0.55,
+  alpha_wolf: 0.7
+};
+
+const isTrackableWildlifeId = (eid: string) => TRACKABLE_WILDLIFE_SET.has(eid);
+const isPassiveWildlifeId = (eid: string) => PASSIVE_WILDLIFE_IDS.has(eid);
+const isTerritorialWildlifeId = (eid: string) => TERRITORIAL_WILDLIFE_IDS.has(eid);
+const isHostileWildlifeId = (eid: string) => HOSTILE_WILDLIFE_IDS.has(eid);
+
+const pickTrackedWildlifeId = (enemyIds: string[], rng: () => number) => {
+  const wildlifeIds = enemyIds.filter(isTrackableWildlifeId);
+  if (wildlifeIds.length === 0) return 'deer';
+
+  const weightedWildlifeIds = wildlifeIds.flatMap((eid) => (
+    isHostileWildlifeId(eid) || isTerritorialWildlifeId(eid) ? [eid, eid] : [eid]
+  ));
+
+  return weightedWildlifeIds[Math.floor(rng() * weightedWildlifeIds.length)] || wildlifeIds[0];
+};
 
 const isHostileEnemyId = (eid: string) => {
   const et = ET[eid];
-  return !!et && et.dmg > 0 && !NON_HOSTILE_ENEMY_IDS.has(eid);
+  return !!et && et.dmg > 0 && !isPassiveWildlifeId(eid) && !isTerritorialWildlifeId(eid);
 };
 
 // --- Procedural Theme Definitions based on Biomes ---
@@ -2651,13 +2709,14 @@ export default function SurvivalGame() {
                   });
                   // Occasionally spawn tracking clues / footprints on land
                   if (rng() < 0.02) {
+                    const trackedWildlifeId = pickTrackedWildlifeId(M.ef || [], rng);
                     objs.push({
                       type: 'animal_track',
                       tx: wx,
                       ty: wy,
                       hp: 1,
                       ico: '🐾',
-                      subtype: 'track'
+                      subtype: trackedWildlifeId
                     });
                   }
                 }
@@ -3571,16 +3630,15 @@ export default function SurvivalGame() {
         let shouldChase = true;
         let shouldFlee = false;
 
-        if (e.eid === 'deer' || e.eid === 'pheasant') {
+        if (isPassiveWildlifeId(e.eid)) {
           shouldChase = false;
           if (d < 180) {
             shouldFlee = true;
           }
-        } else if (e.eid === 'boar') {
-          // Boar is neutral, only chases if provoked (damaged)
-          if (e.hp >= e.mhp) {
-            shouldChase = false;
-          }
+        } else if (isTerritorialWildlifeId(e.eid)) {
+          // Territorial wildlife becomes hostile when cornered or provoked.
+          const isCornered = d < 110;
+          shouldChase = isCornered || e.hp < e.mhp;
         }
 
         const playerZc = Math.max(0, Math.min(ZCOLS - 1, Math.floor(s.pl.x / (ZW * TZ))));
@@ -4290,8 +4348,13 @@ export default function SurvivalGame() {
           ico = o.ico;
           // Soft tracking sense indicator glow
           const glowRad = (TZ * 0.4) + Math.abs(Math.sin(s.ticks * 0.07)) * (TZ * 0.2);
+          const trackGlow = isHostileWildlifeId(o.subtype)
+            ? 'rgba(239, 68, 68, 0.6)'
+            : isTerritorialWildlifeId(o.subtype)
+              ? 'rgba(245, 158, 11, 0.6)'
+              : 'rgba(236, 72, 153, 0.5)';
           ctx.save();
-          ctx.strokeStyle = 'rgba(236, 72, 153, 0.5)';
+          ctx.strokeStyle = trackGlow;
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.arc(ox, oy, glowRad, 0, Math.PI * 2);
@@ -5510,8 +5573,7 @@ export default function SurvivalGame() {
     addSkillXPDirect(s, 'combat', Math.ceil(et.xp * 0.5));
 
     // 3. Check if huntable
-    const huntableList = ['wolf', 'fox', 'bear', 'deer', 'boar', 'pheasant', 'alpha_wolf'];
-    const isHuntable = huntableList.includes(e.eid);
+    const isHuntable = isTrackableWildlifeId(e.eid);
     const huntingLvl = s.pl.skills?.hunting?.lvl || 1;
     
     let yieldMult = 1.0;
@@ -5567,6 +5629,102 @@ export default function SurvivalGame() {
           }
         }
       });
+    }
+  };
+
+  const resolveAnimalTrack = (s: any, o: any) => {
+    const trackZc = Math.max(0, Math.min(ZCOLS - 1, Math.floor(o.tx / ZW)));
+    const trackZr = Math.max(0, Math.min(ZROWS - 1, Math.floor(o.ty / ZH)));
+    const mapIdx = trackZr * ZCOLS + trackZc;
+    const trackMap = s.zoneMaps?.[mapIdx] || MAPS[mapIdx] || MAPS[0];
+    const trackedWildlifeId = isTrackableWildlifeId(o.subtype)
+      ? o.subtype
+      : pickTrackedWildlifeId(trackMap?.ef || [], Math.random);
+    const huntLvl = s.pl.skills?.hunting?.lvl || 1;
+    const xp = 15 + huntLvl * 2;
+    const trackMessages = WILDLIFE_TRACK_MESSAGES[trackedWildlifeId] || WILDLIFE_TRACK_MESSAGES.deer;
+    const msg = trackMessages[Math.floor(Math.random() * trackMessages.length)];
+
+    addLog(msg, '#f472b6');
+    addSkillXPDirect(s, 'hunting', xp);
+    spawnExplosion(s, o.tx * TZ + TZ / 2, o.ty * TZ + TZ / 2, '#f472b6', 10, 'spark');
+
+    let foundCount = 0;
+    for (const e of s.enemies) {
+      if (dist(s.pl, e) < 500 && e.eid === trackedWildlifeId) {
+        foundCount++;
+        const steps = 15;
+        for (let k = 0; k < steps; k++) {
+          const ratio = k / steps;
+          s.parts.push({
+            x: s.pl.x + (e.x - s.pl.x) * ratio,
+            y: s.pl.y + (e.y - s.pl.y) * ratio,
+            vx: (Math.random() - 0.5) * 0.2,
+            vy: (Math.random() - 0.5) * 0.2,
+            life: 20 + k,
+            maxLife: 40,
+            col: '#ec4899',
+            sz: 1.2
+          });
+        }
+      }
+    }
+
+    if (foundCount > 0) {
+      addLog(`🔍 Tracking Senses: Located ${foundCount} ${ET[trackedWildlifeId]?.n || 'wildlife'} signature(s) nearby!`, '#ec4899');
+    }
+
+    const ambushChance = WILDLIFE_TRACK_AMBUSH_CHANCE[trackedWildlifeId] || 0;
+    if (ambushChance <= 0 || Math.random() > ambushChance || !ET[trackedWildlifeId]) {
+      return;
+    }
+
+    const ambushOffsets = [
+      { dx: -2, dy: 0 },
+      { dx: 2, dy: 0 },
+      { dx: 0, dy: -2 },
+      { dx: 0, dy: 2 },
+      { dx: -2, dy: -2 },
+      { dx: 2, dy: -2 },
+      { dx: -2, dy: 2 },
+      { dx: 2, dy: 2 }
+    ];
+
+    for (let idx = ambushOffsets.length - 1; idx > 0; idx--) {
+      const swapIdx = Math.floor(Math.random() * (idx + 1));
+      const temp = ambushOffsets[idx];
+      ambushOffsets[idx] = ambushOffsets[swapIdx];
+      ambushOffsets[swapIdx] = temp;
+    }
+
+    const et = ET[trackedWildlifeId];
+    for (const offset of ambushOffsets) {
+      const spawnTx = o.tx + offset.dx;
+      const spawnTy = o.ty + offset.dy;
+      if (spawnTx < 0 || spawnTx >= WW || spawnTy < 0 || spawnTy >= WH) continue;
+
+      const spawnTile = s.world[spawnTy]?.[spawnTx];
+      if (spawnTile === undefined || spawnTile === TW || spawnTile === TLV) continue;
+
+      s.enemies.push({
+        id: Math.random() + s.ticks,
+        x: spawnTx * TZ + TZ / 2,
+        y: spawnTy * TZ + TZ / 2,
+        hp: et.hp,
+        mhp: et.hp,
+        eid: trackedWildlifeId,
+        spd: et.spd,
+        dmg: et.dmg,
+        acd: et.acd,
+        cd: 0,
+        ran: et.ran,
+        spawnZc: trackZc,
+        spawnZr: trackZr,
+        isTrackAmbush: true
+      });
+      spawnExplosion(s, spawnTx * TZ + TZ / 2, spawnTy * TZ + TZ / 2, '#ef4444', 10, 'smoke');
+      addLog(`🚨 ${et.n} bursts out from the tracks!`, '#ef4444');
+      break;
     }
   };
 
@@ -5772,18 +5930,7 @@ export default function SurvivalGame() {
           }
         } else if (o.type === 'animal_track') {
           s.objs.splice(i, 1);
-          const huntLvl = s.pl.skills?.hunting?.lvl || 1;
-          const xp = 15 + huntLvl * 2;
-          const trackerMessages = [
-            "🐾 Fresh tracks! A wild deer was sprinting south-west through the brush.",
-            "🐾 Large, deep claw marks. An old forest bear was searching for honey nearby.",
-            "🐾 Narrow claw marks. A quick wild pheasant was scratching for seeds.",
-            "🐾 Heavy, wallowing indentations. A sturdy boar passed by here recently."
-          ];
-          const msg = trackerMessages[Math.floor(Math.random() * trackerMessages.length)];
-          addLog(msg, '#f472b6');
-          addSkillXPDirect(s, 'hunting', xp);
-          spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#f472b6', 10, 'spark');
+          resolveAnimalTrack(s, o);
         } else if (o.type === 'drop') {
           s.pl.inv[o.item] = (s.pl.inv[o.item] || 0) + o.qty;
           addLog(`+${IT[o.item]?.n || o.item} x${o.qty}`, '#ccffaa');
@@ -6059,49 +6206,7 @@ export default function SurvivalGame() {
         }
         if (o.type === 'animal_track') {
           s.objs.splice(i, 1);
-          const huntLvl = s.pl.skills?.hunting?.lvl || 1;
-          const xp = 15 + huntLvl * 2;
-
-          const trackerMessages = [
-            "🐾 Fresh tracks! A wild deer was sprinting south-west through the brush.",
-            "🐾 Large, deep claw marks. An old forest bear was searching for honey nearby.",
-            "🐾 Narrow claw marks. A quick wild pheasant was scratching for seeds.",
-            "🐾 Heavy, wallowing indentations. A sturdy boar passed by here recently."
-          ];
-          const msg = trackerMessages[Math.floor(Math.random() * trackerMessages.length)];
-          addLog(msg, '#f472b6');
-          addSkillXPDirect(s, 'hunting', xp);
-
-          // Spark particle effect at track location
-          spawnExplosion(s, o.tx * TZ + TZ / 2, o.ty * TZ + TZ / 2, '#f472b6', 10, 'spark');
-
-          // Highlight nearby wild animals (if any) with a glowing particle trail!
-          let foundCount = 0;
-          for (const e of s.enemies) {
-            if (dist(s.pl, e) < 500) {
-              const et = ET[e.eid];
-              if (et && ['deer', 'boar', 'pheasant', 'wolf', 'fox', 'bear'].includes(e.eid)) {
-                foundCount++;
-                const steps = 15;
-                for (let k = 0; k < steps; k++) {
-                  const ratio = k / steps;
-                  s.parts.push({
-                    x: s.pl.x + (e.x - s.pl.x) * ratio,
-                    y: s.pl.y + (e.y - s.pl.y) * ratio,
-                    vx: (Math.random() - 0.5) * 0.2,
-                    vy: (Math.random() - 0.5) * 0.2,
-                    life: 20 + k,
-                    maxLife: 40,
-                    col: '#ec4899',
-                    sz: 1.2
-                  });
-                }
-              }
-            }
-          }
-          if (foundCount > 0) {
-            addLog(`🔍 Tracking Senses: Located ${foundCount} wild animal signature(s) nearby!`, '#ec4899');
-          }
+          resolveAnimalTrack(s, o);
           return;
         }
         if (o.type === 'drop') {
