@@ -418,6 +418,13 @@ const ET: Record<string, any> = {
   alpha_wolf: { n: 'Alpha Wolf', ico: '🐺', hp: 130, spd: 2.1, dmg: 24, acd: 50, xp: 55, lo: { meat: 2.0, leather: 1.5, alpha_pelt: 1.0 }, ran: false, boss: 1 },
 };
 
+const NON_HOSTILE_ENEMY_IDS = new Set(['deer', 'fox', 'pheasant', 'boar']);
+
+const isHostileEnemyId = (eid: string) => {
+  const et = ET[eid];
+  return !!et && et.dmg > 0 && !NON_HOSTILE_ENEMY_IDS.has(eid);
+};
+
 // --- Procedural Theme Definitions based on Biomes ---
 const THEMES = [
   {
@@ -2451,6 +2458,8 @@ export default function SurvivalGame() {
     const world: number[][] = [];
     const objs: any[] = [];
     const initialEnemies: any[] = [];
+    const startTileX = Math.floor(initialPl.x / TZ);
+    const startTileY = Math.floor(initialPl.y / TZ);
     
     const currentSeed = worldSeedRef.current;
     const zoneMaps: any[] = [];
@@ -2688,6 +2697,54 @@ export default function SurvivalGame() {
           hp: 1,
           mhp: 1
         });
+
+        if (!isTownZone && !isBanditZone && !(zc === 0 && zr === 0)) {
+          const hostileBiomeEnemies = (M.ef || []).filter((eid: string) => isHostileEnemyId(eid) && !ET[eid]?.boss);
+          const fallbackHostiles = hostileBiomeEnemies.length > 0
+            ? hostileBiomeEnemies
+            : (M.ef || []).filter((eid: string) => isHostileEnemyId(eid));
+          const spawnCount = fallbackHostiles.length > 0 ? 1 + Math.floor(rng() * 3) : 0;
+
+          for (let spawnIndex = 0; spawnIndex < spawnCount; spawnIndex++) {
+            let spawnEnemy = null;
+
+            for (let attempt = 0; attempt < 20; attempt++) {
+              const tx = ox + 4 + Math.floor(rng() * (ZW - 8));
+              const ty = oy + 4 + Math.floor(rng() * (ZH - 8));
+              const tile = world[ty]?.[tx];
+              const isPassableTile = tile !== undefined && tile !== TW && tile !== TLV;
+              const isSafeFromStart = Math.abs(tx - startTileX) + Math.abs(ty - startTileY) > 12;
+
+              if (!isPassableTile || !isSafeFromStart) continue;
+
+              const eid = fallbackHostiles[Math.floor(rng() * fallbackHostiles.length)];
+              const et = ET[eid];
+              if (!et) continue;
+
+              spawnEnemy = {
+                id: Math.random() + mi + spawnIndex,
+                x: tx * TZ + TZ / 2,
+                y: ty * TZ + TZ / 2,
+                hp: et.hp,
+                mhp: et.hp,
+                eid,
+                spd: et.spd,
+                dmg: et.dmg,
+                acd: et.acd,
+                cd: 0,
+                ran: et.ran,
+                spawnZc: zc,
+                spawnZr: zr,
+                isProceduralSpawn: true
+              };
+              break;
+            }
+
+            if (spawnEnemy) {
+              initialEnemies.push(spawnEnemy);
+            }
+          }
+        }
 
         if (isTownZone) {
           const cx = ox + 40;
