@@ -7,9 +7,8 @@ import SurvivalGame from './components/SurvivalGame';
 
 export default function App() {
   return (
-    <div className="w-full h-screen">
+    <div className="w-full h-dvh min-h-dvh">
       <SurvivalGame />
     </div>
   );
 }
-

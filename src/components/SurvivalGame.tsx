@@ -1398,10 +1398,29 @@ const rollProceduralMod = (itemKey: string) => {
   return mod;
 };
 
+interface ViewportSize {
+  width: number;
+  height: number;
+}
+
+const getViewportSize = (): ViewportSize => {
+  if (typeof window === 'undefined') {
+    return { width: 1280, height: 720 };
+  }
+
+  const viewport = window.visualViewport;
+  return {
+    width: Math.round(viewport?.width ?? window.innerWidth),
+    height: Math.round(viewport?.height ?? window.innerHeight),
+  };
+};
+
 // --- Component ---
 export default function SurvivalGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mouseTileRef = useRef<{ tx: number; ty: number } | null>(null);
+  const [viewportSize, setViewportSize] = useState<ViewportSize>(() => getViewportSize());
+  const isCompactViewport = viewportSize.width < 640;
   const [gameState, setGameState] = useState<any>(null);
   const [showInv, setShowInv] = useState(false);
   const [showNFTMarket, setShowNFTMarket] = useState(false);
@@ -1938,8 +1957,8 @@ export default function SurvivalGame() {
       s.parts = [];
 
       // 6. Center camera
-      s.cam.x = s.pl.x - window.innerWidth / 2;
-      s.cam.y = s.pl.y - window.innerHeight / 2;
+      s.cam.x = s.pl.x - viewportSize.width / 2;
+      s.cam.y = s.pl.y - viewportSize.height / 2;
 
       addLog("Successfully loaded saved game progress!", "#38bdf8");
       setGameState({ ...s });
@@ -1951,7 +1970,7 @@ export default function SurvivalGame() {
       setImportError("Error: Failed to process save string serialization.");
       return false;
     }
-  }, []);
+  }, [viewportSize.height, viewportSize.width]);
 
   // Save progress
   const saveGame = useCallback((slotId: string) => {
@@ -2480,6 +2499,7 @@ export default function SurvivalGame() {
 
   // Initialize Game Function
   const initGame = useCallback(() => {
+    const initialViewport = getViewportSize();
     const initialPl = {
       x: Math.floor(ZW / 2) * TZ + TZ / 2,
       y: Math.floor(ZH / 2) * TZ + TZ / 2,
@@ -2870,7 +2890,7 @@ export default function SurvivalGame() {
       waveNum: 0,
       waveTimer: 300,
       waveActive: false,
-      cam: { x: initialPl.x - window.innerWidth / 2, y: initialPl.y - window.innerHeight / 2 },
+      cam: { x: initialPl.x - initialViewport.width / 2, y: initialPl.y - initialViewport.height / 2 },
       camShake: 0,
       zoneMaps,
       worldSeed: currentSeed
@@ -2898,13 +2918,28 @@ export default function SurvivalGame() {
   // Handle Resize
   useEffect(() => {
     const handleResize = () => {
+      const nextViewport = getViewportSize();
+      setViewportSize(prev => (
+        prev.width === nextViewport.width && prev.height === nextViewport.height ? prev : nextViewport
+      ));
+
       if (canvasRef.current) {
-        canvasRef.current.width = window.innerWidth;
-        canvasRef.current.height = window.innerHeight;
+        canvasRef.current.width = nextViewport.width;
+        canvasRef.current.height = nextViewport.height;
       }
     };
+
+    handleResize();
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    window.visualViewport?.addEventListener('resize', handleResize);
+    window.visualViewport?.addEventListener('scroll', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+      window.visualViewport?.removeEventListener('resize', handleResize);
+      window.visualViewport?.removeEventListener('scroll', handleResize);
+    };
   }, []);
 
   // Game Loop
@@ -3554,8 +3589,8 @@ export default function SurvivalGame() {
       }
 
       // Camera
-      s.cam.x += (s.pl.x - window.innerWidth / 2 - s.cam.x) * 0.1;
-      s.cam.y += (s.pl.y - window.innerHeight / 2 - s.cam.y) * 0.1;
+      s.cam.x += (s.pl.x - viewportSize.width / 2 - s.cam.x) * 0.1;
+      s.cam.y += (s.pl.y - viewportSize.height / 2 - s.cam.y) * 0.1;
 
       // --- Combat Update ---
       if (s.pl.atkcd > 0) s.pl.atkcd--;
@@ -4865,7 +4900,7 @@ export default function SurvivalGame() {
 
     loop();
     return () => cancelAnimationFrame(frameId);
-  }, [gameState]);
+  }, [gameState, viewportSize.height, viewportSize.width]);
 
   const addLog = (msg: string, col: string = '#a8ff78') => {
     const id = `${Date.now()}-${Math.random()}`;
@@ -7218,12 +7253,12 @@ export default function SurvivalGame() {
   };
 
   return (
-    <div className="relative w-full h-screen bg-black overflow-hidden font-mono text-white select-none">
+    <div className="relative w-full h-dvh min-h-dvh bg-black overflow-hidden font-mono text-white select-none" style={{ height: viewportSize.height }}>
       <canvas 
         ref={canvasRef} 
-        width={window.innerWidth} 
-        height={window.innerHeight}
-        className="block cursor-crosshair"
+        width={viewportSize.width} 
+        height={viewportSize.height}
+        className="block w-full h-full cursor-crosshair"
         onPointerDown={handleCanvasClick}
         onPointerMove={(e) => {
           const s = stateRef.current;
@@ -7300,7 +7335,7 @@ export default function SurvivalGame() {
           
           {/* Detailed, RPG-Style Survival Status Panel */}
           {isStatusCollapsed ? (
-            <div className="flex items-center justify-between p-2.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-lg pointer-events-auto w-[250px] select-none font-mono">
+            <div className="flex items-center justify-between p-2.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-lg pointer-events-auto w-[min(250px,calc(100vw-2rem))] select-none font-mono">
               <span className="text-[10px] font-bold text-yellow-400 uppercase tracking-wider flex items-center gap-1">👑 Status (LVL {gameState?.pl.lvl || 1})</span>
               <button 
                 onClick={() => setIsStatusCollapsed(false)} 
@@ -7310,7 +7345,7 @@ export default function SurvivalGame() {
               </button>
             </div>
           ) : (
-            <div className="flex flex-col gap-2 p-3.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto min-w-[250px] select-none">
+            <div className="flex flex-col gap-2 p-3.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto w-[min(250px,calc(100vw-2rem))] select-none">
               {/* Avatar / Level Indicator */}
               <div className="flex items-center gap-2 border-b border-white/10 pb-2 mb-0.5">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-yellow-500 to-amber-300 flex items-center justify-center text-xs font-black text-black shadow-inner shadow-black/20 animate-pulse">
@@ -7416,7 +7451,7 @@ export default function SurvivalGame() {
 
           {/* RPG-Style Equipment & Gear Panel */}
           {isEquipCollapsed ? (
-            <div className="flex items-center justify-between p-2.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-lg pointer-events-auto w-[250px] select-none font-mono">
+            <div className="flex items-center justify-between p-2.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-lg pointer-events-auto w-[min(250px,calc(100vw-2rem))] select-none font-mono">
               <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1">🛡️ Gear (DEF: {gameState?.pl.def || 0})</span>
               <button 
                 onClick={() => setIsEquipCollapsed(false)} 
@@ -7426,7 +7461,7 @@ export default function SurvivalGame() {
               </button>
             </div>
           ) : (
-            <div className="flex flex-col gap-2 p-3 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto min-w-[250px] select-none font-mono">
+            <div className="flex flex-col gap-2 p-3 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto w-[min(250px,calc(100vw-2rem))] select-none font-mono">
               <div className="flex items-center gap-1.5 border-b border-white/10 pb-2 mb-0.5 justify-between">
                 <span className="text-[10px] font-bold tracking-wider text-cyan-400 uppercase flex items-center gap-1">
                   🛡️ Equipment & Gear
@@ -7505,7 +7540,7 @@ export default function SurvivalGame() {
 
           {/* Automation Cores Control Center */}
           {isAutoCollapsed ? (
-            <div className="flex items-center justify-between p-2.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-lg pointer-events-auto w-[250px] select-none font-mono">
+            <div className="flex items-center justify-between p-2.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-lg pointer-events-auto w-[min(250px,calc(100vw-2rem))] select-none font-mono">
               <span className="text-[10px] font-bold text-teal-400 uppercase tracking-wider flex items-center gap-1">🤖 Automation ({(autoAttack ? 1:0)+(autoHarvest ? 1:0)+(autoCollect ? 1:0)+(autoCraftState ? 1:0)}/4 CORES)</span>
               <button 
                 onClick={() => setIsAutoCollapsed(false)} 
@@ -7515,7 +7550,7 @@ export default function SurvivalGame() {
               </button>
             </div>
           ) : (
-            <div className="flex flex-col gap-2 p-3.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto min-w-[250px] select-none text-white font-mono">
+            <div className="flex flex-col gap-2 p-3.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto w-[min(250px,calc(100vw-2rem))] select-none text-white font-mono">
               <div className="flex items-center gap-1.5 border-b border-white/10 pb-2 justify-between">
                 <span className="text-[10px] font-bold tracking-widest uppercase text-teal-400 flex items-center gap-1">
                   🤖 Automation Cores
@@ -7885,7 +7920,10 @@ export default function SurvivalGame() {
       )}
 
       {/* --- Logs --- */}
-      <div className="absolute top-24 left-[276px] flex flex-col gap-1 pointer-events-none z-10 max-w-sm">
+      <div
+        className="absolute flex flex-col gap-1 pointer-events-none z-10 max-w-[calc(100vw-2rem)] sm:max-w-sm"
+        style={isCompactViewport ? { top: 224, left: 16, right: 16 } : { top: 96, left: 276 }}
+      >
         <AnimatePresence>
           {logs.map((log, idx) => (
             <motion.div 
@@ -8056,7 +8094,7 @@ export default function SurvivalGame() {
           }`}
         >
           {/* Visual Vital Status Progress HUD (Health, Hunger, Thirst, Mana) */}
-          <div className="bg-zinc-950/90 border border-white/10 p-3 px-4 rounded-2xl backdrop-blur-md shadow-2xl grid grid-cols-2 gap-x-5 gap-y-2 select-none w-[360px] md:w-[450px] relative">
+          <div className="bg-zinc-950/90 border border-white/10 p-3 px-4 rounded-2xl backdrop-blur-md shadow-2xl grid grid-cols-2 gap-x-5 gap-y-2 select-none w-[min(360px,calc(100vw-1rem))] md:w-[450px] relative">
             {/* Health Bar */}
             <div className={`flex-1 flex flex-col gap-0.5 relative transition-all duration-300 ${flashHp ? 'scale-[1.05]' : 'scale-100'}`}>
               <div className="flex justify-between items-center text-[9px] font-bold">
@@ -8202,12 +8240,12 @@ export default function SurvivalGame() {
             );
           })()}
 
-          <div className={`flex flex-col items-center gap-1.5 bg-black/90 p-2.5 rounded-2xl border backdrop-blur-md transition-all duration-300 ${
+          <div className={`flex flex-col items-center gap-1.5 bg-black/90 p-2.5 rounded-2xl border backdrop-blur-md transition-all duration-300 max-w-[calc(100vw-1rem)] overflow-x-auto ${
             showInv 
               ? 'border-green-500/40 shadow-[0_0_24px_rgba(34,197,94,0.15)] bg-zinc-950/95' 
               : 'border-white/10 shadow-[0_4px_24px_rgba(0,0,0,0.6)]'
           }`}>
-            <div className="flex gap-1">
+            <div className="flex gap-1 min-w-max">
               {gameState?.pl.hotbar.map((item: string, i: number) => {
                 const isDraggedOver = draggedOverSlot === i;
                 const hasQty = (gameState.pl.inv[item] || 0) > 0;
@@ -8231,7 +8269,7 @@ export default function SurvivalGame() {
                     }}
                     onClick={() => handleHotbarClick(i)}
                     onDoubleClick={() => handleHotbarDoubleClick(i)}
-                    className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center relative transition-all duration-200 border cursor-pointer select-none group ${
+                    className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex flex-col items-center justify-center relative transition-all duration-200 border cursor-pointer select-none group ${
                       isDraggedOver 
                         ? 'border-yellow-400 bg-yellow-500/30 scale-110 shadow-[0_0_12px_rgba(234,179,8,0.5)] z-10' 
                         : hotSlot === i 
@@ -8242,7 +8280,7 @@ export default function SurvivalGame() {
                   >
                     {item ? (
                       <>
-                        <span className={`text-xl transition-transform duration-200 ${hotSlot === i ? 'scale-110' : 'group-hover:scale-[1.08]'}`}>
+                        <span className={`text-lg sm:text-xl transition-transform duration-200 ${hotSlot === i ? 'scale-110' : 'group-hover:scale-[1.08]'}`}>
                           {IT[item]?.ico || '?'}
                         </span>
                         <span className={`absolute bottom-1 right-1 text-[8px] font-extrabold px-0.5 rounded leading-none ${
