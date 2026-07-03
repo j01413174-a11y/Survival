@@ -1061,6 +1061,12 @@ const baseIT: Record<string, any> = {
   chrono_watch: { ico: '⏰', n: 'Chrono Watch', t: 'armor', sl: 'ring', def: 2, spdBonus: 0.6, mpBonus: 20 },
   philosophers_stone: { ico: '🧪', n: "Philosopher's Stone", t: 'pot' },
   immortality_elixir: { ico: '🌌', n: 'Immortality Elixir', t: 'pot' },
+
+  // --- Adventurers Guild Expansion items ---
+  guild_token: { ico: '🪙', n: 'Guild Token', t: 'mat' },
+  phoenix_feather: { ico: '🔥', n: 'Phoenix Feather', t: 'pot' },
+  scroll_meteor: { ico: '☄️', n: 'Scroll of Meteor', t: 'pot' },
+  aegis_plate: { ico: '🛡️', n: 'Aegis Plate Armor', t: 'armor', sl: 'chest', def: 40, hpBonus: 80 },
 };
 
 export const IT = new Proxy(baseIT, {
@@ -1158,6 +1164,18 @@ const RC = [
   { n: 'Celestial Blade', out: 'celestial_blade', cnt: 1, cat: 'Weapons', c: { celestial_shard: 5, mithril_bar: 4, magic_essence: 10 }, req: 'magic_altar' },
   { n: 'Void Reaver Bow', out: 'void_reaver_bow', cnt: 1, cat: 'Weapons', c: { void_crystal: 5, silk: 6 }, req: 'magic_altar' },
   { n: 'Harbinger Staff', out: 'harbinger_staff', cnt: 1, cat: 'Weapons', c: { void_crystal: 6, celestial_shard: 3, magic_essence: 15 }, req: 'magic_altar' },
+];
+
+// --- Adventurers Guild Quests Definition ---
+const GUILD_QUESTS = [
+  { id: 'wood_novice', n: '🪓 Timber Collector', d: 'Deliver 30 wood to help fortify the guild gate.', targetType: 'wood', targetCount: 30, rewardTokens: 15, rewardItems: { gold_coins: 100, cooked_meat: 5 } },
+  { id: 'ore_novice', n: '⛏️ Iron Prospector', d: 'Secure 15 iron ore for crafting new tools.', targetType: 'iron_ore', targetCount: 15, rewardTokens: 20, rewardItems: { gold_coins: 150, coal: 10 } },
+  { id: 'golem_slayer', n: '⚙️ Golem Destroyer', d: 'Eliminate a Cave Golem boss causing earthquakes.', targetType: 'golem', targetCount: 1, isBoss: true, rewardTokens: 40, rewardItems: { gold_coins: 300, crystal: 5 } },
+  { id: 'dragon_hunter', n: '🐉 Dragon Conqueror', d: 'Vanquish the ancient Fire Dragon of the deep.', targetType: 'dragon', targetCount: 1, isBoss: true, rewardTokens: 100, rewardItems: { gold_coins: 1000, gem: 10, magic_essence: 5 } },
+  { id: 'herbs_gatherer', n: '🌿 Alchemist Botanist', d: 'Deliver 15 wild herbs to brew healing elixirs.', targetType: 'herb', targetCount: 15, rewardTokens: 15, rewardItems: { gold_coins: 120, elixir: 2 } },
+  { id: 'monsters_novice', n: '🛡️ Goblin Skirmish', d: 'Cleanse the nearby zones of 5 goblin scouts.', targetType: 'goblin', targetCount: 5, rewardTokens: 25, rewardItems: { gold_coins: 200, fiber: 20 } },
+  { id: 'troll_slayer', n: '👹 Troll Menace', d: 'Defeat 1 Cave Troll in the mountains.', targetType: 'troll', targetCount: 1, isBoss: true, rewardTokens: 45, rewardItems: { gold_coins: 400, gold_ore: 5 } },
+  { id: 'wolves_hunt', n: '🐺 Wolf Den Cleanse', d: 'Defeat the Alpha Wolf and secure its alpha pelt.', targetType: 'alpha_wolf', targetCount: 1, isBoss: true, rewardTokens: 35, rewardItems: { gold_coins: 250, leather: 10 } },
 ];
 
 // --- Helper Functions ---
@@ -1382,6 +1400,9 @@ export default function SurvivalGame() {
   const [recipeSearch, setRecipeSearch] = useState('');
   const [recipeFilter, setRecipeFilter] = useState('All');
   const [showSkills, setShowSkills] = useState(false);
+  const [showQuests, setShowQuests] = useState(false);
+  const [showMasteries, setShowMasteries] = useState(false);
+  const [guildTab, setGuildTab] = useState<'quests' | 'store'>('quests');
 
   // --- Dynamic Survival Stat Tracking States ---
   const lastStats = useRef({ hp: 100, hu: 100, th: 100, mp: 100 });
@@ -1879,6 +1900,17 @@ export default function SurvivalGame() {
         farming: { lvl: 1, xp: 0, xpNext: 100 }
       };
       s.pl.discoveredChunks = data.pl.discoveredChunks || {};
+      s.pl.guildTokens = data.pl.guildTokens ?? 0;
+      s.pl.activeQuests = data.pl.activeQuests || {};
+      s.pl.activeQuestsProgress = data.pl.activeQuestsProgress || {};
+      s.pl.masteries = data.pl.masteries || {
+        adrenaline: 0,
+        double_harvest: 0,
+        lucky_miner: 0,
+        toughened_hide: 0,
+        vampiric_strikes: 0,
+        sages_wisdom: 0
+      };
 
       // 2. Restore World Objects
       s.objs = decompressObjs(data.objs) || [];
@@ -1949,7 +1981,11 @@ export default function SurvivalGame() {
           xpNext: s.pl.xpNext,
           def: s.pl.def,
           skills: s.pl.skills,
-          discoveredChunks: s.pl.discoveredChunks || {}
+          discoveredChunks: s.pl.discoveredChunks || {},
+          guildTokens: s.pl.guildTokens || 0,
+          activeQuests: s.pl.activeQuests || {},
+          activeQuestsProgress: s.pl.activeQuestsProgress || {},
+          masteries: s.pl.masteries || { adrenaline: 0, double_harvest: 0, lucky_miner: 0, toughened_hide: 0, vampiric_strikes: 0, sages_wisdom: 0 }
         },
         objs: compressObjs(s.objs),
         companions: s.companions.map((c: any) => ({
@@ -2269,7 +2305,11 @@ export default function SurvivalGame() {
           xpNext: s.pl.xpNext,
           def: s.pl.def,
           skills: s.pl.skills,
-          discoveredChunks: s.pl.discoveredChunks || {}
+          discoveredChunks: s.pl.discoveredChunks || {},
+          guildTokens: s.pl.guildTokens || 0,
+          activeQuests: s.pl.activeQuests || {},
+          activeQuestsProgress: s.pl.activeQuestsProgress || {},
+          masteries: s.pl.masteries || { adrenaline: 0, double_harvest: 0, lucky_miner: 0, toughened_hide: 0, vampiric_strikes: 0, sages_wisdom: 0 }
         },
         objs: compressObjs(s.objs),
         companions: s.companions.map((c: any) => ({
@@ -2479,7 +2519,18 @@ export default function SurvivalGame() {
         smithing: { lvl: 1, xp: 0, xpNext: 100 },
         farming: { lvl: 1, xp: 0, xpNext: 100 }
       },
-      discoveredChunks: {}
+      discoveredChunks: {},
+      guildTokens: 0,
+      activeQuests: {},
+      activeQuestsProgress: {},
+      masteries: {
+        adrenaline: 0,
+        double_harvest: 0,
+        lucky_miner: 0,
+        toughened_hide: 0,
+        vampiric_strikes: 0,
+        sages_wisdom: 0
+      }
     };
 
     const world: number[][] = [];
@@ -3558,8 +3609,16 @@ export default function SurvivalGame() {
         if (s.activeSpells?.healingSanctuaryTimer > 0) {
           eventSpeedMult *= 1.25;
         }
+        let adrenalineMult = 1.0;
+        const hpPercent = s.pl.hp / s.pl.mhp;
+        if (hpPercent < 0.40) {
+          const lvl = s.pl.masteries?.adrenaline || 0;
+          if (lvl > 0) {
+            adrenalineMult += lvl * 0.10;
+          }
+        }
         const slowMult = (s.pl.slowTicks && s.pl.slowTicks > 0) ? 0.45 : 1.0;
-        const speed = s.pl.spd * (isSprinting ? 1.7 : 1) * eventSpeedMult * slowMult;
+        const speed = s.pl.spd * (isSprinting ? 1.7 : 1) * eventSpeedMult * slowMult * adrenalineMult;
         const diffX = s.pl.targetX - s.pl.x;
         const diffY = s.pl.targetY - s.pl.y;
         const d = Math.hypot(diffX, diffY);
@@ -3856,7 +3915,11 @@ export default function SurvivalGame() {
           if (s.activeSpells?.healingSanctuaryTimer > 0) {
             finalDef += 5;
           }
-          const dmg = Math.max(1, e.dmg - finalDef);
+          let dmg = Math.max(1, e.dmg - finalDef);
+          const hideLvl = s.pl.masteries?.toughened_hide || 0;
+          if (hideLvl > 0) {
+            dmg = Math.max(1, dmg - hideLvl);
+          }
           s.pl.hp -= dmg;
           s.camShake = (s.camShake || 0) + 12;
           s.pl.ifr = 40;
@@ -3864,7 +3927,9 @@ export default function SurvivalGame() {
           addLog(`Hit by ${ET[e.eid].n}! -${dmg} HP`, '#f44');
           if (s.pl.hp <= 0) {
             s.pl.hp = 0;
-            setShowDeathScreen(true);
+            if (checkPlayerDeath(s)) {
+              setShowDeathScreen(true);
+            }
           }
         }
         if (e.cd > 0) e.cd--;
@@ -4098,7 +4163,9 @@ export default function SurvivalGame() {
               } else {
                 s.pl.hp = Math.max(0, s.pl.hp - hDrain);
                 if (s.pl.hp <= 0 && !showDeathScreen) {
-                  setShowDeathScreen(true);
+                  if (checkPlayerDeath(s)) {
+                    setShowDeathScreen(true);
+                  }
                 }
               }
             } else if (hDrain < 0) {
@@ -4935,6 +5002,174 @@ export default function SurvivalGame() {
     setLogs(prev => [{ id, msg, col }, ...prev].slice(0, 5));
   };
 
+  // --- Adventurers Guild & Masteries Expansion Logic ---
+  const awardInvItem = (s: any, item: string, qty: number) => {
+    let finalQty = qty;
+    // Apply Masteries
+    if (item === 'wood' || item === 'fiber' || item === 'herb') {
+      const lvl = s.pl.masteries?.double_harvest || 0;
+      if (lvl > 0 && Math.random() < lvl * 0.10) {
+        finalQty *= 2;
+        addLog(`✨ Double Harvest Proc! +${IT[item]?.n || item} x${finalQty}`, '#4df8aa');
+      }
+    } else if (['copper_ore', 'iron_ore', 'gold_ore', 'mithril_ore', 'coal', 'sulfur'].includes(item)) {
+      const lvl = s.pl.masteries?.lucky_miner || 0;
+      if (lvl > 0 && Math.random() < lvl * 0.10) {
+        finalQty *= 2;
+        addLog(`✨ Lucky Miner Proc! +${IT[item]?.n || item} x${finalQty}`, '#fbd38d');
+      }
+    }
+
+    s.pl.inv[item] = (s.pl.inv[item] || 0) + finalQty;
+
+    // Track Quest Objectives
+    if (s.pl.activeQuests) {
+      Object.keys(s.pl.activeQuests).forEach(qid => {
+        const q = GUILD_QUESTS.find(x => x.id === qid);
+        if (q && q.targetType === item) {
+          s.pl.activeQuestsProgress[qid] = Math.min(q.targetCount, (s.pl.activeQuestsProgress[qid] || 0) + finalQty);
+          addLog(`📊 Quest Progress: [${q.n}] (${s.pl.activeQuestsProgress[qid]}/${q.targetCount})`, '#67e8f9');
+        }
+      });
+    }
+  };
+
+  const checkPlayerDeath = (s: any): boolean => {
+    if (s.pl.hp <= 0) {
+      if (s.pl.inv?.phoenix_feather && s.pl.inv.phoenix_feather > 0) {
+        s.pl.inv.phoenix_feather--;
+        s.pl.hp = Math.floor(s.pl.mhp * 0.5);
+        s.pl.sta = 100;
+        s.pl.mp = s.pl.mmp;
+        addLog(`🔥 PHOENIX FEATHER ACTIVATED! You were saved from death and restored to 50% HP!`, '#ef4444');
+        spawnExplosion(s, s.pl.x, s.pl.y, '#f97316', 30, 'fire');
+        return false; // Did not die
+      }
+      return true; // Died
+    }
+    return false;
+  };
+
+  const handleAcceptQuest = (qid: string) => {
+    const s = stateRef.current;
+    if (!s || !s.pl) return;
+    s.pl.activeQuests = s.pl.activeQuests || {};
+    s.pl.activeQuestsProgress = s.pl.activeQuestsProgress || {};
+    
+    // Set active
+    s.pl.activeQuests[qid] = true;
+    s.pl.activeQuestsProgress[qid] = 0;
+    
+    // If it's a delivery quest, pre-populate progress with items in inventory
+    const q = GUILD_QUESTS.find(x => x.id === qid);
+    if (q && !q.isBoss) {
+      const currentQty = s.pl.inv[q.targetType] || 0;
+      s.pl.activeQuestsProgress[qid] = Math.min(q.targetCount, currentQty);
+    }
+    
+    setGameState({ ...s });
+    addLog(`📜 Quest Accepted: "${q?.n}"!`, '#fbbf24');
+  };
+
+  const handleAbandonQuest = (qid: string) => {
+    const s = stateRef.current;
+    if (!s || !s.pl) return;
+    if (s.pl.activeQuests) {
+      delete s.pl.activeQuests[qid];
+    }
+    if (s.pl.activeQuestsProgress) {
+      delete s.pl.activeQuestsProgress[qid];
+    }
+    setGameState({ ...s });
+    addLog(`❌ Abandoned Quest.`, '#f87171');
+  };
+
+  const handleClaimQuest = (qid: string) => {
+    const s = stateRef.current;
+    if (!s || !s.pl) return;
+    const q = GUILD_QUESTS.find(x => x.id === qid);
+    if (!q) return;
+
+    // Double check completed
+    const progress = s.pl.activeQuestsProgress?.[qid] || 0;
+    if (progress < q.targetCount) {
+      addLog(`❌ Quest is not complete yet!`, '#f87171');
+      return;
+    }
+
+    // Deduct items if delivery quest
+    if (!q.isBoss) {
+      const invCount = s.pl.inv[q.targetType] || 0;
+      if (invCount < q.targetCount) {
+        addLog(`❌ You do not have enough ${IT[q.targetType]?.n || q.targetType} in your backpack to deliver!`, '#f87171');
+        return;
+      }
+      s.pl.inv[q.targetType] -= q.targetCount;
+    }
+
+    // Reward Guild Tokens
+    s.pl.guildTokens = (s.pl.guildTokens || 0) + q.rewardTokens;
+
+    // Reward Gold Coins and items
+    Object.entries(q.rewardItems).forEach(([itemKey, qty]) => {
+      s.pl.inv[itemKey] = (s.pl.inv[itemKey] || 0) + (qty as number);
+    });
+
+    // Remove from active
+    delete s.pl.activeQuests[qid];
+    delete s.pl.activeQuestsProgress[qid];
+
+    setGameState({ ...s });
+    addLog(`✨ COMPLETED: "${q.n}"! Gained 🪙${q.rewardTokens} Guild Tokens & items!`, '#10b981');
+  };
+
+  const handleUpgradeMastery = (mid: string, cost: number, maxLevel: number) => {
+    const s = stateRef.current;
+    if (!s || !s.pl) return;
+    s.pl.guildTokens = s.pl.guildTokens || 0;
+    s.pl.masteries = s.pl.masteries || { adrenaline: 0, double_harvest: 0, lucky_miner: 0, toughened_hide: 0, vampiric_strikes: 0, sages_wisdom: 0 };
+
+    const currentLvl = s.pl.masteries[mid] || 0;
+    if (currentLvl >= maxLevel) {
+      addLog(`❌ Mastery already at maximum level!`, '#f87171');
+      return;
+    }
+
+    if (s.pl.guildTokens < cost) {
+      addLog(`❌ Not enough Guild Tokens!`, '#f87171');
+      return;
+    }
+
+    s.pl.guildTokens -= cost;
+    s.pl.masteries[mid] = currentLvl + 1;
+
+    // Apply special immediate effects
+    if (mid === 'sages_wisdom') {
+      s.pl.mmp += 10;
+      s.pl.mp += 10;
+    }
+
+    setGameState({ ...s });
+    addLog(`⚡ Trained Mastery: increased to Level ${currentLvl + 1}!`, '#f59e0b');
+  };
+
+  const handleBuyGuildStoreItem = (itemKey: string, cost: number) => {
+    const s = stateRef.current;
+    if (!s || !s.pl) return;
+    s.pl.guildTokens = s.pl.guildTokens || 0;
+
+    if (s.pl.guildTokens < cost) {
+      addLog(`❌ Not enough Guild Tokens to buy this item!`, '#f87171');
+      return;
+    }
+
+    s.pl.guildTokens -= cost;
+    s.pl.inv[itemKey] = (s.pl.inv[itemKey] || 0) + 1;
+
+    setGameState({ ...s });
+    addLog(`🏪 Bought ${IT[itemKey]?.n || itemKey} from the Guild Store!`, '#10b981');
+  };
+
   const triggerWorldEvent = async () => {
     const s = stateRef.current;
     if (!s || s.activeEvent) return;
@@ -5036,7 +5271,9 @@ export default function SurvivalGame() {
           s.pl.hp = Math.max(0, s.pl.hp - Math.abs(rew.hpChange));
           rewardLogs.push(`${rew.hpChange} HP 💔`);
           if (s.pl.hp <= 0 && !showDeathScreen) {
-            setShowDeathScreen(true);
+            if (checkPlayerDeath(s)) {
+              setShowDeathScreen(true);
+            }
           }
         }
       }
@@ -5116,6 +5353,13 @@ export default function SurvivalGame() {
               s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + heal);
               addLog(`🩸 Vampirism: +${heal} HP!`, '#ff3366');
             }
+          }
+          // Vampiric Strikes Mastery
+          const vampLvl = s.pl.masteries?.vampiric_strikes || 0;
+          if (vampLvl > 0 && Math.random() < vampLvl * 0.05) {
+            s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + 4);
+            addLog(`🩸 Vampiric Strikes Mastery Proc: +4 HP!`, '#ef4444');
+            spawnExplosion(s, s.pl.x, s.pl.y, '#ef4444', 8, 'spark');
           }
           if (e.hp <= 0) {
             handleEnemyKilled(s, e);
@@ -5320,11 +5564,31 @@ export default function SurvivalGame() {
     const it = IT[k];
     if (!it || (s.pl.inv[k] || 0) <= 0) return;
 
-    if (it.t === 'food' || it.t === 'pot' || k === 'mana_crystal' || k === 'philosophers_stone' || k === 'immortality_elixir') {
+    if (it.t === 'food' || it.t === 'pot' || k === 'mana_crystal' || k === 'scroll_meteor' || k === 'philosophers_stone' || k === 'immortality_elixir') {
       if (k === 'mana_crystal') {
         s.pl.mp = Math.min(s.pl.mmp, s.pl.mp + 40);
         s.pl.inv[k]--;
         addLog(`Used Mana Crystal: restored 40 MP 🔮`, '#c084fc');
+      } else if (k === 'scroll_meteor') {
+        s.pl.inv[k]--;
+        addLog(`☄️ You channel the Scroll of Meteor: a shower of celestial fire descends!`, '#ef4444');
+        spawnExplosion(s, s.pl.x, s.pl.y, '#f97316', 50, 'fire');
+        // Strike all nearby enemies for 250 damage!
+        let enemiesDamaged = 0;
+        for (let i = s.enemies.length - 1; i >= 0; i--) {
+          const e = s.enemies[i];
+          if (dist(s.pl, e) < 300) {
+            e.hp -= 250;
+            e.flashTicks = 15;
+            spawnExplosion(s, e.x, e.y, '#f97316', 20, 'pixel');
+            enemiesDamaged++;
+            if (e.hp <= 0) {
+              handleEnemyKilled(s, e);
+              s.enemies.splice(i, 1);
+            }
+          }
+        }
+        addLog(`☄️ Sited Meteor shower: hit ${enemiesDamaged} enemy/enemies for 250 flat fire damage!`, '#f97316');
       } else if (k === 'philosophers_stone') {
         s.pl.inv[k]--;
         // Transmute common resources in backpack into Gold Coins!
@@ -5633,6 +5897,18 @@ export default function SurvivalGame() {
     const et = ET[e.eid];
     if (!et) return;
 
+    // Track monster slaying quest progress
+    if (s.pl.activeQuests) {
+      s.pl.activeQuestsProgress = s.pl.activeQuestsProgress || {};
+      Object.keys(s.pl.activeQuests).forEach(qid => {
+        const q = GUILD_QUESTS.find(x => x.id === qid);
+        if (q && q.targetType === e.eid) {
+          s.pl.activeQuestsProgress[qid] = Math.min(q.targetCount, (s.pl.activeQuestsProgress[qid] || 0) + 1);
+          addLog(`📊 Quest Progress: [${q.n}] (${s.pl.activeQuestsProgress[qid]}/${q.targetCount})`, '#67e8f9');
+        }
+      });
+    }
+
     // 1. Give character general XP
     s.pl.xp += et.xp;
     addLog(`Killed ${et.n}! +${et.xp} XP`, '#ffd700');
@@ -5703,7 +5979,7 @@ export default function SurvivalGame() {
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     // 1. Don't gather if a menu/modal is open
-    if (showSkills || showCraft || showRecipeBook || showOracle || showSaveMenu || showWorldMenu || showSpellbook || showNFTMarket || showShop || showDeathScreen || showInv || showMusicMenu || isFishing || activeNPC) {
+    if (showSkills || showQuests || showMasteries || showCraft || showRecipeBook || showOracle || showSaveMenu || showWorldMenu || showSpellbook || showNFTMarket || showShop || showDeathScreen || showInv || showMusicMenu || isFishing || activeNPC) {
       return;
     }
 
@@ -5770,8 +6046,7 @@ export default function SurvivalGame() {
             const baseLogs = 2 + Math.floor(Math.random() * 2);
             const bonusLogs = Math.floor(Math.random() * (wcLvl * 0.5));
             const q = baseLogs + bonusLogs;
-            s.pl.inv.wood = (s.pl.inv.wood || 0) + q;
-            addLog(`+Wood x${q} ${bonusLogs > 0 ? `(Skill Bonus +${bonusLogs})` : ''}`, '#22c55e');
+            awardInvItem(s, 'wood', q);
 
             // Biome-specific custom tree drops
             if (o.subtype === 'cactus') {
@@ -5880,28 +6155,22 @@ export default function SurvivalGame() {
             // Biome-specific custom rock drops
             if (o.subtype === 'copper') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.3);
-              s.pl.inv.copper_ore = (s.pl.inv.copper_ore || 0) + qty;
-              addLog(`+Copper Ore x${qty}! 🪙`, '#fb923c');
+              awardInvItem(s, 'copper_ore', qty);
             } else if (o.subtype === 'iron') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.3);
-              s.pl.inv.iron_ore = (s.pl.inv.iron_ore || 0) + qty;
-              addLog(`+Iron Ore x${qty}! ⚙️`, '#818cf8');
+              awardInvItem(s, 'iron_ore', qty);
             } else if (o.subtype === 'coal') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.3);
-              s.pl.inv.coal = (s.pl.inv.coal || 0) + qty;
-              addLog(`+Coal x${qty}! 🖤`, '#4b5563');
+              awardInvItem(s, 'coal', qty);
             } else if (o.subtype === 'gold') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.2);
-              s.pl.inv.gold_ore = (s.pl.inv.gold_ore || 0) + qty;
-              addLog(`+Gold Ore x${qty}! ⭐`, '#facc15');
+              awardInvItem(s, 'gold_ore', qty);
             } else if (o.subtype === 'mithril') {
               const qty = 1 + Math.floor(Math.random() * 1) + Math.floor(mineLvl * 0.15);
-              s.pl.inv.mithril_ore = (s.pl.inv.mithril_ore || 0) + qty;
-              addLog(`+Mithril Ore x${qty}! 🪐`, '#22d3ee');
+              awardInvItem(s, 'mithril_ore', qty);
             } else if (o.subtype === 'sulfur') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.2);
-              s.pl.inv.sulfur = (s.pl.inv.sulfur || 0) + qty;
-              addLog(`+Sulfur x${qty}! 🟡`, '#facc15');
+              awardInvItem(s, 'sulfur', qty);
             } else if (o.subtype === 'mana_crystal') {
               const qty = 1 + Math.floor(Math.random() * 2);
               s.pl.inv.mana_crystal = (s.pl.inv.mana_crystal || 0) + qty;
@@ -6132,8 +6401,7 @@ export default function SurvivalGame() {
             const baseLogs = 2 + Math.floor(Math.random() * 2);
             const bonusLogs = Math.floor(Math.random() * (wcLvl * 0.5));
             const q = baseLogs + bonusLogs;
-            s.pl.inv.wood = (s.pl.inv.wood || 0) + q;
-            addLog(`+Wood x${q} ${bonusLogs > 0 ? `(Skill Bonus +${bonusLogs})` : ''}`, '#22c55e');
+            awardInvItem(s, 'wood', q);
 
             // Biome-specific custom tree drops
             if (o.subtype === 'cactus') {
@@ -6237,28 +6505,22 @@ export default function SurvivalGame() {
             // Biome-specific custom rock drops
             if (o.subtype === 'copper') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.3);
-              s.pl.inv.copper_ore = (s.pl.inv.copper_ore || 0) + qty;
-              addLog(`+Copper Ore x${qty}! 🪙`, '#fb923c');
+              awardInvItem(s, 'copper_ore', qty);
             } else if (o.subtype === 'iron') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.3);
-              s.pl.inv.iron_ore = (s.pl.inv.iron_ore || 0) + qty;
-              addLog(`+Iron Ore x${qty}! ⚙️`, '#818cf8');
+              awardInvItem(s, 'iron_ore', qty);
             } else if (o.subtype === 'coal') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.3);
-              s.pl.inv.coal = (s.pl.inv.coal || 0) + qty;
-              addLog(`+Coal x${qty}! 🖤`, '#4b5563');
+              awardInvItem(s, 'coal', qty);
             } else if (o.subtype === 'gold') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.2);
-              s.pl.inv.gold_ore = (s.pl.inv.gold_ore || 0) + qty;
-              addLog(`+Gold Ore x${qty}! ⭐`, '#facc15');
+              awardInvItem(s, 'gold_ore', qty);
             } else if (o.subtype === 'mithril') {
               const qty = 1 + Math.floor(Math.random() * 1) + Math.floor(mineLvl * 0.15);
-              s.pl.inv.mithril_ore = (s.pl.inv.mithril_ore || 0) + qty;
-              addLog(`+Mithril Ore x${qty}! 🪐`, '#22d3ee');
+              awardInvItem(s, 'mithril_ore', qty);
             } else if (o.subtype === 'sulfur') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.2);
-              s.pl.inv.sulfur = (s.pl.inv.sulfur || 0) + qty;
-              addLog(`+Sulfur x${qty}! 🟡`, '#facc15');
+              awardInvItem(s, 'sulfur', qty);
             } else if (o.subtype === 'mana_crystal') {
               const qty = 1 + Math.floor(Math.random() * 2);
               s.pl.inv.mana_crystal = (s.pl.inv.mana_crystal || 0) + qty;
@@ -6638,6 +6900,14 @@ export default function SurvivalGame() {
     const s = stateRef.current;
     if (!s) return;
 
+    let actualManaCost = manaCost;
+    if (paymentType === 'mp') {
+      const sageLvl = s.pl.masteries?.sages_wisdom || 0;
+      if (sageLvl > 0) {
+        actualManaCost = Math.round(manaCost * (1 - sageLvl * 0.10));
+      }
+    }
+
     const crystalCost = spellName === "Heal" ? 1 
       : spellName === "Reveal Map" ? 2 
       : spellName === "Healing Sanctuary" ? 2 
@@ -6655,14 +6925,14 @@ export default function SurvivalGame() {
       setGameState({ ...s });
       addLog(`✨ Channelling spell: "${spellName}" (${crystalCost} Mana Crystal(s) spent)...`, "#c084fc");
     } else {
-      if (s.pl.mp < manaCost) {
+      if (s.pl.mp < actualManaCost) {
         addLog("❌ You do not have enough Mana to cast this spell!", "#ef4444");
         return;
       }
       // Spend Mana immediately
-      s.pl.mp -= manaCost;
+      s.pl.mp -= actualManaCost;
       setGameState({ ...s });
-      addLog(`✨ Channelling spell: "${spellName}" (${manaCost} MP spent)...`, "#c084fc");
+      addLog(`✨ Channelling spell: "${spellName}" (${actualManaCost} MP spent)...`, "#c084fc");
     }
 
     setIsCasting(true);
@@ -7903,6 +8173,20 @@ export default function SurvivalGame() {
               >
                 <Sparkles size={11} className="text-teal-400" />
                 <span>SKILLS</span>
+              </button>
+              <button 
+                onClick={() => setShowQuests(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-emerald-500/20 hover:border-emerald-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-emerald-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Compass size={11} className="text-emerald-400" />
+                <span>QUESTS</span>
+              </button>
+              <button 
+                onClick={() => setShowMasteries(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-orange-500/20 hover:border-orange-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-orange-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Flame size={11} className="text-orange-400" />
+                <span>MASTERIES</span>
               </button>
               <button 
                 onClick={handleConsultOracle}
@@ -9656,6 +9940,418 @@ export default function SurvivalGame() {
                             </li>
                           ))}
                         </ul>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {showQuests && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/95 flex flex-col font-mono"
+          >
+            {/* Header */}
+            <div className="p-6 flex justify-between items-center border-b border-white/10 shrink-0">
+              <div className="flex items-center gap-3">
+                <Compass className="text-emerald-400" />
+                <div>
+                  <h2 className="text-xl font-bold tracking-widest text-emerald-400">
+                    ADVENTURERS' GUILD BOARD
+                  </h2>
+                  <p className="text-[10px] opacity-40 uppercase tracking-widest">
+                    Accept bounties, claim tokens, and secure legendary provisions
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-6 text-sm">
+                <div className="flex items-center gap-2 bg-emerald-950/40 px-4 py-2 rounded-xl border border-emerald-500/20">
+                  <span className="text-xs font-bold text-emerald-300">GUILD TOKENS:</span>
+                  <span className="font-bold text-emerald-400 text-sm">🪙 {gameState?.pl.guildTokens || 0}</span>
+                </div>
+                <button onClick={() => setShowQuests(false)} className="p-2 hover:bg-white/10 rounded-full cursor-pointer transition-all">
+                  <X />
+                </button>
+              </div>
+            </div>
+
+            {/* Tab Selector */}
+            <div className="flex border-b border-white/5 bg-zinc-900/40 shrink-0">
+              <button 
+                onClick={() => setGuildTab('quests')}
+                className={`flex-1 py-4 text-center text-xs uppercase tracking-widest font-bold transition-all border-b-2 cursor-pointer ${guildTab === 'quests' ? 'border-emerald-500 text-emerald-400 bg-emerald-500/5' : 'border-transparent text-gray-400 hover:text-white'}`}
+              >
+                📜 Active Bounties & Quests
+              </button>
+              <button 
+                onClick={() => setGuildTab('store')}
+                className={`flex-1 py-4 text-center text-xs uppercase tracking-widest font-bold transition-all border-b-2 cursor-pointer ${guildTab === 'store' ? 'border-emerald-500 text-emerald-400 bg-emerald-500/5' : 'border-transparent text-gray-400 hover:text-white'}`}
+              >
+                🏪 Guild Armory & Provisions Shop
+              </button>
+            </div>
+
+            {/* Scrollable Content Container */}
+            <div className="flex-1 p-6 overflow-y-auto max-w-6xl mx-auto w-full">
+              {guildTab === 'quests' ? (
+                <div className="space-y-6">
+                  <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/10 text-xs opacity-80 leading-relaxed">
+                    Welcome to the Adventurers' Guild Board. Complete the hunting, resource gathering, or dangerous boss slaying contracts below to earn valuable <span className="text-emerald-400 font-bold">Guild Tokens</span> and precious resources. Active delivery quests automatically check your inventory. Slaying quests track active targets!
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {GUILD_QUESTS.map(q => {
+                      const isActive = !!gameState?.pl.activeQuests?.[q.id];
+                      const progress = gameState?.pl.activeQuestsProgress?.[q.id] || 0;
+                      const isComplete = progress >= q.targetCount;
+
+                      return (
+                        <div key={q.id} className={`p-5 rounded-2xl border transition-all ${isActive ? 'bg-emerald-950/10 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.05)]' : 'bg-zinc-900/30 border-white/5'}`}>
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-emerald-400">
+                                {q.isBoss ? '☠️ Legendary Boss Bounty' : '📜 Resource Contract'}
+                              </span>
+                              <h3 className="font-bold text-white text-lg mt-2">{q.n}</h3>
+                              <p className="text-xs text-gray-400 mt-1">{q.d}</p>
+                            </div>
+                            
+                            {isActive && (
+                              <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${isComplete ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse'}`}>
+                                {isComplete ? 'Ready to Claim' : 'Active'}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Progress bar if active */}
+                          {isActive && (
+                            <div className="mt-4">
+                              <div className="flex justify-between items-center text-[10px] text-gray-400 mb-1.5">
+                                <span>Objective: {IT[q.targetType]?.n || q.targetType} ({progress} / {q.targetCount})</span>
+                                <span>{Math.floor(Math.min(100, (progress / q.targetCount) * 100))}%</span>
+                              </div>
+                              <div className="h-2 w-full bg-white/5 border border-white/10 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-gradient-to-r from-emerald-600 to-green-500"
+                                  style={{ width: `${Math.min(100, (progress / q.targetCount) * 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Rewards */}
+                          <div className="mt-4 pt-3 border-t border-white/5 flex flex-wrap gap-x-6 gap-y-2 text-xs">
+                            <div className="flex items-center gap-1.5 text-gray-400">
+                              <span>Rewards:</span>
+                              <span className="text-emerald-400 font-bold">🪙 {q.rewardTokens} Guild Tokens</span>
+                            </div>
+                            {Object.entries(q.rewardItems).map(([itemKey, qty]) => (
+                              <div key={itemKey} className="flex items-center gap-1 text-gray-300">
+                                <span>{IT[itemKey]?.ico || '💎'}</span>
+                                <span>{IT[itemKey]?.n || itemKey} x{qty}</span>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Actions */}
+                          <div className="mt-5 flex gap-3">
+                            {!isActive ? (
+                              <button 
+                                onClick={() => handleAcceptQuest(q.id)}
+                                className="flex-1 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer shadow-md"
+                              >
+                                Accept Contract 📜
+                              </button>
+                            ) : (
+                              <>
+                                {isComplete ? (
+                                  <button 
+                                    onClick={() => handleClaimQuest(q.id)}
+                                    className="flex-1 py-2 bg-green-500 hover:bg-green-400 text-black font-bold rounded-xl text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer shadow-md shadow-green-500/15"
+                                  >
+                                    Claim Reward & Complete ✨
+                                  </button>
+                                ) : (
+                                  <button 
+                                    onClick={() => handleAbandonQuest(q.id)}
+                                    className="px-4 py-2 bg-zinc-800 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/5 hover:border-red-500/30 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
+                                  >
+                                    Abandon
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/10 text-xs opacity-80 leading-relaxed">
+                    Spend your earned <span className="text-emerald-400 font-bold">Guild Tokens</span> to procure epic tools, legendary gear, and celestial spells that cannot be crafted elsewhere!
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {[
+                      {
+                        key: 'phoenix_feather',
+                        name: 'Phoenix Feather',
+                        icon: '🔥',
+                        desc: 'Unmatched defensive item. Keeps you safe by auto-reviving you to 50% health, mana, and full stamina upon fatal damage! Consumes itself on trigger.',
+                        cost: 5,
+                        tier: 'Epic Artifact'
+                      },
+                      {
+                        key: 'scroll_meteor',
+                        name: 'Scroll of Meteor',
+                        icon: '☄️',
+                        desc: 'Unleash direct destruction! Call down celestial meteor fire dealing 250 flat fire damage to all nearby threats in a huge radius.',
+                        cost: 3,
+                        tier: 'Legendary Scroll'
+                      },
+                      {
+                        key: 'aegis_plate',
+                        name: 'Aegis Plate Armor',
+                        icon: '🛡️',
+                        desc: 'The legendary steel of the guild. Equippable armor that grants a massive +40 defense rating and boosts maximum HP by +80.',
+                        cost: 8,
+                        tier: 'Legendary Armor'
+                      },
+                      {
+                        key: 'mithril_pickaxe',
+                        name: 'Mithril Pickaxe',
+                        icon: '⛏️',
+                        desc: 'The pinnacle of subterranean prospecting. Cleaves rocks instantly, hitting for 6 flat mining damage. High attack damage.',
+                        cost: 10,
+                        tier: 'Legendary Tool'
+                      },
+                      {
+                        key: 'mithril_axe',
+                        name: 'Mithril Axe',
+                        icon: '🪓',
+                        desc: 'Masterfully forged felling tool. Chops down giant trees with 6 flat lumber damage. Superior attack speed and melee damage.',
+                        cost: 10,
+                        tier: 'Legendary Tool'
+                      }
+                    ].map(item => {
+                      const tokens = gameState?.pl.guildTokens || 0;
+                      const canAfford = tokens >= item.cost;
+                      const invQty = gameState?.pl.inv[item.key] || 0;
+
+                      return (
+                        <div key={item.key} className="p-5 rounded-2xl bg-zinc-900/30 border border-white/5 flex flex-col justify-between">
+                          <div>
+                            <div className="flex justify-between items-start">
+                              <span className="text-3xl">{item.icon}</span>
+                              <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-emerald-400">
+                                {item.tier}
+                              </span>
+                            </div>
+                            <h3 className="font-bold text-white text-base mt-3 flex items-center gap-2">
+                              {item.name}
+                              {invQty > 0 && <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/30 px-1.5 py-0.5 rounded border border-emerald-500/10">In Pack: {invQty}</span>}
+                            </h3>
+                            <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">{item.desc}</p>
+                          </div>
+
+                          <div className="mt-5 pt-4 border-t border-white/5">
+                            <div className="flex justify-between items-center mb-3">
+                              <span className="text-xs text-gray-400">Armory Cost:</span>
+                              <span className="text-emerald-400 font-bold text-sm">🪙 {item.cost} Tokens</span>
+                            </div>
+                            <button 
+                              onClick={() => handleBuyGuildStoreItem(item.key, item.cost)}
+                              disabled={!canAfford}
+                              className={`w-full py-2 font-bold rounded-xl text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer ${canAfford ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-md' : 'bg-zinc-800 text-gray-500 border border-white/5 cursor-not-allowed'}`}
+                            >
+                              {canAfford ? 'Purchase Item' : 'Need More Tokens'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {showMasteries && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/95 flex flex-col font-mono"
+          >
+            {/* Header */}
+            <div className="p-6 flex justify-between items-center border-b border-white/10 shrink-0">
+              <div className="flex items-center gap-3">
+                <Flame className="text-orange-500" />
+                <div>
+                  <h2 className="text-xl font-bold tracking-widest text-orange-500">
+                    MASTERIES & PASSIVES TRAINER
+                  </h2>
+                  <p className="text-[10px] opacity-40 uppercase tracking-widest">
+                    Invest Guild Tokens to permanently awaken specialized combat and gatherer potentials
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2 bg-orange-950/40 px-4 py-2 rounded-xl border border-orange-500/20">
+                  <span className="text-xs font-bold text-orange-300">GUILD TOKENS:</span>
+                  <span className="font-bold text-orange-400 text-sm">🪙 {gameState?.pl.guildTokens || 0}</span>
+                </div>
+                <button onClick={() => setShowMasteries(false)} className="p-2 hover:bg-white/10 rounded-full cursor-pointer transition-all">
+                  <X />
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable Content Container */}
+            <div className="flex-1 p-6 overflow-y-auto max-w-5xl mx-auto w-full">
+              <div className="p-4 mb-6 rounded-xl bg-orange-950/20 border border-orange-500/10 text-xs opacity-80 leading-relaxed">
+                Welcome to the Masteries Training chambers. Awaken your latent power by training the 6 high-tier mastery pathways. Each passive trait can be upgraded up to <span className="text-orange-400 font-bold">Level 3</span>. Training costs <span className="text-orange-400 font-bold">5 Guild Tokens per level</span> (Level 1: 5 Tokens, Level 2: 10 Tokens, Level 3: 15 Tokens).
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {[
+                  {
+                    id: 'adrenaline',
+                    name: 'Adrenaline Rush ⚡',
+                    desc: 'Grants raw speed when survival is on the line. When health drops below 40%, gain +10% extra movement speed per level.',
+                    color: 'from-amber-600 to-yellow-500',
+                    border: 'border-yellow-500/20',
+                    bg: 'bg-yellow-950/10',
+                    perks: [
+                      'Level 1: +10% Speed under 40% HP',
+                      'Level 2: +20% Speed under 40% HP',
+                      'Level 3: +30% Speed under 40% HP (Max)'
+                    ]
+                  },
+                  {
+                    id: 'double_harvest',
+                    name: 'Double Harvest 🌿',
+                    desc: 'Expertise in botanical botany and forestry. Gives +10% chance per level to double all herbalism, fiber, and wood felling yields.',
+                    color: 'from-green-600 to-emerald-500',
+                    border: 'border-emerald-500/20',
+                    bg: 'bg-emerald-950/10',
+                    perks: [
+                      'Level 1: +10% Double Harvest chance',
+                      'Level 2: +20% Double Harvest chance',
+                      'Level 3: +30% Double Harvest chance (Max)'
+                    ]
+                  },
+                  {
+                    id: 'lucky_miner',
+                    name: 'Lucky Miner 🪙',
+                    desc: 'Eye for glittering underground treasures. Gives +10% chance per level to double all mineral and ore felling drops.',
+                    color: 'from-sky-600 to-blue-500',
+                    border: 'border-sky-500/20',
+                    bg: 'bg-sky-950/10',
+                    perks: [
+                      'Level 1: +10% Double Mineral chance',
+                      'Level 2: +20% Double Mineral chance',
+                      'Level 3: +30% Double Mineral chance (Max)'
+                    ]
+                  },
+                  {
+                    id: 'toughened_hide',
+                    name: 'Toughened Hide 🛡️',
+                    desc: 'Thickened outer defenses. Permanently reduces all incoming damage from enemies by a flat amount (1 point per level).',
+                    color: 'from-indigo-600 to-violet-500',
+                    border: 'border-violet-500/20',
+                    bg: 'bg-violet-950/10',
+                    perks: [
+                      'Level 1: -1 flat damage from enemy hits',
+                      'Level 2: -2 flat damage from enemy hits',
+                      'Level 3: -3 flat damage from enemy hits (Max)'
+                    ]
+                  },
+                  {
+                    id: 'vampiric_strikes',
+                    name: 'Vampiric Strikes 🩸',
+                    desc: 'Siphon vitality directly from threats. Grants +5% chance per level on all melee attacks to restore +4 HP instantly.',
+                    color: 'from-red-600 to-rose-500',
+                    border: 'border-rose-500/20',
+                    bg: 'bg-rose-950/10',
+                    perks: [
+                      'Level 1: 5% chance to heal +4 HP on hit',
+                      'Level 2: 10% chance to heal +4 HP on hit',
+                      'Level 3: 15% chance to heal +4 HP on hit (Max)'
+                    ]
+                  },
+                  {
+                    id: 'sages_wisdom',
+                    name: 'Sage\'s Wisdom 🧿',
+                    desc: 'Awakened connection to the mystical ether. Permanently decreases the mana cost of all active spells by 10% per level.',
+                    color: 'from-purple-600 to-fuchsia-500',
+                    border: 'border-fuchsia-500/20',
+                    bg: 'bg-fuchsia-950/10',
+                    perks: [
+                      'Level 1: -10% spell mana cost, permanent +10 max MP',
+                      'Level 2: -20% spell mana cost, permanent +20 max MP',
+                      'Level 3: -30% spell mana cost, permanent +30 max MP (Max)'
+                    ]
+                  }
+                ].map(mst => {
+                  const currentLvl = gameState?.pl?.masteries?.[mst.id] || 0;
+                  const isMax = currentLvl >= 3;
+                  const cost = (currentLvl + 1) * 5;
+                  const tokens = gameState?.pl.guildTokens || 0;
+                  const canAfford = tokens >= cost && !isMax;
+
+                  return (
+                    <div key={mst.id} className={`p-5 rounded-2xl border ${mst.border} ${mst.bg} flex flex-col justify-between`}>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <h3 className="font-bold text-white text-base tracking-wide">{mst.name}</h3>
+                          <div className={`px-3 py-1 rounded-full border font-bold text-sm ${isMax ? 'bg-orange-500/20 border-orange-500/40 text-orange-400' : 'bg-white/10 border-white/5 text-gray-300'}`}>
+                            {isMax ? 'MAX LVL 3' : `LVL ${currentLvl}`}
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-2 leading-relaxed">{mst.desc}</p>
+
+                        <div className="mt-4 pt-3 border-t border-white/5">
+                          <h4 className="text-[10px] uppercase tracking-wider font-bold opacity-40 mb-1.5">Training Benefits:</h4>
+                          <ul className="space-y-1">
+                            {mst.perks.map((perk, pidx) => (
+                              <li key={pidx} className={`text-xs flex items-start gap-1 ${currentLvl > pidx ? 'text-orange-400 font-bold opacity-100' : 'opacity-50'}`}>
+                                <span>{currentLvl > pidx ? '✓' : '•'}</span>
+                                <span>{perk}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 pt-4 border-t border-white/5 flex items-center justify-between gap-4">
+                        {!isMax ? (
+                          <>
+                            <div className="text-xs">
+                              <span className="text-gray-400">Next Level Cost:</span>
+                              <div className="text-orange-400 font-bold text-sm mt-0.5">🪙 {cost} Tokens</div>
+                            </div>
+                            <button 
+                              onClick={() => handleUpgradeMastery(mst.id, cost, 3)}
+                              disabled={!canAfford}
+                              className={`flex-1 py-2 font-bold rounded-xl text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer ${canAfford ? 'bg-orange-500 hover:bg-orange-400 text-black shadow-md' : 'bg-zinc-800 text-gray-500 border border-white/5 cursor-not-allowed'}`}
+                            >
+                              {canAfford ? 'Upgrade Mastery ⚡' : 'Cannot Afford'}
+                            </button>
+                          </>
+                        ) : (
+                          <div className="w-full text-center py-2 bg-orange-500/10 border border-orange-500/20 text-orange-400 font-bold rounded-xl text-xs uppercase tracking-wider">
+                            ✨ awakened potential reached ✨
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
