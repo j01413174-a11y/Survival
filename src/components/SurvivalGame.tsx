@@ -45,6 +45,7 @@ import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import { doc, setDoc, getDoc, getDocs, deleteDoc, collection, query } from 'firebase/firestore';
 import Shop from './Shop';
 import TownShop from './TownShop';
+import NPCDialogue from './NPCDialogue';
 import TerrainGenerator from './TerrainGenerator';
 import { musicEngine } from '../services/audioService';
 import { Music, Play, Pause, Volume2, VolumeX } from 'lucide-react';
@@ -354,24 +355,24 @@ function decompressObjs(compressed: any[]): any[] {
 
 // --- Game Data ---
 const MAPS = [
-  { id: 0, n: 'Verdant Forest', s: 1337, m: TG, f: TD, r: TS, w: TW, wf: .12, rf: .08, sky: '#87ceeb', ef: ['wolf', 'fox', 'goblin', 'bandit', 'deer', 'pheasant'], dr: { wood: .04, fiber: .02, herb: .015, berry: .012, flint: .008, stone: .02 } },
-  { id: 1, n: 'Deep Forest', s: 2674, m: TG, f: TD, r: TS, w: TW, wf: .10, rf: .07, sky: '#1a3d10', ef: ['wolf', 'spider', 'skeleton', 'goblin', 'boar', 'alpha_wolf'], dr: { wood: .04, mushroom: .016, herb: .012, venom: .008, fiber: .014, bone: .01 } },
-  { id: 2, n: 'Sunlit Plains', s: 3011, m: TG, f: TD, r: TS, w: TW, wf: .05, rf: .04, sky: '#6dbadf', ef: ['fox', 'goblin', 'bandit', 'archer', 'deer', 'pheasant', 'boar'], dr: { fiber: .025, herb: .018, berry: .015, flint: .01, feather: .01, honey: .01, cotton: .015 } },
-  { id: 3, n: 'Sandy Desert', s: 4488, m: TSA, f: TSA, r: TS, w: TW, wf: .03, rf: .08, sky: '#f5d08a', ef: ['bandit', 'bandit_chief', 'goblin', 'orc'], dr: { bone: .02, sulfur: .016, flint: .014, gem: .005, sand: .03, stone: .02 } },
+  { id: 0, n: 'Verdant Forest', s: 1337, m: TG, f: TD, r: TS, w: TW, wf: .12, rf: .08, sky: '#87ceeb', ef: ['wolf', 'fox', 'goblin', 'bandit', 'deer', 'pheasant', 'rabbit'], dr: { wood: .04, fiber: .02, herb: .015, berry: .012, flint: .008, stone: .02 } },
+  { id: 1, n: 'Deep Forest', s: 2674, m: TG, f: TD, r: TS, w: TW, wf: .10, rf: .07, sky: '#1a3d10', ef: ['wolf', 'spider', 'skeleton', 'goblin', 'boar', 'alpha_wolf', 'viper'], dr: { wood: .04, mushroom: .016, herb: .012, venom: .008, fiber: .014, bone: .01 } },
+  { id: 2, n: 'Sunlit Plains', s: 3011, m: TG, f: TD, r: TS, w: TW, wf: .05, rf: .04, sky: '#6dbadf', ef: ['fox', 'goblin', 'bandit', 'archer', 'deer', 'pheasant', 'boar', 'rabbit'], dr: { fiber: .025, herb: .018, berry: .015, flint: .01, feather: .01, honey: .01, cotton: .015 } },
+  { id: 3, n: 'Sandy Desert', s: 4488, m: TSA, f: TSA, r: TS, w: TW, wf: .03, rf: .08, sky: '#f5d08a', ef: ['bandit', 'bandit_chief', 'goblin', 'orc', 'viper'], dr: { bone: .02, sulfur: .016, flint: .014, gem: .005, sand: .03, stone: .02 } },
   { id: 4, n: 'Frozen Tundra', s: 5665, m: TSN, f: TS, r: TS, w: TW, wf: .06, rf: .12, sky: '#b0d4e8', ef: ['wolf', 'bear', 'skeleton', 'orc', 'alpha_wolf'], dr: { ice_crystal: .02, bone: .01, herb: .006, crystal: .006, wood: .012 } },
-  { id: 5, n: 'Misty Swamp', s: 6821, m: TSW, f: TD, r: TS, w: TW, wf: .18, rf: .04, sky: '#4a5a3a', ef: ['zombie', 'spider', 'wraith', 'goblin', 'boar'], dr: { mushroom: .022, venom: .016, fiber: .014, silk: .009, herb: .009 } },
+  { id: 5, n: 'Misty Swamp', s: 6821, m: TSW, f: TD, r: TS, w: TW, wf: .18, rf: .04, sky: '#4a5a3a', ef: ['zombie', 'spider', 'wraith', 'goblin', 'boar', 'viper'], dr: { mushroom: .022, venom: .016, fiber: .014, silk: .009, herb: .009 } },
   { id: 6, n: 'Mountain Pass', s: 7234, m: TS, f: TD, r: TS, w: TW, wf: .04, rf: .26, sky: '#7a8898', ef: ['troll', 'bear', 'orc', 'skeleton', 'deer', 'alpha_wolf'], dr: { iron_ore: .02, crystal: .009, gem: .006, coal: .014, stone: .03, mithril_ore: .005 } },
   { id: 7, n: 'Goblin Territory', s: 8456, m: TD, f: TD, r: TS, w: TW, wf: .06, rf: .09, sky: '#7a9a6a', ef: ['goblin', 'goblin_chief', 'bandit', 'orc', 'boar', 'deer'], dr: { bone: .016, feather: .013, leather: .011, flint: .011, wood: .016 } },
   { id: 8, n: 'Coastal Shore', s: 9732, m: TSA, f: TSA, r: TS, w: TW, wf: .28, rf: .03, sky: '#4a9ad4', ef: ['bandit', 'skeleton', 'goblin', 'archer', 'pheasant', 'deer'], dr: { fish: .022, silk: .011, sand: .035, feather: .016, bone: .009 } },
   { id: 9, n: 'Ancient Ruins', s: 10551, m: TS, f: TS, r: TS, w: TW, wf: .03, rf: .20, sky: '#5a5060', ef: ['skeleton', 'golem', 'dark_mage', 'wraith'], dr: { crystal: .016, magic_essence: .011, bone: .022, gem: .013, stone: .022, ancient_rune: .003 } },
   { id: 10, n: 'Scorched Waste', s: 11889, m: TS, f: TS, r: TS, w: TLV, wf: .06, rf: .11, sky: '#8a4020', ef: ['troll', 'orc', 'orc_chief', 'dark_mage'], dr: { sulfur: .022, coal: .027, iron_ore: .014, ash_crystal: .006 } },
-  { id: 11, n: 'Volcanic Fields', s: 12004, m: TS, f: TLV, r: TS, w: TLV, wf: .14, rf: .07, sky: '#cc4400', ef: ['troll', 'orc', 'golem', 'wraith'], dr: { sulfur: .027, coal: .031, iron_ore: .022, crystal: .006, gem: .004 } },
+  { id: 11, n: 'Volcanic Fields', s: 12004, m: TS, f: TLV, r: TS, w: TLV, wf: .14, rf: .07, sky: '#cc4400', ef: ['troll', 'orc', 'golem', 'wraith', 'firedrake'], dr: { sulfur: .027, coal: .031, iron_ore: .022, crystal: .006, gem: .004 } },
   { id: 12, n: 'Orc Stronghold', s: 13377, m: TD, f: TD, r: TS, w: TW, wf: .04, rf: .09, sky: '#6a5040', ef: ['orc', 'orc_chief', 'troll', 'goblin_chief', 'boar'], dr: { bone: .022, leather: .016, iron_ore: .014, coal: .011, wood: .014 } },
   { id: 13, n: 'Bandit Outpost', s: 14220, m: TD, f: TS, r: TS, w: TW, wf: .04, rf: .13, sky: '#5a5060', ef: ['bandit', 'bandit_chief', 'archer', 'dark_mage'], dr: { iron_ore: .014, leather: .014, gem: .006, flint: .014, coal: .009 } },
   { id: 14, n: 'Crystal Cavern', s: 15641, m: TS, f: TS, r: TS, w: TW, wf: .04, rf: .20, sky: '#1a1a44', ef: ['wraith', 'dark_mage', 'skeleton', 'golem'], dr: { crystal: .036, magic_essence: .020, gem: .016, ice_crystal: .014 } },
   { id: 15, n: 'Haunted Graveyard', s: 16007, m: TD, f: TS, r: TS, w: TW, wf: .04, rf: .08, sky: '#1a1a22', ef: ['skeleton', 'zombie', 'wraith', 'dark_mage'], dr: { bone: .036, crystal: .011, magic_essence: .008, herb: .004, silk: .006 } },
   { id: 16, n: 'Undead Kingdom', s: 17890, m: TD, f: TS, r: TS, w: TW, wf: .06, rf: .11, sky: '#0a0a1a', ef: ['zombie', 'skeleton', 'wraith', 'dark_mage', 'golem'], dr: { bone: .040, magic_essence: .016, crystal: .011, silk: .009 } },
-  { id: 17, n: 'Enchanted Grove', s: 18234, m: TG, f: TG, r: TS, w: TW, wf: .09, rf: .04, sky: '#2a1a4a', ef: ['dark_mage', 'wraith', 'goblin', 'spider', 'deer', 'pheasant'], dr: { magic_essence: .025, crystal: .016, herb: .027, silk: .016, mushroom: .011 } },
+  { id: 17, n: 'Enchanted Grove', s: 18234, m: TG, f: TG, r: TS, w: TW, wf: .09, rf: .04, sky: '#2a1a4a', ef: ['dark_mage', 'wraith', 'goblin', 'spider', 'deer', 'pheasant', 'glowsheep'], dr: { magic_essence: .025, crystal: .016, herb: .027, silk: .016, mushroom: .011 } },
   { id: 18, n: "Dragon's Domain", s: 19555, m: TS, f: TLV, r: TS, w: TLV, wf: .11, rf: .09, sky: '#440000', ef: ['dragon', 'troll', 'orc_chief', 'dark_mage'], dr: { gem: .022, crystal: .016, magic_essence: .016, sulfur: .022, bone: .016 } },
   { id: 19, n: 'Corrupted Lands', s: 20001, m: TD, f: TD, r: TS, w: TLV, wf: .09, rf: .09, sky: '#080810', ef: ['dragon', 'dark_mage', 'wraith', 'orc_chief', 'bandit_chief'], dr: { magic_essence: .027, crystal: .022, sulfur: .016, bone: .027, gem: .011 } },
   { id: 20, n: 'Celestial Realm', s: 99999, m: TCR, f: TCR, r: TS, w: TW, wf: .05, rf: .05, sky: '#1a0a3a', ef: ['celestial_guardian', 'void_wraith', 'star_golem'], dr: { magic_essence: .05, crystal: .04, gem: .03, void_crystal: .02, celestial_shard: .01 } },
@@ -383,7 +384,7 @@ const MAPS = [
   { id: 26, n: 'Obsidian Spire', s: 80606, m: TLV, f: TS, r: TS, w: TLV, wf: .08, rf: .18, sky: '#110500', ef: ['troll', 'golem', 'dragon'], dr: { sulfur: .04, coal: .035, iron_ore: .025, crystal: .02 } },
   { id: 27, n: 'Void Rift', s: 90707, m: TCR, f: TCR, r: TS, w: TLV, wf: .05, rf: .05, sky: '#050011', ef: ['void_wraith', 'star_golem', 'dragon'], dr: { void_crystal: .04, magic_essence: .04, celestial_shard: .02 } },
   { id: 28, n: 'Atlantis Ruins', s: 10808, m: TW, f: TS, r: TS, w: TW, wf: .30, rf: .10, sky: '#0a2a3a', ef: ['skeleton', 'golem', 'wraith'], dr: { ancient_rune: .015, magic_essence: .02, crystal: .025, stone: .03 } },
-  { id: 29, n: 'Sakura Garden', s: 11909, m: TG, f: TG, r: TS, w: TW, wf: .10, rf: .05, sky: '#ffcccc', ef: ['fox', 'deer', 'pheasant', 'dark_mage'], dr: { astral_flower: .04, herb: .03, wood: .03, fiber: .025 } },
+  { id: 29, n: 'Sakura Garden', s: 11909, m: TG, f: TG, r: TS, w: TW, wf: .10, rf: .05, sky: '#ffcccc', ef: ['fox', 'deer', 'pheasant', 'dark_mage', 'rabbit'], dr: { astral_flower: .04, herb: .03, wood: .03, fiber: .025 } },
   { id: 30, n: 'Sky Archipelago', s: 121010, m: TCR, f: TG, r: TS, w: TW, wf: .05, rf: .05, sky: '#88ccff', ef: ['celestial_guardian', 'void_wraith', 'star_golem'], dr: { celestial_shard: .03, magic_essence: .03, gem: .025, crystal: .025 } }
 ];
 
@@ -416,6 +417,10 @@ const ET: Record<string, any> = {
   boar: { n: 'Wild Boar', ico: '🐗', hp: 45, spd: 1.4, dmg: 14, acd: 70, xp: 18, lo: { meat: 1.0, leather: .8 }, ran: false },
   pheasant: { n: 'Wild Pheasant', ico: '🦃', hp: 12, spd: 1.8, dmg: 0, acd: 100, xp: 8, lo: { meat: .6, feather: 1.0 }, ran: false },
   alpha_wolf: { n: 'Alpha Wolf', ico: '🐺', hp: 130, spd: 2.1, dmg: 24, acd: 50, xp: 55, lo: { meat: 2.0, leather: 1.5, alpha_pelt: 1.0 }, ran: false, boss: 1 },
+  rabbit: { n: 'Wild Rabbit', ico: '🐇', hp: 10, spd: 2.5, dmg: 0, acd: 100, xp: 5, lo: { meat: .8, leather: .2 }, ran: false },
+  glowsheep: { n: 'Glow Sheep', ico: '🐑', hp: 40, spd: 1.0, dmg: 0, acd: 100, xp: 15, lo: { fiber: 2, silk: 1 }, ran: false },
+  viper: { n: 'Poisonous Viper', ico: '🐍', hp: 25, spd: 1.6, dmg: 12, acd: 45, xp: 18, lo: { venom: 1.0, leather: .4 }, ran: false },
+  firedrake: { n: 'Fire Drake', ico: '🦎', hp: 120, spd: 1.3, dmg: 26, acd: 70, xp: 45, lo: { sulfur: .8, crystal: .5, magic_essence: .3 }, ran: true, boss: 1 },
 };
 
 // --- Procedural Theme Definitions based on Biomes ---
@@ -966,6 +971,11 @@ const baseIT: Record<string, any> = {
   gold_bar: { ico: '⭐', n: 'Gold Bar', t: 'mat' },
   mithril_bar: { ico: '💠', n: 'Mithril Bar', t: 'mat' },
   gold_coins: { ico: '🪙', n: 'Gold Coins', t: 'currency' },
+  maple_syrup: { ico: '🍁', n: 'Maple Syrup', t: 'food', hu: 15, hp: 10 },
+  apple: { ico: '🍎', n: 'Apple', t: 'food', hu: 15, hp: 5 },
+  amber: { ico: '🟡', n: 'Amber', t: 'mat' },
+  glowing_spore: { ico: '🍄', n: 'Glowing Spore', t: 'mat' },
+  shadow_bark: { ico: '🎋', n: 'Shadow Bark', t: 'mat' },
 
   leather_vest: { ico: '🧥', n: 'Leather Vest', t: 'armor', sl: 'chest', def: 5 },
   iron_chest: { ico: '🛡️', n: 'Iron Chest', t: 'armor', sl: 'chest', def: 14 },
@@ -996,6 +1006,14 @@ const baseIT: Record<string, any> = {
   magic_altar: { ico: '🕋', n: 'Magic Altar', t: 'struct' },
   shelter: { ico: '⛺', n: 'Shelter', t: 'struct' },
   stone_pickaxe: { id: 'stone_pickaxe', n: 'Stone Pickaxe', ico: '⛏️', dmg: 12, spd: 30, rng: 44, type: 'melee', mp: 0 },
+  copper_pickaxe: { id: 'copper_pickaxe', n: 'Copper Pickaxe', ico: '⛏️', dmg: 16, spd: 28, rng: 44, type: 'melee', mp: 0 },
+  iron_pickaxe: { id: 'iron_pickaxe', n: 'Iron Pickaxe', ico: '⛏️', dmg: 22, spd: 26, rng: 44, type: 'melee', mp: 0 },
+  gold_pickaxe: { id: 'gold_pickaxe', n: 'Gold Pickaxe', ico: '⛏️', dmg: 28, spd: 24, rng: 44, type: 'melee', mp: 0 },
+  mithril_pickaxe: { id: 'mithril_pickaxe', n: 'Mithril Pickaxe', ico: '⛏️', dmg: 38, spd: 20, rng: 44, type: 'melee', mp: 0 },
+  copper_axe: { id: 'copper_axe', n: 'Copper Axe', ico: '🪓', dmg: 16, spd: 26, rng: 44, type: 'melee', mp: 0 },
+  iron_axe: { id: 'iron_axe', n: 'Iron Axe', ico: '🪓', dmg: 22, spd: 24, rng: 44, type: 'melee', mp: 0 },
+  gold_axe: { id: 'gold_axe', n: 'Gold Axe', ico: '🪓', dmg: 28, spd: 22, rng: 44, type: 'melee', mp: 0 },
+  mithril_axe: { id: 'mithril_axe', n: 'Mithril Axe', ico: '🪓', dmg: 38, spd: 18, rng: 44, type: 'melee', mp: 0 },
   wood_club: { id: 'wood_club', n: 'Wooden Club', ico: '🪵', dmg: 10, spd: 32, rng: 42, type: 'melee', mp: 0 },
 
   // --- Hunted/Fishing Hotspot additions ---
@@ -1123,6 +1141,14 @@ const RC = [
   { n: 'Shelter', out: 'shelter', cnt: 1, cat: 'Structures', c: { wood: 10, stone: 5, fiber: 8 } },
   { n: 'Stone Pickaxe', out: 'stone_pickaxe', cnt: 1, cat: 'Weapons', c: { stone: 3, stick: 2 } },
   { n: 'Wooden Club', out: 'wood_club', cnt: 1, cat: 'Weapons', c: { wood: 3 } },
+  { n: 'Copper Pickaxe', out: 'copper_pickaxe', cnt: 1, cat: 'Weapons', c: { copper_bar: 3, stick: 2 }, req: 'forge' },
+  { n: 'Iron Pickaxe', out: 'iron_pickaxe', cnt: 1, cat: 'Weapons', c: { iron_bar: 3, stick: 2 }, req: 'forge' },
+  { n: 'Gold Pickaxe', out: 'gold_pickaxe', cnt: 1, cat: 'Weapons', c: { gold_bar: 3, stick: 2 }, req: 'forge' },
+  { n: 'Mithril Pickaxe', out: 'mithril_pickaxe', cnt: 1, cat: 'Weapons', c: { mithril_bar: 3, stick: 2 }, req: 'forge' },
+  { n: 'Copper Axe', out: 'copper_axe', cnt: 1, cat: 'Weapons', c: { copper_bar: 2, stick: 1 }, req: 'forge' },
+  { n: 'Iron Axe', out: 'iron_axe', cnt: 1, cat: 'Weapons', c: { iron_bar: 2, stick: 1 }, req: 'forge' },
+  { n: 'Gold Axe', out: 'gold_axe', cnt: 1, cat: 'Weapons', c: { gold_bar: 2, stick: 1 }, req: 'forge' },
+  { n: 'Mithril Axe', out: 'mithril_axe', cnt: 1, cat: 'Weapons', c: { mithril_bar: 2, stick: 1 }, req: 'forge' },
 
   // --- High-tier Equipment from Dangerous Biomes ---
   { n: 'Dragon Chestplate', out: 'dragon_scale_chest', cnt: 1, cat: 'Armor', c: { dragon_scale: 6, mithril_bar: 3 }, req: 'forge' },
@@ -1347,8 +1373,10 @@ export default function SurvivalGame() {
   const [nftPage, setNftPage] = useState<number>(0);
   const [invCategory, setInvCategory] = useState<'all' | 'weapon' | 'armor' | 'food' | 'mat' | 'nft'>('all');
   const [selectedInvItem, setSelectedInvItem] = useState<string | null>(null);
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [showCraft, setShowCraft] = useState(false);
   const [showTownShop, setShowTownShop] = useState(false);
+  const [activeNPC, setActiveNPC] = useState<any | null>(null);
   const [townShopType, setTownShopType] = useState<'general' | 'blacksmith' | 'alchemist'>('general');
   const [showRecipeBook, setShowRecipeBook] = useState(false);
   const [recipeSearch, setRecipeSearch] = useState('');
@@ -1610,20 +1638,21 @@ export default function SurvivalGame() {
   const [showDeathScreen, setShowDeathScreen] = useState(false);
 
   // Collapse/Hide states for Left Panels to prevent screen clutter
-  const [isStatusCollapsed, setIsStatusCollapsed] = useState(false);
+  const [isStatusCollapsed, setIsStatusCollapsed] = useState(true);
   const [isEquipCollapsed, setIsEquipCollapsed] = useState(true); // default to true to keep screen clean!
-  const [isAutoCollapsed, setIsAutoCollapsed] = useState(false); // default to false so it is immediately visible!
+  const [isAutoCollapsed, setIsAutoCollapsed] = useState(true); // default to true so it is highly hidden by default!
+  const [isMenuBarCollapsed, setIsMenuBarCollapsed] = useState(true); // default to true to make the menu highly hidden!
 
   // --- Minimap States & Refs ---
   const [minimapMode, setMinimapMode] = useState<'local' | 'world'>('local');
   const [minimapZoom, setMinimapZoom] = useState<number>(1.2);
-  const [isMinimapCollapsed, setIsMinimapCollapsed] = useState<boolean>(false);
+  const [isMinimapCollapsed, setIsMinimapCollapsed] = useState<boolean>(true);
   const [showMinimapLegend, setShowMinimapLegend] = useState<boolean>(false);
   const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const minimapModeRef = useRef<'local' | 'world'>('local');
   const minimapZoomRef = useRef<number>(1.2);
-  const isMinimapCollapsedRef = useRef<boolean>(false);
+  const isMinimapCollapsedRef = useRef<boolean>(true);
 
   useEffect(() => { minimapModeRef.current = minimapMode; }, [minimapMode]);
   useEffect(() => { minimapZoomRef.current = minimapZoom; }, [minimapZoom]);
@@ -1845,7 +1874,9 @@ export default function SurvivalGame() {
         woodcutting: { lvl: 1, xp: 0, xpNext: 100 },
         combat: { lvl: 1, xp: 0, xpNext: 100 },
         alchemy: { lvl: 1, xp: 0, xpNext: 100 },
-        hunting: { lvl: 1, xp: 0, xpNext: 100 }
+        hunting: { lvl: 1, xp: 0, xpNext: 100 },
+        smithing: { lvl: 1, xp: 0, xpNext: 100 },
+        farming: { lvl: 1, xp: 0, xpNext: 100 }
       };
       s.pl.discoveredChunks = data.pl.discoveredChunks || {};
 
@@ -2444,7 +2475,9 @@ export default function SurvivalGame() {
         woodcutting: { lvl: 1, xp: 0, xpNext: 100 },
         combat: { lvl: 1, xp: 0, xpNext: 100 },
         alchemy: { lvl: 1, xp: 0, xpNext: 100 },
-        hunting: { lvl: 1, xp: 0, xpNext: 100 }
+        hunting: { lvl: 1, xp: 0, xpNext: 100 },
+        smithing: { lvl: 1, xp: 0, xpNext: 100 },
+        farming: { lvl: 1, xp: 0, xpNext: 100 }
       },
       discoveredChunks: {}
     };
@@ -2468,6 +2501,7 @@ export default function SurvivalGame() {
         const M = zoneMaps[mi];
         const rng = mkRng(M.s + mi * 7919 + currentSeed);
         const ox = zc * ZW, oy = zr * ZH;
+        let spawnedNPCInZone = false;
 
         const isTownZone = (zc === 1 && zr === 0) || (zc === 4 && zr === 4);
         const isBanditZone = (zc === 2 && zr === 1) || (zc === 5 && zr === 3) || (zc === 6 && zr === 5);
@@ -2496,40 +2530,104 @@ export default function SurvivalGame() {
               const randVal = rng();
               const tileType = world[wy][wx];
               
+              // Procedural friendly NPC Spawning (At most 1 per zone, rare chance on main ground)
+              if (!spawnedNPCInZone && (tileType === tileM.m || tileType === tileM.f) && lx > 6 && lx < ZW - 6 && ly > 6 && ly < ZH - 6) {
+                if (randVal < 0.0003) {
+                  let npcType = 'tame_dog';
+                  let npcIco = '🐕';
+                  
+                  const allowed = ['tame_dog', 'lost_explorer'];
+                  if (tileM.n.includes('Enchanted') || tileM.n.includes('Forest')) {
+                    allowed.push('elven_druid');
+                  }
+                  
+                  const chosenIdx = Math.floor(rng() * allowed.length);
+                  npcType = allowed[chosenIdx];
+                  
+                  if (npcType === 'tame_dog') npcIco = '🐕';
+                  else if (npcType === 'lost_explorer') npcIco = '🧭';
+                  else if (npcType === 'elven_druid') npcIco = '🧝‍♀️';
+                  
+                  objs.push({ type: npcType, tx: wx, ty: wy, hp: 999, mhp: 999, ico: npcIco });
+                  spawnedNPCInZone = true;
+                }
+              }
+              
               if (tileType === tileM.m || tileType === tileM.f) {
                 // Spawn Trees based on Biome (4.5x Spawn Rate)
                 if (randVal < tileM.wf * 4.5 * (genConfigRef.current.treeDensity ?? 1.0)) {
                   let treeIco = '🌲';
                   let treeHp = 3;
                   let treeSubtype = 'oak';
+                  const subRand = rng();
                   
                   if (tileM.n.includes('Desert')) {
                     treeIco = '🌵';
                     treeSubtype = 'cactus';
                     treeHp = 2;
                   } else if (tileM.n.includes('Frozen') || tileM.n.includes('Tundra')) {
-                    treeIco = '❄️';
-                    treeSubtype = 'snowpine';
-                    treeHp = 4;
+                    if (subRand < 0.3) {
+                      treeIco = '🌲';
+                      treeSubtype = 'redwood';
+                      treeHp = 8;
+                    } else {
+                      treeIco = '❄️';
+                      treeSubtype = 'snowpine';
+                      treeHp = 4;
+                    }
                   } else if (tileM.n.includes('Swamp')) {
-                    treeIco = '🌴';
-                    treeSubtype = 'willow';
-                    treeHp = 3;
+                    if (subRand < 0.3) {
+                      treeIco = '🎋';
+                      treeSubtype = 'shadowwood';
+                      treeHp = 4;
+                    } else {
+                      treeIco = '🌴';
+                      treeSubtype = 'willow';
+                      treeHp = 3;
+                    }
                   } else if (tileM.n.includes('Scorched') || tileM.n.includes('Volcanic')) {
                     treeIco = '🪵';
                     treeSubtype = 'dead';
                     treeHp = 2;
                   } else if (tileM.n.includes('Enchanted')) {
-                    treeIco = '🌸';
-                    treeSubtype = 'blossom';
-                    treeHp = 4;
+                    if (subRand < 0.35) {
+                      treeIco = '🍄';
+                      treeSubtype = 'glowshroom';
+                      treeHp = 3;
+                    } else {
+                      treeIco = '🌸';
+                      treeSubtype = 'blossom';
+                      treeHp = 4;
+                    }
                   } else if (tileM.n.includes('Celestial')) {
-                    treeIco = '🌌';
-                    treeSubtype = 'cosmic';
-                    treeHp = 5;
+                    if (subRand < 0.3) {
+                      treeIco = '🎋';
+                      treeSubtype = 'shadowwood';
+                      treeHp = 4;
+                    } else {
+                      treeIco = '🌌';
+                      treeSubtype = 'cosmic';
+                      treeHp = 5;
+                    }
                   } else {
-                    treeIco = '🌳';
-                    treeSubtype = 'birch';
+                    // Forest, Plains, etc.
+                    if (subRand < 0.15) {
+                      treeIco = '🍁';
+                      treeSubtype = 'maple';
+                      treeHp = 4;
+                    } else if (subRand < 0.3) {
+                      treeIco = '🍎';
+                      treeSubtype = 'apple';
+                      treeHp = 3;
+                    } else if (subRand < 0.7) {
+                      treeIco = '🌳';
+                      treeSubtype = 'birch';
+                      treeHp = 3;
+                    } else {
+                      treeIco = '🌲';
+                      treeSubtype = 'oak';
+                      treeHp = 3;
+                    }
                   }
                   
                   objs.push({ type: 'tree', tx: wx, ty: wy, hp: treeHp, mhp: treeHp, ico: treeIco, subtype: treeSubtype });
@@ -2701,6 +2799,7 @@ export default function SurvivalGame() {
           objs.push({ type: 'town_house', tx: cx + 5, ty: cy - 5, ico: '🏠', hp: 999 });
           objs.push({ type: 'town_house', tx: cx - 5, ty: cy + 5, ico: '🏡', hp: 999 });
           objs.push({ type: 'town_house', tx: cx + 5, ty: cy + 5, ico: '🏰', hp: 999 });
+          objs.push({ type: 'tavern_bard', tx: cx, ty: cy + 2, hp: 999, mhp: 999, ico: '🪕' });
         }
 
         if (isBanditZone) {
@@ -2779,6 +2878,43 @@ export default function SurvivalGame() {
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, [initGame]);
+
+  // Persistent Hotbar Keybindings: 1-8 for swapping and binding items
+  useEffect(() => {
+    const handleHotbarHotkeys = (e: KeyboardEvent) => {
+      // Prevent running hotkeys if typing in inputs or textarea
+      const target = e.target as HTMLElement;
+      if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      // Check if key is 1-8
+      if (e.key >= '1' && e.key <= '8') {
+        const slotIdx = parseInt(e.key, 10) - 1;
+
+        // BINDING MECHANISM:
+        // If inventory modal is open, allow binding the hovered or selected item to this slot
+        if (showInv) {
+          const itemToBind = hoveredItem || selectedInvItem;
+          if (itemToBind && itemToBind !== 'fists') {
+            e.preventDefault();
+            assignToHotbar(itemToBind, slotIdx);
+            return;
+          }
+        }
+
+        // SWAPPING/EQUIPPING MECHANISM:
+        // Select slot or use the item in it
+        e.preventDefault();
+        handleHotbarClick(slotIdx);
+      }
+    };
+
+    window.addEventListener('keydown', handleHotbarHotkeys);
+    return () => {
+      window.removeEventListener('keydown', handleHotbarHotkeys);
+    };
+  }, [showInv, hoveredItem, selectedInvItem, hotSlot, gameState]);
 
   // Handle Resize
   useEffect(() => {
@@ -5464,8 +5600,13 @@ export default function SurvivalGame() {
         woodcutting: { lvl: 1, xp: 0, xpNext: 100 },
         combat: { lvl: 1, xp: 0, xpNext: 100 },
         alchemy: { lvl: 1, xp: 0, xpNext: 100 },
-        hunting: { lvl: 1, xp: 0, xpNext: 100 }
+        hunting: { lvl: 1, xp: 0, xpNext: 100 },
+        smithing: { lvl: 1, xp: 0, xpNext: 100 },
+        farming: { lvl: 1, xp: 0, xpNext: 100 }
       };
+    }
+    if (!s.pl.skills[skill]) {
+      s.pl.skills[skill] = { lvl: 1, xp: 0, xpNext: 100 };
     }
     const sk = s.pl.skills[skill];
     if (!sk) return;
@@ -5562,7 +5703,7 @@ export default function SurvivalGame() {
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     // 1. Don't gather if a menu/modal is open
-    if (showSkills || showCraft || showRecipeBook || showOracle || showSaveMenu || showWorldMenu || showSpellbook || showNFTMarket || showShop || showDeathScreen || showInv || showMusicMenu || isFishing) {
+    if (showSkills || showCraft || showRecipeBook || showOracle || showSaveMenu || showWorldMenu || showSpellbook || showNFTMarket || showShop || showDeathScreen || showInv || showMusicMenu || isFishing || activeNPC) {
       return;
     }
 
@@ -5608,9 +5749,16 @@ export default function SurvivalGame() {
 
         if (o.type === 'tree') {
           // Calculate weapon damage bonus for chopping wood
-          const isAxe = s.pl.weapon && s.pl.weapon.includes('axe');
-          const isPick = s.pl.weapon && s.pl.weapon.includes('pickaxe');
-          const dmg = isAxe ? 3 : isPick ? 1 : 1;
+          let dmg = 1;
+          const w = s.pl.weapon;
+          if (w) {
+            if (w === 'stone_axe') dmg = 2;
+            else if (w === 'copper_axe') dmg = 3;
+            else if (w === 'iron_axe') dmg = 4;
+            else if (w === 'gold_axe') dmg = 5;
+            else if (w === 'mithril_axe') dmg = 6;
+            else if (w.includes('axe')) dmg = 3; // fallback
+          }
           
           o.hp -= dmg;
           gainSkillXP('woodcutting', 3);
@@ -5653,6 +5801,40 @@ export default function SurvivalGame() {
                 s.pl.inv.magic_essence = (s.pl.inv.magic_essence || 0) + qty;
                 addLog(`+Magic Essence x${qty}! ✨`, '#22d3ee');
               }
+            } else if (o.subtype === 'maple') {
+              if (Math.random() < 0.60) {
+                s.pl.inv.maple_syrup = (s.pl.inv.maple_syrup || 0) + 1;
+                addLog(`+Maple Syrup x1! 🍁`, '#fb923c');
+              }
+            } else if (o.subtype === 'apple') {
+              if (Math.random() < 0.60) {
+                const qty = 1 + Math.floor(Math.random() * 2);
+                s.pl.inv.apple = (s.pl.inv.apple || 0) + qty;
+                addLog(`+Apple x${qty}! 🍎`, '#ef4444');
+              }
+            } else if (o.subtype === 'redwood') {
+              const extraWood = 5 + Math.floor(Math.random() * 5);
+              s.pl.inv.wood = (s.pl.inv.wood || 0) + extraWood;
+              addLog(`+Giant Redwood Lumber x${extraWood}! 🪵`, '#fb923c');
+              if (Math.random() < 0.40) {
+                s.pl.inv.amber = (s.pl.inv.amber || 0) + 1;
+                addLog(`+Amber Clump x1! 🟡`, '#eab308');
+              }
+            } else if (o.subtype === 'glowshroom') {
+              if (Math.random() < 0.50) {
+                const qty = 1 + Math.floor(Math.random() * 2);
+                s.pl.inv.glowing_spore = (s.pl.inv.glowing_spore || 0) + qty;
+                addLog(`+Glowing Spore x${qty}! 🍄`, '#a855f7');
+              }
+            } else if (o.subtype === 'shadowwood') {
+              if (Math.random() < 0.50) {
+                s.pl.inv.shadow_bark = (s.pl.inv.shadow_bark || 0) + 1;
+                addLog(`+Shadow Bark x1! 🎋`, '#c084fc');
+              }
+              if (Math.random() < 0.30) {
+                s.pl.inv.void_crystal = (s.pl.inv.void_crystal || 0) + 1;
+                addLog(`+Void Crystal x1! 🔮`, '#a855f7');
+              }
             }
 
             if (Math.random() < 0.2 + (wcLvl * 0.05)) {
@@ -5671,8 +5853,17 @@ export default function SurvivalGame() {
           }
         } else if (o.type === 'rock') {
           // Calculate weapon damage bonus for mining rocks
-          const isPick = s.pl.weapon && s.pl.weapon.includes('pickaxe');
-          const dmg = isPick ? 3 : 1;
+          let dmg = 1;
+          const w = s.pl.weapon;
+          if (w) {
+            if (w === 'stone_pickaxe') dmg = 2;
+            else if (w === 'copper_pickaxe') dmg = 3;
+            else if (w === 'iron_pickaxe') dmg = 4;
+            else if (w === 'gold_pickaxe') dmg = 5;
+            else if (w === 'mithril_pickaxe') dmg = 6;
+            else if (w === 'aether_pickaxe') dmg = 8;
+            else if (w.includes('pickaxe')) dmg = 3; // fallback
+          }
 
           o.hp -= dmg;
           gainSkillXP('mining', 3);
@@ -5777,6 +5968,10 @@ export default function SurvivalGame() {
         } else if (o.type === 'drop') {
           s.pl.inv[o.item] = (s.pl.inv[o.item] || 0) + o.qty;
           addLog(`+${IT[o.item]?.n || o.item} x${o.qty}`, '#ccffaa');
+          const farmItems = ['herb', 'berry', 'mushroom', 'cactus_fruit', 'snowberry', 'astral_flower', 'fiber'];
+          if (farmItems.includes(o.item)) {
+            addSkillXPDirect(s, 'farming', 10 * o.qty);
+          }
           s.objs.splice(i, 1);
           spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#ccffaa', 8, 'spark');
         } else if (o.type === 'cave_treasure') {
@@ -5805,6 +6000,14 @@ export default function SurvivalGame() {
       let colVal = "#ffffff";
       let xpCategory = "";
 
+      if ((tileType === TW || tileType === TLV) && (s.pl.weapon === 'fishing_rod' || (s.pl.inv && s.pl.inv.fishing_rod > 0))) {
+        if (s.pl.weapon !== 'fishing_rod' && s.pl.inv.fishing_rod > 0) {
+          s.pl.weapon = 'fishing_rod';
+        }
+        handleStartFishing();
+        return;
+      }
+
       if (tileType === TG || tileType === TD) {
         // Grass / Soil: Harvest wood (stick) or fiber or herb
         const r = Math.random();
@@ -5812,16 +6015,18 @@ export default function SurvivalGame() {
           collectedKey = "fiber";
           collectedName = "Fiber";
           colVal = "#a3e635";
+          xpCategory = "farming";
         } else if (r < 0.8) {
           collectedKey = "stick";
           collectedName = "Stick";
           colVal = "#b45309";
+          xpCategory = "woodcutting";
         } else {
           collectedKey = "herb";
           collectedName = "Herb";
           colVal = "#22c55e";
+          xpCategory = "farming";
         }
-        xpCategory = "woodcutting";
       } else if (tileType === TS || tileType === TSN) {
         // Stone / Snow: Harvest stone or flint
         const r = Math.random();
@@ -5909,7 +6114,17 @@ export default function SurvivalGame() {
       const o = s.objs[i];
       if (Math.abs(o.tx - px) + Math.abs(o.ty - py) <= 2) {
         if (o.type === 'tree') {
-          o.hp--;
+          let dmg = 1;
+          const w = s.pl.weapon;
+          if (w) {
+            if (w === 'stone_axe') dmg = 2;
+            else if (w === 'copper_axe') dmg = 3;
+            else if (w === 'iron_axe') dmg = 4;
+            else if (w === 'gold_axe') dmg = 5;
+            else if (w === 'mithril_axe') dmg = 6;
+            else if (w.includes('axe')) dmg = 3;
+          }
+          o.hp -= dmg;
           gainSkillXP('woodcutting', 3);
           if (o.hp <= 0) {
             s.objs.splice(i, 1);
@@ -5948,6 +6163,40 @@ export default function SurvivalGame() {
                 s.pl.inv.magic_essence = (s.pl.inv.magic_essence || 0) + qty;
                 addLog(`+Magic Essence x${qty}! ✨`, '#22d3ee');
               }
+            } else if (o.subtype === 'maple') {
+              if (Math.random() < 0.60) {
+                s.pl.inv.maple_syrup = (s.pl.inv.maple_syrup || 0) + 1;
+                addLog(`+Maple Syrup x1! 🍁`, '#fb923c');
+              }
+            } else if (o.subtype === 'apple') {
+              if (Math.random() < 0.60) {
+                const qty = 1 + Math.floor(Math.random() * 2);
+                s.pl.inv.apple = (s.pl.inv.apple || 0) + qty;
+                addLog(`+Apple x${qty}! 🍎`, '#ef4444');
+              }
+            } else if (o.subtype === 'redwood') {
+              const extraWood = 5 + Math.floor(Math.random() * 5);
+              s.pl.inv.wood = (s.pl.inv.wood || 0) + extraWood;
+              addLog(`+Giant Redwood Lumber x${extraWood}! 🪵`, '#fb923c');
+              if (Math.random() < 0.40) {
+                s.pl.inv.amber = (s.pl.inv.amber || 0) + 1;
+                addLog(`+Amber Clump x1! 🟡`, '#eab308');
+              }
+            } else if (o.subtype === 'glowshroom') {
+              if (Math.random() < 0.50) {
+                const qty = 1 + Math.floor(Math.random() * 2);
+                s.pl.inv.glowing_spore = (s.pl.inv.glowing_spore || 0) + qty;
+                addLog(`+Glowing Spore x${qty}! 🍄`, '#a855f7');
+              }
+            } else if (o.subtype === 'shadowwood') {
+              if (Math.random() < 0.50) {
+                s.pl.inv.shadow_bark = (s.pl.inv.shadow_bark || 0) + 1;
+                addLog(`+Shadow Bark x1! 🎋`, '#c084fc');
+              }
+              if (Math.random() < 0.30) {
+                s.pl.inv.void_crystal = (s.pl.inv.void_crystal || 0) + 1;
+                addLog(`+Void Crystal x1! 🔮`, '#a855f7');
+              }
             }
 
             if (Math.random() < 0.2 + (wcLvl * 0.05)) {
@@ -5964,7 +6213,18 @@ export default function SurvivalGame() {
           return;
         }
         if (o.type === 'rock') {
-          o.hp--;
+          let dmg = 1;
+          const w = s.pl.weapon;
+          if (w) {
+            if (w === 'stone_pickaxe') dmg = 2;
+            else if (w === 'copper_pickaxe') dmg = 3;
+            else if (w === 'iron_pickaxe') dmg = 4;
+            else if (w === 'gold_pickaxe') dmg = 5;
+            else if (w === 'mithril_pickaxe') dmg = 6;
+            else if (w === 'aether_pickaxe') dmg = 8;
+            else if (w.includes('pickaxe')) dmg = 3;
+          }
+          o.hp -= dmg;
           gainSkillXP('mining', 3);
           if (o.hp <= 0) {
             s.objs.splice(i, 1);
@@ -6154,6 +6414,11 @@ export default function SurvivalGame() {
           setTownShopType(typeMap[o.type]);
           setShowTownShop(true);
           addLog(`🧔 Conversing with the local merchant...`, '#38bdf8');
+          return;
+        }
+        if (o.type === 'lost_explorer' || o.type === 'elven_druid' || o.type === 'tame_dog' || o.type === 'tavern_bard') {
+          setActiveNPC(o);
+          addLog(`💬 Conversing with the ${o.type.replace('_', ' ')}...`, '#38bdf8');
           return;
         }
         if (o.type === 'bandit_chest') {
@@ -6686,6 +6951,8 @@ export default function SurvivalGame() {
       addSkillXPDirect(s, 'cooking', 15 * qty);
     } else if (r.out === 'mana_crystal' || r.out === 'void_essence' || r.out.includes('staff')) {
       addSkillXPDirect(s, 'alchemy', 25 * qty);
+    } else if (r.cat === 'Weapons' || r.cat === 'Armor' || r.out.includes('bar') || r.out.includes('pickaxe') || r.out.includes('axe')) {
+      addSkillXPDirect(s, 'smithing', 20 * qty);
     }
 
     s.pl.inv[r.out] = (s.pl.inv[r.out] || 0) + actualQty;
@@ -7581,96 +7848,117 @@ export default function SurvivalGame() {
           </div>
 
           {/* Master Action & Management Menu Bar */}
-          <div className="mt-3 flex flex-wrap gap-1.5 sm:gap-2 justify-end max-w-[310px] sm:max-w-[460px] md:max-w-[600px] lg:max-w-none pointer-events-auto">
-            <button 
-              onClick={() => { setShowInv(true); setSelectedInvItem(null); setInvCategory('all'); }}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-white/10 hover:border-yellow-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-yellow-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <Backpack size={11} className="text-yellow-500" />
-              <span>INV</span>
-            </button>
-            <button 
-              onClick={() => setShowCraft(true)}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-white/10 hover:border-yellow-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-yellow-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <Hammer size={11} className="text-yellow-500" />
-              <span>CRAFT</span>
-            </button>
-            <button 
-              onClick={() => setShowRecipeBook(true)}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-amber-500/20 hover:border-amber-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-amber-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <Book size={11} className="text-amber-400" />
-              <span>RECIPES</span>
-            </button>
-            <button 
-              onClick={() => setIsAutoCollapsed(prev => !prev)}
-              className={`px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-lg ${!isAutoCollapsed ? 'border-teal-400 text-teal-300 shadow-[0_0_15px_rgba(20,184,166,0.25)] font-bold' : 'border-teal-500/20 text-white hover:text-teal-300'}`}
-            >
-              <Cpu size={11} className="text-teal-400" />
-              <span>AUTOMATE</span>
-            </button>
-            <button 
-              onClick={() => setShowSkills(true)}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-teal-500/20 hover:border-teal-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-teal-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <Sparkles size={11} className="text-teal-400" />
-              <span>SKILLS</span>
-            </button>
-            <button 
-              onClick={handleConsultOracle}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-purple-500/20 hover:border-purple-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-purple-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <BrainCircuit size={11} className="text-purple-400" />
-              <span>ORACLE</span>
-            </button>
-            <button 
-              onClick={() => setShowSpellbook(true)}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-fuchsia-500/20 hover:border-fuchsia-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-fuchsia-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <BookOpen size={11} className="text-fuchsia-400" />
-              <span>SPELLS</span>
-            </button>
-            <button 
-              id="system-save-btn"
-              onClick={() => {
-                loadSlotMetadata();
-                setShowSaveMenu(true);
-              }}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-white/10 hover:border-yellow-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-yellow-500 hover:text-yellow-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <Save size={11} className="animate-pulse text-yellow-500" />
-              <span>SAVE</span>
-            </button>
-            <button 
-              onClick={() => setShowWorldMenu(true)}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-emerald-500/20 hover:border-emerald-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-emerald-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <Globe size={11} className="text-emerald-400" />
-              <span>WORLD</span>
-            </button>
-            <button 
-              onClick={() => setShowNFTMarket(true)}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-cyan-500/30 hover:border-cyan-400 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-cyan-400 hover:text-cyan-300 hover:scale-105 active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(6,182,212,0.15)] hover:shadow-[0_0_25px_rgba(6,182,212,0.3)] animate-pulse"
-            >
-              <Cpu size={11} className="text-cyan-400" />
-              <span>NFT SHOP</span>
-            </button>
-            <button 
-              onClick={() => setShowShop(true)}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-500/40 hover:border-yellow-400 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-yellow-400 hover:text-yellow-300 hover:scale-105 active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(245,158,11,0.15)] hover:shadow-[0_0_25px_rgba(245,158,11,0.3)]"
-            >
-              <Sparkles size={11} className="text-yellow-400" />
-              <span>💎 SHOP</span>
-            </button>
-            <button 
-              onClick={() => setShowMusicMenu(true)}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-rose-500/20 hover:border-rose-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-rose-400 hover:text-rose-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <Music size={11} className={isMusicPlaying ? "animate-bounce text-rose-400" : "text-rose-400"} />
-              <span>MUSIC</span>
-            </button>
-          </div>
+          {isMenuBarCollapsed ? (
+            <div className="mt-3 pointer-events-auto">
+              <button 
+                onClick={() => setIsMenuBarCollapsed(false)}
+                className="px-3 py-2 bg-zinc-950/90 border border-yellow-500/30 hover:border-yellow-400 text-yellow-400 hover:text-yellow-300 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-lg animate-pulse"
+              >
+                <span>🎛️ SYSTEM CONTROLS</span>
+                <span className="text-[8px] bg-yellow-500/20 text-yellow-300 px-1.5 py-0.5 rounded font-black">OPEN</span>
+              </button>
+            </div>
+          ) : (
+            <div className="mt-3 flex flex-wrap gap-1.5 sm:gap-2 justify-end max-w-[310px] sm:max-w-[460px] md:max-w-[600px] lg:max-w-[550px] pointer-events-auto bg-zinc-950/95 border border-white/10 p-3 rounded-2xl backdrop-blur-md shadow-2xl transition-all">
+              <div className="w-full flex justify-between items-center border-b border-white/10 pb-2 mb-1">
+                <span className="text-[10px] font-bold text-yellow-400 tracking-widest uppercase">🎛️ CONTROLS MENU</span>
+                <button 
+                  onClick={() => setIsMenuBarCollapsed(true)}
+                  className="px-2 py-0.5 bg-zinc-900 border border-red-500/20 hover:border-red-500 text-[9px] rounded-lg text-zinc-400 hover:text-red-400 cursor-pointer transition-all active:scale-95"
+                >
+                  ✕ HIDE
+                </button>
+              </div>
+              <button 
+                onClick={() => { setShowInv(true); setSelectedInvItem(null); setInvCategory('all'); }}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-white/10 hover:border-yellow-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-yellow-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Backpack size={11} className="text-yellow-500" />
+                <span>INV</span>
+              </button>
+              <button 
+                onClick={() => setShowCraft(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-white/10 hover:border-yellow-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-yellow-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Hammer size={11} className="text-yellow-500" />
+                <span>CRAFT</span>
+              </button>
+              <button 
+                onClick={() => setShowRecipeBook(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-amber-500/20 hover:border-amber-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-amber-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Book size={11} className="text-amber-400" />
+                <span>RECIPES</span>
+              </button>
+              <button 
+                onClick={() => setIsAutoCollapsed(prev => !prev)}
+                className={`px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-lg ${!isAutoCollapsed ? 'border-teal-400 text-teal-300 shadow-[0_0_15px_rgba(20,184,166,0.25)] font-bold' : 'border-teal-500/20 text-white hover:text-teal-300'}`}
+              >
+                <Cpu size={11} className="text-teal-400" />
+                <span>AUTOMATE</span>
+              </button>
+              <button 
+                onClick={() => setShowSkills(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-teal-500/20 hover:border-teal-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-teal-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Sparkles size={11} className="text-teal-400" />
+                <span>SKILLS</span>
+              </button>
+              <button 
+                onClick={handleConsultOracle}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-purple-500/20 hover:border-purple-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-purple-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <BrainCircuit size={11} className="text-purple-400" />
+                <span>ORACLE</span>
+              </button>
+              <button 
+                onClick={() => setShowSpellbook(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-fuchsia-500/20 hover:border-fuchsia-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-fuchsia-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <BookOpen size={11} className="text-fuchsia-400" />
+                <span>SPELLS</span>
+              </button>
+              <button 
+                id="system-save-btn"
+                onClick={() => {
+                  loadSlotMetadata();
+                  setShowSaveMenu(true);
+                }}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-white/10 hover:border-yellow-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-yellow-500 hover:text-yellow-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Save size={11} className="animate-pulse text-yellow-500" />
+                <span>SAVE</span>
+              </button>
+              <button 
+                onClick={() => setShowWorldMenu(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-emerald-500/20 hover:border-emerald-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-emerald-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Globe size={11} className="text-emerald-400" />
+                <span>WORLD</span>
+              </button>
+              <button 
+                onClick={() => setShowNFTMarket(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-cyan-500/30 hover:border-cyan-400 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-cyan-400 hover:text-cyan-300 hover:scale-105 active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(6,182,212,0.15)] hover:shadow-[0_0_25px_rgba(6,182,212,0.3)] animate-pulse"
+              >
+                <Cpu size={11} className="text-cyan-400" />
+                <span>NFT SHOP</span>
+              </button>
+              <button 
+                onClick={() => setShowShop(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-500/40 hover:border-yellow-400 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-yellow-400 hover:text-yellow-300 hover:scale-105 active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(245,158,11,0.15)] hover:shadow-[0_0_25px_rgba(245,158,11,0.3)]"
+              >
+                <Sparkles size={11} className="text-yellow-400" />
+                <span>💎 SHOP</span>
+              </button>
+              <button 
+                onClick={() => setShowMusicMenu(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-rose-500/20 hover:border-rose-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-rose-400 hover:text-rose-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Music size={11} className={isMusicPlaying ? "animate-bounce text-rose-400" : "text-rose-400"} />
+                <span>MUSIC</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -7885,23 +8173,7 @@ export default function SurvivalGame() {
         </div>
       )}
 
-      {/* --- Logs --- */}
-      <div className="absolute top-24 left-[276px] flex flex-col gap-1 pointer-events-none z-10 max-w-sm">
-        <AnimatePresence>
-          {logs.map((log, idx) => (
-            <motion.div 
-              key={`${log.id}-${idx}`}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className="px-3 py-1 rounded bg-black/80 border-l-4 text-xs"
-              style={{ borderColor: log.col }}
-            >
-              {log.msg}
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </div>
+      {/* --- Logs (Removed as per user request to remove notifications) --- */}
 
       {/* --- Active World Event Banner --- */}
       {gameState?.activeEvent && (
@@ -8048,12 +8320,12 @@ export default function SurvivalGame() {
 
       {/* --- Controls --- */}
       {/* Bottom Center: Hotbar (Always centered at the bottom, pointer enabled, persistent floating design) */}
-      {(!showSkills && !showCraft && !showRecipeBook && !showOracle && !showSaveMenu && !showWorldMenu && !showSpellbook && !showNFTMarket && !showShop && !showDeathScreen) && (
+      {(!showRecipeBook && !showOracle && !showSaveMenu && !showWorldMenu && !showSpellbook && !showNFTMarket && !showDeathScreen && gameState) && (
         <div 
           className={`absolute left-1/2 -translate-x-1/2 pointer-events-auto select-none flex flex-col items-center gap-2 transition-all duration-300 ${
-            showInv 
+            (showInv || showCraft || showSkills || showShop || showTownShop)
               ? 'bottom-6 z-[52] scale-105' 
-              : 'bottom-4 z-20'
+              : 'bottom-4 z-[52]'
           }`}
         >
           {/* Visual Vital Status Progress HUD (Health, Hunger, Thirst, Mana) */}
@@ -8262,10 +8534,10 @@ export default function SurvivalGame() {
             </div>
 
             {/* Quick access status / guide label */}
-            <span className="text-[7.5px] font-mono tracking-wider opacity-50 uppercase text-zinc-400 select-none">
+            <span className="text-[7.5px] font-mono tracking-wider opacity-50 uppercase text-zinc-400 select-none text-center px-2">
               {showInv 
-                ? '🖐️ Drag items onto slots • Drag slots to swap • Click active to use'
-                : '⚡ Click active slot again to instantly Use/Equip'
+                ? '🖐️ Hover over backpack items + press [1-8] to instantly bind • Drag slots to swap'
+                : '⚡ Press [1-8] key to switch slots and equip/use • Click active slot to use'
               }
             </span>
           </div>
@@ -8579,6 +8851,8 @@ export default function SurvivalGame() {
                             <div 
                               key={k} 
                               onClick={() => setSelectedInvItem(k)}
+                              onMouseEnter={() => setHoveredItem(k)}
+                              onMouseLeave={() => setHoveredItem(null)}
                               draggable={true}
                               onDragStart={(e) => {
                                 e.dataTransfer.setData("text/plain", k);
@@ -8589,8 +8863,12 @@ export default function SurvivalGame() {
                                   ? 'border-green-400 bg-green-500/10 shadow-[0_0_12px_rgba(34,197,94,0.15)] scale-[1.02]' 
                                   : 'border-white/5 hover:border-white/10'
                               }`}
-                              title="Drag item down to Hotbar slot to assign it, or click to inspect details"
+                              title="Drag down to Hotbar or hover & press 1-8 to bind, click to inspect"
                             >
+                              <div className="absolute inset-0 bg-black/80 rounded-xl flex flex-col items-center justify-center text-[8px] text-yellow-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none uppercase tracking-wider text-center p-1 z-10">
+                                <span>Press 1-8</span>
+                                <span className="opacity-60 text-[7px] mt-0.5 font-normal normal-case text-zinc-300">to bind to slot</span>
+                              </div>
                               <div className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-60 transition-opacity text-[8px] text-zinc-400 select-none">
                                 ☰
                               </div>
@@ -9300,6 +9578,34 @@ export default function SurvivalGame() {
                       'Grants +5% roll chance multiplier on rare loot items per level',
                       'Level 3: Enables crafting Recurve Bow and Beastmaster Armor',
                       'Level 5: Track clues to reveal nearby hidden wild animal positions'
+                    ]
+                  },
+                  {
+                    id: 'smithing',
+                    n: 'Smithing',
+                    ico: '⚒️',
+                    color: 'from-blue-700 to-indigo-600',
+                    border: 'border-blue-500/30',
+                    bg: 'bg-blue-950/20',
+                    desc: 'Forging refined weapons, tools, plate armor, and solid metal ingots.',
+                    perks: [
+                      'Boosts crafted equipment durability / gear attributes',
+                      'Level 3: Enables crafting higher-tier Copper & Iron Pickaxes',
+                      'Level 6: Enables forging precious Gold & Mithril equipment'
+                    ]
+                  },
+                  {
+                    id: 'farming',
+                    n: 'Farming',
+                    ico: '🌱',
+                    color: 'from-lime-600 to-emerald-500',
+                    border: 'border-lime-500/30',
+                    bg: 'bg-lime-950/20',
+                    desc: 'Cultivating wild flora, picking botanical herbs, and harvesting high-yield fiber crops.',
+                    perks: [
+                      'Earn +10% bonus crop yield per level when gathering from the ground',
+                      'Level 4: High probability to obtain rare botanical seeds or glowing spores',
+                      'Level 10: Harvest magical flower variants'
                     ]
                   }
                 ].map(sk => {
@@ -11221,6 +11527,25 @@ export default function SurvivalGame() {
             gameState={gameState}
             setGameState={setGameState}
             addLog={addLog}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {activeNPC && (
+          <NPCDialogue 
+            npc={activeNPC}
+            onClose={() => setActiveNPC(null)}
+            gameState={gameState}
+            setGameState={setGameState}
+            addLog={addLog}
+            spawnExplosion={(col, count, style) => {
+              const s = stateRef.current;
+              if (s) {
+                spawnExplosion(s, s.pl.x, s.pl.y, col, count, style);
+                setGameState({ ...s });
+              }
+            }}
           />
         )}
       </AnimatePresence>
