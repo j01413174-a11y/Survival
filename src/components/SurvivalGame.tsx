@@ -46,6 +46,7 @@ import { doc, setDoc, getDoc, getDocs, deleteDoc, collection, query } from 'fire
 import Shop from './Shop';
 import TownShop from './TownShop';
 import NPCDialogue from './NPCDialogue';
+import ResearchTree, { RESEARCH_TECHS } from './ResearchTree';
 import TerrainGenerator from './TerrainGenerator';
 import { musicEngine } from '../services/audioService';
 import { Music, Play, Pause, Volume2, VolumeX } from 'lucide-react';
@@ -1005,6 +1006,23 @@ const baseIT: Record<string, any> = {
   forge: { ico: '⚒️', n: 'Forge', t: 'struct' },
   magic_altar: { ico: '🕋', n: 'Magic Altar', t: 'struct' },
   shelter: { ico: '⛺', n: 'Shelter', t: 'struct' },
+  stone_wall: { ico: '🧱', n: 'Stone Wall', t: 'struct' },
+  spike_trap_crafted: { ico: '⚙️', n: 'Spike Trap', t: 'struct' },
+  mana_well: { ico: '🔲', n: 'Mana Well', t: 'struct' },
+  sentry_turret: { ico: '🗼', n: 'Sentry Turret', t: 'struct' },
+  
+  // --- Modern Survival & Water/Food Infrastructure Expansion ---
+  canteen_empty: { id: 'canteen_empty', n: 'Empty Canteen', ico: '🥤', t: 'pot', desc: 'Used to store clean water.' },
+  canteen_full: { id: 'canteen_full', n: 'Full Canteen', ico: '🥤', t: 'pot', hp: 0, mp: 0, desc: 'A canteen filled with refreshing water. Fully hydrates you on use.', th: 100 },
+  leather_backpack: { ico: '🎒', n: 'Leather Backpack', t: 'armor', sl: 'back', def: 1, spdBonus: 0.15, desc: 'Increases moving speed and storage capacity.' },
+  military_backpack: { ico: '🎒', n: 'Military Backpack', t: 'armor', sl: 'back', def: 4, spdBonus: 0.35, desc: 'Heavy duty tactical gear. Boosts defense and speed.' },
+  hunting_rifle: { id: 'hunting_rifle', n: 'Hunting Rifle', ico: '🔫', dmg: 72, spd: 45, rng: 350, type: 'ranged', mp: 0, desc: 'A long range firearms rifle. High precision damage.' },
+  supply_crate: { ico: '📦', n: 'Supply Crate', t: 'struct', desc: 'Placed container. Click adjacent to store your supplies.' },
+  water_reservoir: { ico: '🛢️', n: 'Water Reservoir', t: 'struct', desc: 'Stores pure drinking water. Click adjacent to hydrate and fill canteens.' },
+  water_pump: { ico: '⛽', n: 'Water Pump', t: 'struct', desc: 'Extracts deep water. Place on land. Click adjacent to quench thirst.' },
+  water_pipe: { ico: '🚰', n: 'Water Pipe', t: 'struct', desc: 'Distributes water from pump. Click adjacent to drink.' },
+  watch_tower: { ico: '🗼', n: 'Watch Tower', t: 'struct', desc: 'A high sentry guard tower. Automatically snipes nearby hostiles.' },
+
   stone_pickaxe: { id: 'stone_pickaxe', n: 'Stone Pickaxe', ico: '⛏️', dmg: 12, spd: 30, rng: 44, type: 'melee', mp: 0 },
   copper_pickaxe: { id: 'copper_pickaxe', n: 'Copper Pickaxe', ico: '⛏️', dmg: 16, spd: 28, rng: 44, type: 'melee', mp: 0 },
   iron_pickaxe: { id: 'iron_pickaxe', n: 'Iron Pickaxe', ico: '⛏️', dmg: 22, spd: 26, rng: 44, type: 'melee', mp: 0 },
@@ -1145,6 +1163,22 @@ const RC = [
   { n: 'Workbench', out: 'workbench', cnt: 1, cat: 'Structures', c: { wood: 5, stone: 2 } },
   { n: 'Forge', out: 'forge', cnt: 1, cat: 'Structures', c: { stone: 6, iron_bar: 3, coal: 2 } },
   { n: 'Shelter', out: 'shelter', cnt: 1, cat: 'Structures', c: { wood: 10, stone: 5, fiber: 8 } },
+  { n: 'Stone Wall', out: 'stone_wall', cnt: 1, cat: 'Structures', c: { stone: 4 }, reqBld: 1 },
+  { n: 'Spike Trap', out: 'spike_trap_crafted', cnt: 1, cat: 'Structures', c: { wood: 4, stone: 2, iron_bar: 1 }, req: 'workbench', reqBld: 2 },
+  { n: 'Mana Well', out: 'mana_well', cnt: 1, cat: 'Structures', c: { stone: 8, magic_essence: 3 }, req: 'magic_altar', reqBld: 4 },
+  { n: 'Sentry Turret', out: 'sentry_turret', cnt: 1, cat: 'Structures', c: { wood: 10, iron_bar: 5, magic_essence: 2 }, req: 'workbench', reqBld: 6 },
+
+  // --- Modern Survival & Water/Food Infrastructure Recipes ---
+  { n: 'Empty Canteen', out: 'canteen_empty', cnt: 1, cat: 'Potions', c: { leather: 3, wood: 1 }, req: 'workbench' },
+  { n: 'Leather Backpack', out: 'leather_backpack', cnt: 1, cat: 'Armor', c: { leather: 5, fiber: 5 }, req: 'workbench' },
+  { n: 'Military Backpack', out: 'military_backpack', cnt: 1, cat: 'Armor', c: { leather: 8, steel_bar: 3 }, req: 'workbench' },
+  { n: 'Hunting Rifle', out: 'hunting_rifle', cnt: 1, cat: 'Weapons', c: { wood: 5, iron_bar: 8, sulfur: 4, coal: 2 }, req: 'workbench' },
+  { n: 'Supply Crate', out: 'supply_crate', cnt: 1, cat: 'Structures', c: { wood: 8, iron_bar: 1 }, req: 'workbench' },
+  { n: 'Water Reservoir', out: 'water_reservoir', cnt: 1, cat: 'Structures', c: { iron_bar: 4, stone: 8 }, req: 'workbench' },
+  { n: 'Water Pump', out: 'water_pump', cnt: 1, cat: 'Structures', c: { iron_bar: 6, stone: 10, wood: 4 }, req: 'workbench' },
+  { n: 'Water Pipe', out: 'water_pipe', cnt: 1, cat: 'Structures', c: { iron_bar: 2 }, req: 'workbench' },
+  { n: 'Watch Tower', out: 'watch_tower', cnt: 1, cat: 'Structures', c: { wood: 12, iron_bar: 6, fiber: 8 }, req: 'workbench' },
+
   { n: 'Stone Pickaxe', out: 'stone_pickaxe', cnt: 1, cat: 'Weapons', c: { stone: 3, stick: 2 } },
   { n: 'Wooden Club', out: 'wood_club', cnt: 1, cat: 'Weapons', c: { wood: 3 } },
   { n: 'Copper Pickaxe', out: 'copper_pickaxe', cnt: 1, cat: 'Weapons', c: { copper_bar: 3, stick: 2 }, req: 'forge' },
@@ -1402,9 +1436,11 @@ export default function SurvivalGame() {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [showCraft, setShowCraft] = useState(false);
   const [showTownShop, setShowTownShop] = useState(false);
+  const [activeCrateIndex, setActiveCrateIndex] = useState<number | null>(null);
   const [activeNPC, setActiveNPC] = useState<any | null>(null);
   const [townShopType, setTownShopType] = useState<'general' | 'blacksmith' | 'alchemist'>('general');
   const [showRecipeBook, setShowRecipeBook] = useState(false);
+  const [showResearch, setShowResearch] = useState(false);
   const [recipeSearch, setRecipeSearch] = useState('');
   const [recipeFilter, setRecipeFilter] = useState('All');
   const [showSkills, setShowSkills] = useState(false);
@@ -1636,19 +1672,24 @@ export default function SurvivalGame() {
   const [isFishing, setIsFishing] = useState(false);
   const [fishingState, setFishingState] = useState<'idle' | 'waiting' | 'bite' | 'success' | 'fail'>('idle');
   const [fishingMessage, setFishingMessage] = useState('');
-  const [recipes, setRecipes] = useState<any[]>(() => [
-    ...RC.map(r => ({ ...r, discovered: true, craftCount: 0 })),
-    { n: 'Mana Potion', out: 'mana_potion', cnt: 1, cat: 'Potions', c: { herb: 1, magic_essence: 2 }, discovered: false, craftCount: 0 },
-    { n: 'Void Essence', out: 'void_essence', cnt: 1, cat: 'Materials', c: { void_crystal: 2, magic_essence: 4 }, req: 'magic_altar', discovered: false, craftCount: 0 },
-    { n: 'Star Shield', out: 'star_shield', cnt: 1, cat: 'Armor', c: { steel_bar: 3, gem: 1, celestial_shard: 1 }, req: 'workbench', discovered: false, craftCount: 0 },
-    
-    // --- Magical Lab Discoveries (Undiscovered by default) ---
-    { n: 'Aether Pickaxe', out: 'aether_pickaxe', cnt: 1, cat: 'Weapons', c: { stick: 2, celestial_shard: 2, void_crystal: 1 }, req: 'magic_altar', discovered: false, craftCount: 0 },
-    { n: 'Sunfire Aegis', out: 'sunfire_aegis', cnt: 1, cat: 'Armor', c: { dragon_scale: 2, sulfur: 3, gem: 1 }, req: 'magic_altar', discovered: false, craftCount: 0 },
-    { n: 'Chrono Watch', out: 'chrono_watch', cnt: 1, cat: 'Armor', c: { gold_bar: 2, crystal: 2, magic_essence: 5 }, req: 'magic_altar', discovered: false, craftCount: 0 },
-    { n: "Philosopher's Stone", out: 'philosophers_stone', cnt: 1, cat: 'Potions', c: { magic_essence: 8, crystal: 5, void_crystal: 2 }, req: 'magic_altar', discovered: false, craftCount: 0 },
-    { n: 'Immortality Elixir', out: 'immortality_elixir', cnt: 1, cat: 'Potions', c: { herb: 8, magic_essence: 10, celestial_shard: 1 }, req: 'magic_altar', discovered: false, craftCount: 0 },
-  ]);
+  const [recipes, setRecipes] = useState<any[]>(() => {
+    const techOutputs = new Set<string>();
+    RESEARCH_TECHS.forEach(t => t.unlocksRecipes.forEach(o => techOutputs.add(o)));
+
+    return [
+      ...RC.map(r => ({ ...r, discovered: !techOutputs.has(r.out), craftCount: 0 })),
+      { n: 'Mana Potion', out: 'mana_potion', cnt: 1, cat: 'Potions', c: { herb: 1, magic_essence: 2 }, discovered: false, craftCount: 0 },
+      { n: 'Void Essence', out: 'void_essence', cnt: 1, cat: 'Materials', c: { void_crystal: 2, magic_essence: 4 }, req: 'magic_altar', discovered: false, craftCount: 0 },
+      { n: 'Star Shield', out: 'star_shield', cnt: 1, cat: 'Armor', c: { steel_bar: 3, gem: 1, celestial_shard: 1 }, req: 'workbench', discovered: false, craftCount: 0 },
+      
+      // --- Magical Lab Discoveries (Undiscovered by default) ---
+      { n: 'Aether Pickaxe', out: 'aether_pickaxe', cnt: 1, cat: 'Weapons', c: { stick: 2, celestial_shard: 2, void_crystal: 1 }, req: 'magic_altar', discovered: false, craftCount: 0 },
+      { n: 'Sunfire Aegis', out: 'sunfire_aegis', cnt: 1, cat: 'Armor', c: { dragon_scale: 2, sulfur: 3, gem: 1 }, req: 'magic_altar', discovered: false, craftCount: 0 },
+      { n: 'Chrono Watch', out: 'chrono_watch', cnt: 1, cat: 'Armor', c: { gold_bar: 2, crystal: 2, magic_essence: 5 }, req: 'magic_altar', discovered: false, craftCount: 0 },
+      { n: "Philosopher's Stone", out: 'philosophers_stone', cnt: 1, cat: 'Potions', c: { magic_essence: 8, crystal: 5, void_crystal: 2 }, req: 'magic_altar', discovered: false, craftCount: 0 },
+      { n: 'Immortality Elixir', out: 'immortality_elixir', cnt: 1, cat: 'Potions', c: { herb: 8, magic_essence: 10, celestial_shard: 1 }, req: 'magic_altar', discovered: false, craftCount: 0 },
+    ];
+  });
   const [craftSearch, setCraftSearch] = useState('');
   const [craftCategory, setCraftCategory] = useState('All');
   const [craftTab, setCraftTab] = useState<'blueprints' | 'lab'>('blueprints');
@@ -1888,7 +1929,7 @@ export default function SurvivalGame() {
       s.pl.mp = data.pl.mp ?? 100;
       s.pl.mmp = data.pl.mmp || 100;
       s.pl.inv = data.pl.inv;
-      s.pl.equip = { head: null, chest: null, legs: null, feet: null, ring: null, ...(data.pl.equip || {}) };
+      s.pl.equip = { head: null, chest: null, legs: null, feet: null, ring: null, back: null, ...(data.pl.equip || {}) };
       s.pl.weapon = data.pl.weapon || 'fists';
       s.pl.hotbar = data.pl.hotbar || ['torch', 'campfire', 'workbench', 'forge', 'stone_axe'];
       s.pl.spd = data.pl.spd || 3.0;
@@ -1905,8 +1946,12 @@ export default function SurvivalGame() {
         alchemy: { lvl: 1, xp: 0, xpNext: 100 },
         hunting: { lvl: 1, xp: 0, xpNext: 100 },
         smithing: { lvl: 1, xp: 0, xpNext: 100 },
-        farming: { lvl: 1, xp: 0, xpNext: 100 }
+        farming: { lvl: 1, xp: 0, xpNext: 100 },
+        building: { lvl: 1, xp: 0, xpNext: 100 }
       };
+      if (!s.pl.skills.building) {
+        s.pl.skills.building = { lvl: 1, xp: 0, xpNext: 100 };
+      }
       s.pl.discoveredChunks = data.pl.discoveredChunks || {};
       s.pl.guildTokens = data.pl.guildTokens ?? 0;
       s.pl.activeQuests = data.pl.activeQuests || {};
@@ -1919,6 +1964,19 @@ export default function SurvivalGame() {
         vampiric_strikes: 0,
         sages_wisdom: 0
       };
+      
+      const loadedTechs = data.pl.unlockedTechs || [];
+      s.pl.unlockedTechs = loadedTechs;
+
+      setRecipes(prevRecipes => {
+        return prevRecipes.map(r => {
+          const techThatUnlocksThis = RESEARCH_TECHS.find(t => t.unlocksRecipes.includes(r.out));
+          if (techThatUnlocksThis) {
+            return { ...r, discovered: loadedTechs.includes(techThatUnlocksThis.id) };
+          }
+          return r;
+        });
+      });
 
       // 2. Restore World Objects
       s.objs = decompressObjs(data.objs) || [];
@@ -1938,6 +1996,14 @@ export default function SurvivalGame() {
       s.waveNum = data.waveNum ?? 0;
       s.waveTimer = data.waveTimer ?? 300;
       s.waveActive = data.waveActive ?? false;
+      s.weather = data.weather || {
+        type: 'clear',
+        timer: 4500,
+        label: 'Clear Skies',
+        icon: '☀️',
+        threat: 'None',
+        desc: 'Perfect survival conditions. Standard movement and regeneration.'
+      };
 
       // 5. Purge transient objects
       s.enemies = [];
@@ -1994,7 +2060,8 @@ export default function SurvivalGame() {
           guildTokens: s.pl.guildTokens || 0,
           activeQuests: s.pl.activeQuests || {},
           activeQuestsProgress: s.pl.activeQuestsProgress || {},
-          masteries: s.pl.masteries || { adrenaline: 0, double_harvest: 0, lucky_miner: 0, toughened_hide: 0, vampiric_strikes: 0, sages_wisdom: 0 }
+          masteries: s.pl.masteries || { adrenaline: 0, double_harvest: 0, lucky_miner: 0, toughened_hide: 0, vampiric_strikes: 0, sages_wisdom: 0 },
+          unlockedTechs: s.pl.unlockedTechs || []
         },
         objs: compressObjs(s.objs),
         companions: s.companions.map((c: any) => ({
@@ -2013,6 +2080,14 @@ export default function SurvivalGame() {
         waveNum: s.waveNum,
         waveTimer: s.waveTimer,
         waveActive: s.waveActive,
+        weather: s.weather || {
+          type: 'clear',
+          timer: 4500,
+          label: 'Clear Skies',
+          icon: '☀️',
+          threat: 'None',
+          desc: 'Perfect survival conditions. Standard movement and regeneration.'
+        },
         timestamp: Date.now()
       };
 
@@ -2318,7 +2393,8 @@ export default function SurvivalGame() {
           guildTokens: s.pl.guildTokens || 0,
           activeQuests: s.pl.activeQuests || {},
           activeQuestsProgress: s.pl.activeQuestsProgress || {},
-          masteries: s.pl.masteries || { adrenaline: 0, double_harvest: 0, lucky_miner: 0, toughened_hide: 0, vampiric_strikes: 0, sages_wisdom: 0 }
+          masteries: s.pl.masteries || { adrenaline: 0, double_harvest: 0, lucky_miner: 0, toughened_hide: 0, vampiric_strikes: 0, sages_wisdom: 0 },
+          unlockedTechs: s.pl.unlockedTechs || []
         },
         objs: compressObjs(s.objs),
         companions: s.companions.map((c: any) => ({
@@ -2337,6 +2413,14 @@ export default function SurvivalGame() {
         waveNum: s.waveNum,
         waveTimer: s.waveTimer,
         waveActive: s.waveActive,
+        weather: s.weather || {
+          type: 'clear',
+          timer: 4500,
+          label: 'Clear Skies',
+          icon: '☀️',
+          threat: 'None',
+          desc: 'Perfect survival conditions. Standard movement and regeneration.'
+        },
         timestamp: Date.now()
       };
 
@@ -2364,15 +2448,22 @@ export default function SurvivalGame() {
       lastZr: s.lastZr
     };
     s.inCave = true;
+
+    // Determine surface biome of entry to procedurally skin the cave!
+    const surfaceBiome = getProceduralBiomeForZone(s.lastZc, s.lastZr, s.worldSeed);
+    const bName = surfaceBiome?.n || 'Verdant Forest';
     
-    // 2. Generate a 640x640 boundary cave, but carve a small playable cavern around (300, 300)
-    // This allows us to reuse all WW/WH bounds checks perfectly without any crash risk!
+    let isIceCave = bName.includes('Frozen') || bName.includes('Tundra');
+    let isFireCave = bName.includes('Volcanic') || bName.includes('Scorched') || bName.includes('Dragon');
+
     const caveWorld: number[][] = [];
+    const borderWallTile = isFireCave ? TLV : TW; // lava walls for fire caves, dark water for others
+    const floorTile = isIceCave ? TSN : TS; // snow floors for ice caves, stone for others
+
     for (let y = 0; y < WH; y++) {
       caveWorld[y] = [];
       for (let x = 0; x < WW; x++) {
-        // Solid wall TW (Water acting as walls)
-        caveWorld[y][x] = TW;
+        caveWorld[y][x] = borderWallTile;
       }
     }
     
@@ -2381,8 +2472,7 @@ export default function SurvivalGame() {
     for (let y = startY; y < startY + caveSize; y++) {
       for (let x = startX; x < startX + caveSize; x++) {
         const isWall = x === startX || x === startX + caveSize - 1 || y === startY || y === startY + caveSize - 1 || (x % 5 === 0 && y % 5 === 0);
-        // Floors are TS (Stone)
-        caveWorld[y][x] = isWall ? TW : TS;
+        caveWorld[y][x] = isWall ? borderWallTile : floorTile;
       }
     }
     
@@ -2391,38 +2481,54 @@ export default function SurvivalGame() {
     
     // Place ladder exit right at (startX + 25, startY + 25)
     const lcx = startX + 25, lcy = startY + 25;
-    caveWorld[lcy][lcx] = TS; // clear wall
+    caveWorld[lcy][lcx] = floorTile; // clear wall
     caveObjs.push({ type: 'cave_exit', tx: lcx, ty: lcy, ico: '🪜', hp: 999 });
     
     // Place treasure chests, traps, and crystals randomly inside carved cavern!
     const caveRng = mkRng(Math.random() * 99999);
-    for (let k = 0; k < 25; k++) {
+    for (let k = 0; k < 30; k++) {
       const tx = startX + 2 + Math.floor(caveRng() * (caveSize - 4));
       const ty = startY + 2 + Math.floor(caveRng() * (caveSize - 4));
       if (Math.abs(tx - lcx) < 3 && Math.abs(ty - lcy) < 3) continue;
       
       const randVal = caveRng();
-      if (randVal < 0.35) {
+      if (randVal < 0.4) {
         // Place glowing crystal node
-        const sub = caveRng() < 0.35 ? 'void_crystal' : caveRng() < 0.7 ? 'crystal' : 'mana_crystal';
-        const ico = sub === 'void_crystal' ? '🔮' : sub === 'crystal' ? '💎' : '🧿';
+        let sub = 'crystal';
+        let ico = '💎';
+        if (isFireCave) {
+          sub = caveRng() < 0.5 ? 'sulfur' : 'gold';
+          ico = sub === 'sulfur' ? '🟡' : '💛';
+        } else if (isIceCave) {
+          sub = caveRng() < 0.5 ? 'crystal' : 'mana_crystal';
+          ico = sub === 'crystal' ? '❄️' : '🧿';
+        } else {
+          sub = caveRng() < 0.35 ? 'void_crystal' : caveRng() < 0.7 ? 'crystal' : 'mana_crystal';
+          ico = sub === 'void_crystal' ? '🔮' : sub === 'crystal' ? '💎' : '🧿';
+        }
         caveObjs.push({ type: 'rock', tx, ty, hp: 4, mhp: 4, ico, subtype: sub });
-      } else if (randVal < 0.65) {
+      } else if (randVal < 0.7) {
         // Place Spike Trap!
-        caveObjs.push({ type: 'spike_trap', tx, ty, ico: '⚙️', hp: 999, triggered: false });
-      } else if (randVal < 0.8) {
+        caveObjs.push({ type: 'spike_trap', tx, ty, ico: isFireCave ? '🌋' : isIceCave ? '❄️' : '⚙️', hp: 999, triggered: false });
+      } else if (randVal < 0.85) {
         // Place Cave Treasure Chest!
         caveObjs.push({ type: 'cave_treasure', tx, ty, ico: '👑', hp: 1 });
       }
     }
     
     // Spawn Cave Monsters!
-    for (let k = 0; k < 8; k++) {
+    for (let k = 0; k < 10; k++) {
       const ex = startX + 5 + Math.floor(caveRng() * (caveSize - 10));
       const ey = startY + 5 + Math.floor(caveRng() * (caveSize - 10));
       if (Math.abs(ex - lcx) < 5 && Math.abs(ey - lcy) < 5) continue;
       
-      const monsterTypes = ['spider', 'skeleton', 'wraith'];
+      let monsterTypes = ['spider', 'skeleton', 'wraith'];
+      if (isFireCave) {
+        monsterTypes = ['troll', 'dark_mage', 'firedrake'];
+      } else if (isIceCave) {
+        monsterTypes = ['wolf', 'bear', 'wraith'];
+      }
+
       const eid = monsterTypes[Math.floor(caveRng() * monsterTypes.length)];
       const et = ET[eid];
       if (et) {
@@ -2430,8 +2536,8 @@ export default function SurvivalGame() {
           id: Math.random(),
           x: ex * TZ + TZ/2,
           y: ey * TZ + TZ/2,
-          hp: et.hp * 1.3,
-          mhp: et.hp * 1.3,
+          hp: et.hp * (isFireCave ? 1.5 : 1.2),
+          mhp: et.hp * (isFireCave ? 1.5 : 1.2),
           eid,
           spd: et.spd * 0.95,
           dmg: et.dmg * 1.15,
@@ -2458,10 +2564,23 @@ export default function SurvivalGame() {
     
     s.lastZc = 0;
     s.lastZr = 0;
-    s.zoneMaps = [{ n: 'Forgotten Cave', s: 1234, sky: '#08060a', ef: ['spider', 'skeleton', 'wraith'], dr: {} }];
     
-    addLog("🦇 Entered Forgotten Cave! Look out for spike traps and hidden chests!", "#a855f7");
-    spawnExplosion(s, s.pl.x, s.pl.y, '#a855f7', 15, 'ring');
+    let caveTitle = 'Forgotten Cave';
+    let skyBg = '#08060a';
+    if (isFireCave) {
+      caveTitle = 'Volcanic Fire Core';
+      skyBg = '#270800';
+      addLog("🌋 Entered the Volcanic Fire Core! Watch out for molten lava flows and volcanic beasts!", "#ef4444");
+    } else if (isIceCave) {
+      caveTitle = 'Frozen Glacial Cavern';
+      skyBg = '#05111c';
+      addLog("❄️ Entered the Frozen Glacial Cavern! Watch out for frostbite and icy paths!", "#38bdf8");
+    } else {
+      addLog("🦇 Entered Forgotten Cave! Look out for spike traps and hidden treasures!", "#a855f7");
+    }
+
+    s.zoneMaps = [{ n: caveTitle, s: 1234, sky: skyBg, ef: isFireCave ? ['troll', 'dark_mage'] : isIceCave ? ['wolf', 'bear'] : ['spider', 'skeleton', 'wraith'], dr: {} }];
+    spawnExplosion(s, s.pl.x, s.pl.y, isFireCave ? '#f97316' : isIceCave ? '#38bdf8' : '#a855f7', 15, 'ring');
     setGameState({ ...s });
   };
 
@@ -2512,7 +2631,8 @@ export default function SurvivalGame() {
         chest: 'leather_vest',
         legs: 'leather_trousers',
         feet: 'leather_boots',
-        ring: null
+        ring: null,
+        back: null
       },
       weapon: 'fists',
       hotbar: ['torch', 'campfire', 'workbench', 'forge', 'stone_axe', 'iron_sword', 'shortbow', 'fishing_rod'],
@@ -2526,7 +2646,8 @@ export default function SurvivalGame() {
         alchemy: { lvl: 1, xp: 0, xpNext: 100 },
         hunting: { lvl: 1, xp: 0, xpNext: 100 },
         smithing: { lvl: 1, xp: 0, xpNext: 100 },
-        farming: { lvl: 1, xp: 0, xpNext: 100 }
+        farming: { lvl: 1, xp: 0, xpNext: 100 },
+        building: { lvl: 1, xp: 0, xpNext: 100 }
       },
       discoveredChunks: {},
       guildTokens: 0,
@@ -2563,9 +2684,9 @@ export default function SurvivalGame() {
         const ox = zc * ZW, oy = zr * ZH;
         let spawnedNPCInZone = false;
 
-        const isTownZone = (zc === 1 && zr === 0) || (zc === 4 && zr === 4);
+        const isTownZone = (zc === 1 && zr === 0) || (zc === 4 && zr === 4) || (zc === 2 && zr === 6) || (zc === 7 && zr === 2);
         const isBanditZone = (zc === 2 && zr === 1) || (zc === 5 && zr === 3) || (zc === 6 && zr === 5);
-        const isCaveZone = (zc === 0 && zr === 1) || (zc === 3 && zr === 3) || (zc === 5 && zr === 4);
+        const isCaveZone = (zc === 0 && zr === 1) || (zc === 3 && zr === 3) || (zc === 5 && zr === 4) || (zc === 1 && zr === 5) || (zc === 6 && zr === 2) || (zc === 4 && zr === 7);
 
         for (let ly = 0; ly < ZH; ly++) {
           if (!world[oy + ly]) world[oy + ly] = [];
@@ -2860,6 +2981,7 @@ export default function SurvivalGame() {
           objs.push({ type: 'town_house', tx: cx - 5, ty: cy + 5, ico: '🏡', hp: 999 });
           objs.push({ type: 'town_house', tx: cx + 5, ty: cy + 5, ico: '🏰', hp: 999 });
           objs.push({ type: 'tavern_bard', tx: cx, ty: cy + 2, hp: 999, mhp: 999, ico: '🪕' });
+          objs.push({ type: 'resource_trader', tx: cx - 2, ty: cy + 2, hp: 999, mhp: 999, ico: '🤝' });
         }
 
         if (isBanditZone) {
@@ -2914,6 +3036,14 @@ export default function SurvivalGame() {
       waveNum: 0,
       waveTimer: 300,
       waveActive: false,
+      weather: {
+        type: 'clear',
+        timer: 4500,
+        label: 'Clear Skies',
+        icon: '☀️',
+        threat: 'None',
+        desc: 'Perfect survival conditions. Standard movement and regeneration.'
+      },
       cam: { x: initialPl.x - (window.innerWidth / gameZoomRef.current) / 2, y: initialPl.y - (window.innerHeight / gameZoomRef.current) / 2 },
       camShake: 0,
       zoneMaps,
@@ -3279,6 +3409,62 @@ export default function SurvivalGame() {
         for (let tickCycle = 0; tickCycle < 3; tickCycle++) {
           // --- Update ---
           s.ticks++;
+
+          // --- Update Weather ---
+          if (!s.weather) {
+            s.weather = {
+              type: 'clear',
+              timer: 4500,
+              label: 'Clear Skies',
+              icon: '☀️',
+              threat: 'None',
+              desc: 'Perfect survival conditions. Standard movement and regeneration.'
+            };
+          }
+          const wt = s.weather.type || 'clear';
+          s.weather.timer--;
+
+          // Periodically check if the player moved to an incompatible biome
+          if (s.ticks % 120 === 0) {
+            const bName = getBiomeAtPlayer(s);
+            if (!isWeatherCompatible(s.weather.type, bName)) {
+              const nextWeather = getWeatherForBiome(bName);
+              s.weather = {
+                ...nextWeather,
+                timer: 5000 + Math.floor(Math.random() * 3000)
+              };
+              addLog(`☁️ Climate Shift! Weather became: ${s.weather.label} ${s.weather.icon}`, '#60a5fa');
+              spawnExplosion(s, s.pl.x, s.pl.y, '#60a5fa', 10, 'spark');
+            }
+          }
+
+          if (s.weather.timer <= 0) {
+            const bName = getBiomeAtPlayer(s);
+            const nextWeather = getWeatherForBiome(bName);
+            s.weather = {
+              ...nextWeather,
+              timer: 5000 + Math.floor(Math.random() * 3000)
+            };
+            addLog(`☁️ Weather shifting to: ${s.weather.label} ${s.weather.icon}`, '#60a5fa');
+            spawnExplosion(s, s.pl.x, s.pl.y, '#60a5fa', 10, 'spark');
+          }
+
+          // Random lightning strike in storms (approx. 0.15% chance per tick = once per ~11 seconds)
+          if (wt === 'storm' && Math.random() < 0.0015) {
+            triggerLightningStrike(s);
+          }
+
+          // Update lightning flash ticks & strikes
+          if (s.lightningFlash && s.lightningFlash > 0) {
+            s.lightningFlash--;
+          }
+          if (s.lightningStrike) {
+            s.lightningStrike.duration--;
+            if (s.lightningStrike.duration <= 0) {
+              s.lightningStrike = null;
+            }
+          }
+
         s.dayTime = (s.ticks % 18000) / 18000;
         if (s.ticks % 18000 === 0) s.day++;
 
@@ -3391,6 +3577,12 @@ export default function SurvivalGame() {
         autosaveGame();
       }
 
+      const isTileBlocked = (stateObj: any, tx: number, ty: number) => {
+        if (ty < 0 || ty >= WH || tx < 0 || tx >= WW) return true;
+        if (stateObj.world[ty][tx] === TW) return true;
+        return stateObj.objs.some((obj: any) => obj.tx === tx && obj.ty === ty && obj.type === 'stone_wall');
+      };
+
       // Player Grid-Based Movement
       let dx = 0, dy = 0;
       if (keysRef.current['w'] || keysRef.current['ArrowUp'] || keysRef.current['W']) dy -= 1;
@@ -3404,6 +3596,112 @@ export default function SurvivalGame() {
           dx = joyRef.current.x > 0 ? 1 : -1;
         } else {
           dy = joyRef.current.y > 0 ? 1 : -1;
+        }
+      }
+
+      // Reset touch pathing on manual keyboard or joystick input
+      if (dx !== 0 || dy !== 0) {
+        s.pl.touchTarget = null;
+      }
+
+      // Touch navigation auto-walk logic
+      if (dx === 0 && dy === 0 && s.pl.touchTarget) {
+        const currentTx = Math.floor(s.pl.x / TZ);
+        const currentTy = Math.floor(s.pl.y / TZ);
+        const ttx = s.pl.touchTarget.tx;
+        const tty = s.pl.touchTarget.ty;
+
+        // Verify action distance/proximity
+        let reachedActionProximity = false;
+        const act = s.pl.touchTarget.action;
+
+        if (act) {
+          if (act.type === 'attack') {
+            // Find target enemy
+            const targetEnemy = s.enemies.find((e: any) => e.id === act.targetId);
+            if (!targetEnemy || targetEnemy.hp <= 0) {
+              s.pl.touchTarget = null; // target died/vanished
+            } else {
+              // Update target coords to follow enemy
+              s.pl.touchTarget.tx = Math.floor(targetEnemy.x / TZ);
+              s.pl.touchTarget.ty = Math.floor(targetEnemy.y / TZ);
+              const pxDist = dist(s.pl, targetEnemy);
+              const wp = getWeaponStats(s, s.pl.weapon);
+              if (pxDist <= wp.rng) {
+                reachedActionProximity = true;
+              }
+            }
+          } else if (act.type === 'gather_or_interact') {
+            const distTiles = Math.abs(ttx - currentTx) + Math.abs(tty - currentTy);
+            if (distTiles <= 4) {
+              reachedActionProximity = true;
+            }
+          }
+        }
+
+        if (currentTx === ttx && currentTy === tty) {
+          reachedActionProximity = true;
+        }
+
+        if (reachedActionProximity) {
+          s.pl.touchTarget = null;
+          if (act) {
+            if (act.type === 'attack') {
+              handleAttack();
+            } else if (act.type === 'gather_or_interact') {
+              executeInteractAtTile(act.tx, act.ty);
+            }
+          }
+        } else if (s.pl.touchTarget) {
+          // Move towards target tile
+          const diffX = ttx - currentTx;
+          const diffY = tty - currentTy;
+          
+          let stepDx = 0;
+          let stepDy = 0;
+
+          if (Math.abs(diffX) >= Math.abs(diffY)) {
+            stepDx = Math.sign(diffX);
+            // Check if walkable
+            const nextTx = currentTx + stepDx;
+            const nextTy = currentTy;
+            if (nextTx >= 0 && nextTx < WW && nextTy >= 0 && nextTy < WH && !isTileBlocked(s, nextTx, nextTy)) {
+              dx = stepDx;
+              dy = 0;
+            } else {
+              // Try Y
+              stepDy = Math.sign(diffY);
+              const altTx = currentTx;
+              const altTy = currentTy + stepDy;
+              if (altTx >= 0 && altTx < WW && altTy >= 0 && altTy < WH && !isTileBlocked(s, altTx, altTy)) {
+                dx = 0;
+                dy = stepDy;
+              } else {
+                // Blocked entirely
+                s.pl.touchTarget = null;
+              }
+            }
+          } else {
+            stepDy = Math.sign(diffY);
+            const nextTx = currentTx;
+            const nextTy = currentTy + stepDy;
+            if (nextTx >= 0 && nextTx < WW && nextTy >= 0 && nextTy < WH && !isTileBlocked(s, nextTx, nextTy)) {
+              dx = 0;
+              dy = stepDy;
+            } else {
+              // Try X
+              stepDx = Math.sign(diffX);
+              const altTx = currentTx + stepDx;
+              const altTy = currentTy;
+              if (altTx >= 0 && altTx < WW && altTy >= 0 && altTy < WH && !isTileBlocked(s, altTx, altTy)) {
+                dx = stepDx;
+                dy = 0;
+              } else {
+                // Blocked entirely
+                s.pl.touchTarget = null;
+              }
+            }
+          }
         }
       }
 
@@ -3543,7 +3841,7 @@ export default function SurvivalGame() {
           const targetTy = currentTy + dy;
 
           if (targetTx >= 0 && targetTx < WW && targetTy >= 0 && targetTy < WH) {
-            if (s.world[targetTy][targetTx] !== TW) {
+            if (!isTileBlocked(s, targetTx, targetTy)) {
               s.pl.targetX = targetTx * TZ + TZ / 2;
               s.pl.targetY = targetTy * TZ + TZ / 2;
               s.pl.isGridMoving = true;
@@ -3557,24 +3855,77 @@ export default function SurvivalGame() {
         isSprinting = true;
       }
 
+      // Weather influence on depletions and health
+      let weatherHuMod = 0;
+      let weatherThMod = 0;
+      let weatherHpDrain = 0;
+      let weatherStaDrain = 0;
+
+      if (wt === 'rain') {
+        // Rain quenches thirst naturally!
+        weatherThMod = -0.12; 
+      } else if (wt === 'storm') {
+        weatherThMod = -0.05;
+        weatherStaDrain = 0.2; 
+      } else if (wt === 'blizzard') {
+        // Freezing blizzard cold decreases health and stamina faster
+        const nearWarmth = isNearStructure('campfire') || isNearStructure('camp_fire') || isNearStructure('shelter') || isNearStructure('water_reservoir') || isNearStructure('water_pump');
+        if (!nearWarmth) {
+          weatherHpDrain = 1.5; 
+          weatherStaDrain = 0.8; 
+        }
+      } else if (wt === 'sandstorm') {
+        weatherThMod = 0.35; 
+        weatherStaDrain = 0.5;
+        s.pl.slowTicks = Math.max(s.pl.slowTicks || 0, 10); 
+      } else if (wt === 'acid_rain') {
+        const isArmored = s.pl.equip?.head && s.pl.equip?.chest && s.pl.equip?.legs && s.pl.equip?.feet;
+        const isSheltered = isNearStructure('shelter');
+        if (!isSheltered) {
+          weatherHpDrain = isArmored ? 0.3 : 1.0;
+        }
+      } else if (wt === 'heatwave') {
+        weatherThMod = 0.45; 
+      }
+
       // Handle stamina consumption and regeneration
       const nearShelter = isNearStructure('shelter');
       if (isSprinting) {
-        s.pl.sta = Math.max(0, (s.pl.sta || 100) - 0.5);
+        s.pl.sta = Math.max(0, (s.pl.sta || 100) - (0.5 + weatherStaDrain));
       } else {
-        const staRegen = nearShelter ? 1.5 : 0.3; // Much faster stamina regen near a shelter
+        const staRegen = nearShelter ? 1.5 : Math.max(0.05, 0.3 - weatherStaDrain); 
         s.pl.sta = Math.min(100, (s.pl.sta || 100) + staRegen);
       }
 
       // Handle hunger and thirst depletion (once per game second / 60 ticks)
       if (s.ticks % 60 === 0) {
         // Slowly deplete hunger (0.15 per second normally, 0.03 if near shelter)
-        const huDepletion = nearShelter ? 0.03 : 0.15;
+        const huDepletion = nearShelter ? 0.03 : (0.15 + weatherHuMod);
         s.pl.hu = Math.max(0, (s.pl.hu ?? 100) - huDepletion);
         
         // Slowly deplete thirst (0.22 per second normally, 0.05 if near shelter, 0.45 if sprinting)
-        const thDepletion = isSprinting ? 0.45 : (nearShelter ? 0.05 : 0.22);
+        const thDepletion = isSprinting ? (0.45 + weatherThMod) : (nearShelter ? 0.05 : (0.22 + weatherThMod));
         s.pl.th = Math.max(0, (s.pl.th ?? 100) - thDepletion);
+
+        // If rain is falling, player naturally drinks rainwater!
+        if (wt === 'rain' && s.pl.th < 100) {
+          s.pl.th = Math.min(100, s.pl.th + 1.2);
+        }
+
+        // Apply weather health damage
+        if (weatherHpDrain > 0) {
+          s.pl.hp = Math.max(0, s.pl.hp - weatherHpDrain);
+          
+          if (s.ticks % 180 === 0) {
+            if (wt === 'blizzard') {
+              addLog("🥶 Freezing Blizzard! Stand near a Campfire 🔥 or find a Shelter!", "#ef4444");
+              spawnExplosion(s, s.pl.x, s.pl.y, '#38bdf8', 4, 'spark');
+            } else if (wt === 'acid_rain') {
+              addLog("⚠️ Acid rain is corroding your skin! Armor absorbs some of it, but shelter is recommended!", "#f43f5e");
+              spawnExplosion(s, s.pl.x, s.pl.y, '#a3e635', 4, 'spark');
+            }
+          }
+        }
 
         // Shelter healing & resting effects
         if (nearShelter) {
@@ -4034,6 +4385,57 @@ export default function SurvivalGame() {
 
         if (c.cd > 0) c.cd--;
         if (c.scd > 0) c.scd--;
+      }
+
+      // --- Placed Structure Updates (Sentry Turrets & Watch Towers Sentry Attack) ---
+      if (s.ticks % 35 === 0) {
+        for (const o of s.objs) {
+          if (o.type === 'sentry_turret') {
+            let target = null;
+            let minDist = 220;
+            const ox = o.tx * TZ + TZ / 2;
+            const oy = o.ty * TZ + TZ / 2;
+            for (const e of s.enemies) {
+              const d = Math.hypot(e.x - ox, e.y - oy);
+              if (d < minDist) {
+                minDist = d;
+                target = e;
+              }
+            }
+            if (target) {
+              const ang = Math.atan2(target.y - oy, target.x - ox);
+              s.projs.push({
+                x: ox, y: oy,
+                vx: Math.cos(ang) * 11, vy: Math.sin(ang) * 11,
+                dmg: 35, rng: 220, dist: 0,
+                col: '#10b981', fx: 'slow', isArrow: true, sz: 5
+              });
+              s.parts.push({ x: ox, y: oy, vx: 0, vy: 0, life: 8, col: '#10b981', sz: 6 });
+            }
+          } else if (o.type === 'watch_tower') {
+            let target = null;
+            let minDist = 350;
+            const ox = o.tx * TZ + TZ / 2;
+            const oy = o.ty * TZ + TZ / 2;
+            for (const e of s.enemies) {
+              const d = Math.hypot(e.x - ox, e.y - oy);
+              if (d < minDist) {
+                minDist = d;
+                target = e;
+              }
+            }
+            if (target) {
+              const ang = Math.atan2(target.y - oy, target.x - ox);
+              s.projs.push({
+                x: ox, y: oy,
+                vx: Math.cos(ang) * 16, vy: Math.sin(ang) * 16,
+                dmg: 65, rng: 350, dist: 0,
+                col: '#f59e0b', fx: 'none', isArrow: true, sz: 6
+              });
+              s.parts.push({ x: ox, y: oy, vx: 0, vy: 0, life: 8, col: '#f59e0b', sz: 8 });
+            }
+          }
+        }
       }
 
       // Projectiles
@@ -4513,6 +4915,35 @@ export default function SurvivalGame() {
           ctx.arc(ox, oy, glowRad, 0, Math.PI * 2);
           ctx.stroke();
           ctx.restore();
+        } else if (o.type === 'watch_tower' || o.type === 'sentry_turret') {
+          ctx.save();
+          ctx.strokeStyle = o.type === 'watch_tower' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)';
+          ctx.fillStyle = o.type === 'watch_tower' ? 'rgba(245, 158, 11, 0.04)' : 'rgba(16, 185, 129, 0.04)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.arc(ox, oy, o.type === 'watch_tower' ? 350 : 220, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+          ico = IT[o.type]?.ico || '🗼';
+        } else if (o.type === 'water_pump' || o.type === 'water_reservoir' || o.type === 'water_pipe') {
+          ctx.save();
+          ctx.fillStyle = 'rgba(56, 189, 248, 0.1)';
+          ctx.beginPath();
+          ctx.arc(ox, oy, TZ * 0.4 + Math.sin(s.ticks * 0.05) * 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+          
+          // Draw a small clean blue water droplet above them
+          ctx.save();
+          ctx.fillStyle = '#38bdf8';
+          ctx.font = '8px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('💧', ox, oy - 14 + Math.sin(s.ticks * 0.08) * 2);
+          ctx.restore();
+          
+          ico = IT[o.type]?.ico || '🚰';
         } else if (o.type === 'campfire') {
           ico = s.ticks % 20 < 10 ? '🔥' : '🕯️';
           // Fire glow
@@ -4900,7 +5331,7 @@ export default function SurvivalGame() {
           let sRad = 0;
           if (o.type === 'campfire' || o.type === 'camp_fire') {
             sRad = 150 + Math.sin(s.ticks * 0.15) * 8;
-          } else if (o.type === 'town_merchant' || o.type === 'blacksmith_merchant' || o.type === 'alchemist_merchant' || o.type === 'fountain') {
+          } else if (o.type === 'town_merchant' || o.type === 'blacksmith_merchant' || o.type === 'alchemist_merchant' || o.type === 'fountain' || o.type === 'resource_trader') {
             sRad = 120 + Math.sin(s.ticks * 0.08) * 4;
           } else if (o.type === 'cave_entrance' || o.type === 'magic_altar') {
             sRad = 160 + Math.sin(s.ticks * 0.1) * 6;
@@ -4948,64 +5379,173 @@ export default function SurvivalGame() {
         ctx.restore();
       }
 
-      // Draw procedural weather/atmospheric particles
+      // Draw procedural weather/atmospheric particles and active weather overlays
       const mapIdx = Math.floor(s.pl.y / (ZH * TZ)) * ZCOLS + Math.floor(s.pl.x / (ZW * TZ));
       const bName = s.zoneMaps?.[mapIdx]?.n || MAPS[mapIdx]?.n || MAPS[0].n;
       const viewW = ctx.canvas.width / zoom;
       const viewH = ctx.canvas.height / zoom;
       
+      const activeWeatherType = s.weather?.type || 'clear';
+
+      // 1. Ambient Biome Base Particles
       if (bName.includes('Frozen') || bName.includes('Tundra')) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
-        for (let i = 0; i < 40; i++) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        for (let i = 0; i < 20; i++) {
           const px = ((Math.sin(i * 123.45) * 0.5 + 0.5) * viewW) % viewW;
-          const py = ((i * 45.67 + s.ticks * 1.5) % viewH);
+          const py = ((i * 45.67 + s.ticks * 0.8) % viewH);
           ctx.beginPath();
-          ctx.arc(px, py, 1.5 + Math.sin(i + s.ticks * 0.05) * 0.8, 0, Math.PI * 2);
+          ctx.arc(px, py, 1.2 + Math.sin(i + s.ticks * 0.04) * 0.5, 0, Math.PI * 2);
           ctx.fill();
         }
       } else if (bName.includes('Desert') || bName.includes('Waste') || bName.includes('Oasis')) {
-        ctx.fillStyle = 'rgba(219, 180, 110, 0.35)'; // Sand dust
-        for (let i = 0; i < 30; i++) {
-          const px = ((Math.sin(i * 54.32) * 0.5 + 0.5) * viewW - s.ticks * 2) % viewW;
+        ctx.fillStyle = 'rgba(219, 180, 110, 0.2)'; 
+        for (let i = 0; i < 15; i++) {
+          const px = ((Math.sin(i * 54.32) * 0.5 + 0.5) * viewW - s.ticks * 1) % viewW;
           const py = (i * 98.76) % viewH;
-          ctx.fillRect(px < 0 ? px + viewW : px, py, 3, 1.2);
+          ctx.fillRect(px < 0 ? px + viewW : px, py, 2, 1.0);
         }
       } else if (bName.includes('Volcanic') || bName.includes('Scorched') || bName.includes('Spire')) {
-        ctx.fillStyle = `rgba(239, 68, 68, ${0.45 + Math.sin(s.ticks * 0.08) * 0.2})`; // Ash/ember glowing particles
-        for (let i = 0; i < 25; i++) {
+        ctx.fillStyle = `rgba(239, 68, 68, ${0.35 + Math.sin(s.ticks * 0.08) * 0.15})`; 
+        for (let i = 0; i < 15; i++) {
           const px = (Math.sin(i * 87.65) * 0.5 + 0.5) * viewW;
-          const py = (viewH - (i * 32.1 + s.ticks * 0.8) % viewH);
-          ctx.shadowColor = '#ef4444';
-          ctx.shadowBlur = 6;
+          const py = (viewH - (i * 32.1 + s.ticks * 0.5) % viewH);
           ctx.beginPath();
-          ctx.arc(px, py, 1.2 + Math.abs(Math.sin(i + s.ticks * 0.1)) * 1.5, 0, Math.PI * 2);
+          ctx.arc(px, py, 1.0 + Math.abs(Math.sin(i + s.ticks * 0.08)) * 1.0, 0, Math.PI * 2);
           ctx.fill();
-          ctx.shadowBlur = 0;
         }
       } else if (bName.includes('Swamp') || bName.includes('Forest') || bName.includes('Grove') || bName.includes('Cavern') || bName.includes('Garden')) {
-        ctx.fillStyle = `rgba(132, 204, 22, ${0.55 + Math.sin(s.ticks * 0.05) * 0.3})`; // Glow flies
-        for (let i = 0; i < 20; i++) {
-          const px = ((Math.sin(i * 92.11) * 0.5 + 0.5) * viewW + Math.sin(s.ticks * 0.02 + i) * 30) % viewW;
-          const py = ((Math.cos(i * 41.22) * 0.5 + 0.5) * viewH + Math.cos(s.ticks * 0.02 + i) * 30) % viewH;
-          ctx.shadowColor = '#84cc16';
-          ctx.shadowBlur = 8;
+        ctx.fillStyle = `rgba(132, 204, 22, ${0.4 + Math.sin(s.ticks * 0.05) * 0.2})`; 
+        for (let i = 0; i < 12; i++) {
+          const px = ((Math.sin(i * 92.11) * 0.5 + 0.5) * viewW + Math.sin(s.ticks * 0.02 + i) * 20) % viewW;
+          const py = ((Math.cos(i * 41.22) * 0.5 + 0.5) * viewH + Math.cos(s.ticks * 0.02 + i) * 20) % viewH;
           ctx.beginPath();
-          ctx.arc(px < 0 ? px + viewW : px, py < 0 ? py + viewH : py, 1.5, 0, Math.PI * 2);
+          ctx.arc(px < 0 ? px + viewW : px, py < 0 ? py + viewH : py, 1.2, 0, Math.PI * 2);
           ctx.fill();
-          ctx.shadowBlur = 0;
         }
       } else if (bName.includes('Celestial') || bName.includes('Void') || bName.includes('Ruins') || bName.includes('Archipelago') || bName.includes('Cyber-Grid')) {
-        ctx.fillStyle = `rgba(168, 85, 247, ${0.45 + Math.sin(s.ticks * 0.04) * 0.2})`; // Void cosmic stardust
-        for (let i = 0; i < 35; i++) {
-          const px = ((Math.sin(i * 111.11) * 0.5 + 0.5) * viewW + Math.sin(s.ticks * 0.01 + i) * 15) % viewW;
-          const py = ((Math.cos(i * 22.22) * 0.5 + 0.5) * viewH + Math.cos(s.ticks * 0.01 + i) * 15) % viewH;
-          ctx.shadowColor = '#a855f7';
-          ctx.shadowBlur = 10;
+        ctx.fillStyle = `rgba(168, 85, 247, ${0.35 + Math.sin(s.ticks * 0.04) * 0.15})`; 
+        for (let i = 0; i < 15; i++) {
+          const px = ((Math.sin(i * 111.11) * 0.5 + 0.5) * viewW + Math.sin(s.ticks * 0.01 + i) * 10) % viewW;
+          const py = ((Math.cos(i * 22.22) * 0.5 + 0.5) * viewH + Math.cos(s.ticks * 0.01 + i) * 10) % viewH;
           ctx.beginPath();
-          ctx.arc(px < 0 ? px + viewW : px, py < 0 ? py + viewH : py, 1 + Math.abs(Math.sin(i + s.ticks * 0.05)) * 2, 0, Math.PI * 2);
+          ctx.arc(px < 0 ? px + viewW : px, py < 0 ? py + viewH : py, 1.0 + Math.abs(Math.sin(i + s.ticks * 0.04)) * 1.2, 0, Math.PI * 2);
           ctx.fill();
-          ctx.shadowBlur = 0;
         }
+      }
+
+      // 2. Active Weather Overlay Drawing
+      if (activeWeatherType === 'rain' || activeWeatherType === 'storm') {
+        // Draw falling rain lines
+        ctx.strokeStyle = activeWeatherType === 'storm' ? 'rgba(125, 211, 252, 0.45)' : 'rgba(186, 230, 253, 0.35)';
+        ctx.lineWidth = 1.0;
+        const count = activeWeatherType === 'storm' ? 55 : 30;
+        ctx.beginPath();
+        for (let i = 0; i < count; i++) {
+          const rx = ((Math.sin(i * 47.11) * 0.5 + 0.5) * viewW - (s.ticks * 1.5)) % viewW;
+          const ry = ((i * 117.8 + s.ticks * 5.0) % viewH);
+          const actualRx = rx < 0 ? rx + viewW : rx;
+          ctx.moveTo(actualRx, ry);
+          ctx.lineTo(actualRx - 6, ry + 18);
+        }
+        ctx.stroke();
+
+        // Storm lightning flash screen-wide overlay
+        if (activeWeatherType === 'storm' && s.lightningFlash && s.lightningFlash > 0) {
+          const flashIntensity = (s.lightningFlash / 12) * 0.6;
+          ctx.fillStyle = `rgba(224, 242, 254, ${flashIntensity})`;
+          ctx.fillRect(0, 0, viewW, viewH);
+        }
+      } else if (activeWeatherType === 'blizzard') {
+        // Heavy, fast drifting snow particles
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        for (let i = 0; i < 60; i++) {
+          const sx = ((Math.sin(i * 139.73) * 0.5 + 0.5) * viewW - s.ticks * 5.5) % viewW;
+          const sy = ((i * 79.2 + s.ticks * 3.0) % viewH);
+          const actualSx = sx < 0 ? sx + viewW : sx;
+          ctx.beginPath();
+          ctx.arc(actualSx, sy, 1.5 + Math.sin(i + s.ticks * 0.1) * 1.0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (activeWeatherType === 'sandstorm') {
+        // Sweep orange/tan sand dust
+        ctx.fillStyle = 'rgba(217, 119, 6, 0.28)';
+        for (let i = 0; i < 45; i++) {
+          const sx = ((Math.sin(i * 83.21) * 0.5 + 0.5) * viewW - s.ticks * 8.0) % viewW;
+          const sy = (i * 133.45) % viewH;
+          const actualSx = sx < 0 ? sx + viewW : sx;
+          ctx.fillRect(actualSx, sy, 15 + Math.sin(i + s.ticks * 0.05) * 10, 1.5);
+        }
+        
+        // Sandstorm warning orange fog vignetting
+        const sandGrad = ctx.createRadialGradient(viewW / 2, viewH / 2, viewW / 3, viewW / 2, viewH / 2, viewW / 1.5);
+        sandGrad.addColorStop(0, 'rgba(217, 119, 6, 0)');
+        sandGrad.addColorStop(1, 'rgba(217, 119, 6, 0.15)');
+        ctx.fillStyle = sandGrad;
+        ctx.fillRect(0, 0, viewW, viewH);
+      } else if (activeWeatherType === 'acid_rain') {
+        // Greenish glowing droplets
+        ctx.strokeStyle = 'rgba(163, 230, 53, 0.4)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        for (let i = 0; i < 25; i++) {
+          const rx = ((Math.sin(i * 39.42) * 0.5 + 0.5) * viewW - (s.ticks * 0.5)) % viewW;
+          const ry = ((i * 143.1 + s.ticks * 3.5) % viewH);
+          const actualRx = rx < 0 ? rx + viewW : rx;
+          ctx.moveTo(actualRx, ry);
+          ctx.lineTo(actualRx - 2, ry + 12);
+        }
+        ctx.stroke();
+
+        // Bubble rings
+        ctx.strokeStyle = 'rgba(163, 230, 53, 0.2)';
+        ctx.lineWidth = 1.0;
+        for (let i = 0; i < 8; i++) {
+          const bx = ((Math.cos(i * 72.1) * 0.5 + 0.5) * viewW + Math.sin(s.ticks * 0.02 + i) * 15) % viewW;
+          const by = ((Math.sin(i * 12.5) * 0.5 + 0.5) * viewH + Math.cos(s.ticks * 0.02 + i) * 15) % viewH;
+          ctx.beginPath();
+          ctx.arc(bx, by, 3 + (s.ticks + i * 20) % 15 * 0.6, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else if (activeWeatherType === 'heatwave') {
+        // Reddish/hot screen border vignette
+        const heatGrad = ctx.createRadialGradient(viewW / 2, viewH / 2, viewW / 4, viewW / 2, viewH / 2, viewW / 1.2);
+        heatGrad.addColorStop(0, 'rgba(239, 68, 68, 0)');
+        heatGrad.addColorStop(1, `rgba(239, 68, 68, ${0.12 + Math.sin(s.ticks * 0.06) * 0.04})`);
+        ctx.fillStyle = heatGrad;
+        ctx.fillRect(0, 0, viewW, viewH);
+      }
+
+      // 3. Draw Lightning Bolt (rendered in screen space converted coordinates)
+      if (s.lightningStrike) {
+        const lx = s.lightningStrike.x - s.cam.x;
+        const ly = s.lightningStrike.y - s.cam.y;
+        
+        ctx.save();
+        ctx.strokeStyle = '#ffffff';
+        ctx.shadowColor = '#38bdf8';
+        ctx.shadowBlur = 20;
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        
+        let curX = lx + (Math.random() * 30 - 15);
+        let curY = Math.max(0, ly - 350);
+        ctx.moveTo(curX, curY);
+        
+        const segments = 8;
+        for (let j = 1; j <= segments; j++) {
+          const nextY = Math.max(0, ly - 350) + (350 / segments) * j;
+          const nextX = j === segments ? lx : lx + (Math.random() * 50 - 25);
+          ctx.lineTo(nextX, nextY);
+          curX = nextX;
+          curY = nextY;
+        }
+        ctx.stroke();
+        
+        // Inner core
+        ctx.strokeStyle = '#f0f9ff';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        ctx.restore();
       }
 
       ctx.restore();
@@ -5589,8 +6129,42 @@ export default function SurvivalGame() {
     const it = IT[k];
     if (!it || (s.pl.inv[k] || 0) <= 0) return;
 
-    if (it.t === 'food' || it.t === 'pot' || k === 'mana_crystal' || k === 'scroll_meteor' || k === 'philosophers_stone' || k === 'immortality_elixir') {
-      if (k === 'mana_crystal') {
+    if (it.t === 'food' || it.t === 'pot' || k === 'mana_crystal' || k === 'scroll_meteor' || k === 'philosophers_stone' || k === 'immortality_elixir' || k === 'canteen_full' || k === 'canteen_empty') {
+      if (k === 'canteen_full') {
+        s.pl.inv[k]--;
+        s.pl.inv['canteen_empty'] = (s.pl.inv['canteen_empty'] || 0) + 1;
+        s.pl.th = 100;
+        addLog(`🥤 Drank from canteen: fully quenched thirst! (+1 Empty Canteen)`, '#38bdf8');
+        spawnExplosion(s, s.pl.x, s.pl.y, '#38bdf8', 12, 'spark');
+      } else if (k === 'canteen_empty') {
+        const px = Math.floor(s.pl.x / TZ);
+        const py = Math.floor(s.pl.y / TZ);
+        let nearWaterSource = false;
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            const tx = px + dx, ty = py + dy;
+            if (tx >= 0 && tx < WW && ty >= 0 && ty < WH) {
+              const tileType = s.world[ty]?.[tx];
+              if (tileType === TW || tileType === TLV) {
+                nearWaterSource = true;
+              }
+            }
+          }
+        }
+        const adjacentStructure = s.objs.some((o: any) => {
+          const dx = Math.abs(o.tx - px);
+          const dy = Math.abs(o.ty - py);
+          return (o.type === 'water_pump' || o.type === 'water_reservoir' || o.type === 'water_pipe') && dx <= 1 && dy <= 1;
+        });
+        if (nearWaterSource || adjacentStructure) {
+          s.pl.inv[k]--;
+          s.pl.inv['canteen_full'] = (s.pl.inv['canteen_full'] || 0) + 1;
+          addLog(`🥤 Filled empty canteen with clean pure water! (+1 Full Canteen)`, '#38bdf8');
+          spawnExplosion(s, s.pl.x, s.pl.y, '#38bdf8', 12, 'spark');
+        } else {
+          addLog(`⚠️ Stand adjacent to a water source, Water Pump, Reservoir, or Water Pipe to fill!`, '#94a3b8');
+        }
+      } else if (k === 'mana_crystal') {
         s.pl.mp = Math.min(s.pl.mmp, s.pl.mp + 40);
         s.pl.inv[k]--;
         addLog(`Used Mana Crystal: restored 40 MP 🔮`, '#c084fc');
@@ -5728,10 +6302,23 @@ export default function SurvivalGame() {
        addLog(`Selected ${it.n}`, '#ffffaa');
     } else if (it.t === 'struct') {
       const px = Math.floor(s.pl.x / TZ), py = Math.floor(s.pl.y / TZ);
+      // Calculate HP with Building skill bonus
+      const bldLvl = s.pl.skills?.building?.lvl || 1;
+      let baseHp = 8;
+      if (k === 'stone_wall') baseHp = 24;
+      else if (k === 'watch_tower') baseHp = 60;
+      else if (k === 'water_pump') baseHp = 40;
+      else if (k === 'water_reservoir') baseHp = 40;
+      else if (k === 'water_pipe') baseHp = 15;
+      else if (k === 'supply_crate') baseHp = 30;
+      else if (k === 'sentry_turret') baseHp = 35;
+      const finalHp = Math.round(baseHp * (1 + 0.25 * (bldLvl - 1)));
+      
       // Place structure
-      s.objs.push({ type: k, tx: px, ty: py, hp: 5, mhp: 5 });
+      s.objs.push({ type: k, tx: px, ty: py, hp: finalHp, mhp: finalHp, triggered: false });
       s.pl.inv[k]--;
-      addLog(`Placed ${it.n}`, '#ffaa00');
+      addLog(`Placed ${it.n} (Durability: ${finalHp}/${finalHp})`, '#ffaa00');
+      addSkillXPDirect(s, 'building', 20);
     }
     
     // Refresh React state instantly
@@ -5788,6 +6375,190 @@ export default function SurvivalGame() {
       }
     }
     return false;
+  };
+
+  const getBiomeAtPlayer = (s: any) => {
+    const mapIdx = Math.floor(s.pl.y / (ZH * TZ)) * ZCOLS + Math.floor(s.pl.x / (ZW * TZ));
+    const bName = s.zoneMaps?.[mapIdx]?.n || MAPS[mapIdx]?.n || MAPS[0].n;
+    return bName;
+  };
+
+  const getWeatherForBiome = (bName: string): any => {
+    const isCold = bName.includes('Frozen') || bName.includes('Tundra');
+    const isDry = bName.includes('Desert') || bName.includes('Scorched') || bName.includes('Spire') || bName.includes('Oasis');
+    const isSwampy = bName.includes('Swamp') || bName.includes('Cavern') || bName.includes('Volcanic') || bName.includes('Waste') || bName.includes('Ruins');
+
+    const rand = Math.random();
+
+    if (isCold) {
+      if (rand < 0.45) {
+        return {
+          type: 'clear',
+          label: 'Crisp Calm',
+          icon: '❄️',
+          threat: 'None',
+          desc: 'Cold but clear air. Easy traveling.'
+        };
+      } else {
+        return {
+          type: 'blizzard',
+          label: 'Howling Blizzard',
+          icon: '🌪️',
+          threat: 'Extreme',
+          desc: 'Freezing blizzard! Health (-2 HP/sec) and stamina decline rapidly without a Campfire 🔥 or Shelter ⛺.'
+        };
+      }
+    } else if (isDry) {
+      if (rand < 0.40) {
+        return {
+          type: 'clear',
+          label: 'Sunny Heat',
+          icon: '☀️',
+          threat: 'None',
+          desc: 'Hot and dry conditions.'
+        };
+      } else if (rand < 0.70) {
+        return {
+          type: 'sandstorm',
+          label: 'Raging Sandstorm',
+          icon: '🌪️',
+          threat: 'High',
+          desc: 'Blinding dust! Reduces movement speed by 30% and rapidly drains hydration.'
+        };
+      } else {
+        return {
+          type: 'heatwave',
+          label: 'Scorching Heatwave',
+          icon: '🔥',
+          threat: 'Medium',
+          desc: 'Extreme solar radiation! Rapidly depletes hydration. Stand in water or near a reservoir to stay cool.'
+        };
+      }
+    } else if (isSwampy) {
+      if (rand < 0.40) {
+        return {
+          type: 'clear',
+          label: 'Dense Smog',
+          icon: '🌫️',
+          threat: 'Low',
+          desc: 'Heavy, damp, sulfurous air.'
+        };
+      } else if (rand < 0.70) {
+        return {
+          type: 'acid_rain',
+          label: 'Acid Torrent',
+          icon: '☣️',
+          threat: 'High',
+          desc: 'Corrosive chemical rainfall! Slowly corrodes health (-1 HP/sec) unless fully armored or in a Shelter ⛺.'
+        };
+      } else {
+        return {
+          type: 'storm',
+          label: 'Toxic Tempest',
+          icon: '⛈️',
+          threat: 'Medium',
+          desc: 'Acidic lightning storm. Standing in open land drains stamina and triggers lightning.'
+        };
+      }
+    } else {
+      // Normal / Lush biomes
+      if (rand < 0.40) {
+        return {
+          type: 'clear',
+          label: 'Clear Skies',
+          icon: '☀️',
+          threat: 'None',
+          desc: 'Mild conditions. Standard health and stamina regeneration.'
+        };
+      } else if (rand < 0.75) {
+        return {
+          type: 'rain',
+          label: 'Steady Rain',
+          icon: '🌧️',
+          threat: 'Low',
+          desc: 'Cool rain. Dampens open fires. Naturally replenishes your hydration (+0.1/sec).'
+        };
+      } else {
+        return {
+          type: 'storm',
+          label: 'Violent Thunderstorm',
+          icon: '⛈️',
+          threat: 'Medium',
+          desc: 'Severe lightning storms. Damps open fires, drains stamina, and strikes nearby tiles.'
+        };
+      }
+    }
+  };
+
+  const isWeatherCompatible = (weatherType: string, bName: string) => {
+    const isCold = bName.includes('Frozen') || bName.includes('Tundra');
+    const isDry = bName.includes('Desert') || bName.includes('Scorched') || bName.includes('Spire') || bName.includes('Oasis');
+    const isSwampy = bName.includes('Swamp') || bName.includes('Cavern') || bName.includes('Volcanic') || bName.includes('Waste') || bName.includes('Ruins');
+    
+    if (isCold) {
+      return ['clear', 'blizzard'].includes(weatherType);
+    }
+    if (isDry) {
+      return ['clear', 'sandstorm', 'heatwave'].includes(weatherType);
+    }
+    if (isSwampy) {
+      return ['clear', 'acid_rain', 'storm'].includes(weatherType);
+    }
+    return ['clear', 'rain', 'storm'].includes(weatherType);
+  };
+
+  const triggerLightningStrike = (s: any) => {
+    const ptx = Math.floor(s.pl.x / TZ);
+    const pty = Math.floor(s.pl.y / TZ);
+    const dx = Math.floor(Math.random() * 11) - 5;
+    const dy = Math.floor(Math.random() * 11) - 5;
+    const tx = ptx + dx;
+    const ty = pty + dy;
+    
+    if (tx >= 0 && tx < WW && ty >= 0 && ty < WH) {
+      const sx = tx * TZ + TZ / 2;
+      const sy = ty * TZ + TZ / 2;
+      
+      s.lightningFlash = 12;
+      s.lightningStrike = { x: sx, y: sy, duration: 8 };
+      
+      spawnExplosion(s, sx, sy, '#38bdf8', 15, 'spark');
+      
+      const distToPlayer = Math.hypot(s.pl.x - sx, s.pl.y - sy);
+      if (distToPlayer < 40) {
+        s.pl.hp = Math.max(0, s.pl.hp - 15);
+        addLog("⚡ Crack! Lightning struck extremely close and shocked you for 15 damage!", "#ef4444");
+        s.camShake = Math.max(s.camShake || 0, 10);
+      } else if (distToPlayer < 120) {
+        addLog("⚡ BOOM! Thunder rumbles deafeningly nearby!", "#38bdf8");
+        s.camShake = Math.max(s.camShake || 0, 6);
+      }
+      
+      for (let i = s.objs.length - 1; i >= 0; i--) {
+        const o = s.objs[i];
+        if (o.tx === tx && o.ty === ty) {
+          if (o.hp !== undefined && o.hp !== 999) {
+            o.hp -= 15;
+            if (o.hp <= 0) {
+              s.objs.splice(i, 1);
+              addLog(`⚡ Lightning destroyed a ${IT[o.type]?.n || o.type}!`, "#ef4444");
+            }
+          }
+        }
+      }
+      
+      for (let i = s.enemies.length - 1; i >= 0; i--) {
+        const e = s.enemies[i];
+        const dist = Math.hypot(e.x - sx, e.y - sy);
+        if (dist < 45) {
+          e.hp -= 40;
+          if (e.hp <= 0) {
+            s.enemies.splice(i, 1);
+            addLog(`⚡ Lightning vaporized a ${ET[e.eid]?.n || 'hostile'}!`, "#38bdf8");
+          }
+        }
+      }
+    }
   };
 
   const isNearWater = () => {
@@ -5891,7 +6662,8 @@ export default function SurvivalGame() {
         alchemy: { lvl: 1, xp: 0, xpNext: 100 },
         hunting: { lvl: 1, xp: 0, xpNext: 100 },
         smithing: { lvl: 1, xp: 0, xpNext: 100 },
-        farming: { lvl: 1, xp: 0, xpNext: 100 }
+        farming: { lvl: 1, xp: 0, xpNext: 100 },
+        building: { lvl: 1, xp: 0, xpNext: 100 }
       };
     }
     if (!s.pl.skills[skill]) {
@@ -6002,34 +6774,12 @@ export default function SurvivalGame() {
     }
   };
 
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    // 1. Don't gather if a menu/modal is open
-    if (showSkills || showQuests || showMasteries || showCraft || showRecipeBook || showOracle || showSaveMenu || showWorldMenu || showSpellbook || showNFTMarket || showShop || showDeathScreen || showInv || showMusicMenu || isFishing || activeNPC) {
-      return;
-    }
-
+  const executeInteractAtTile = (tx: number, ty: number) => {
     const s = stateRef.current;
-    if (!s || !canvasRef.current) return;
-
-    // Convert mouse coordinates to world tile
-    const rect = canvasRef.current.getBoundingClientRect();
-    const mouseX = (e.clientX - rect.left) / gameZoom;
-    const mouseY = (e.clientY - rect.top) / gameZoom;
-    const tx = Math.floor((mouseX + s.cam.x) / TZ);
-    const ty = Math.floor((mouseY + s.cam.y) / TZ);
+    if (!s) return;
 
     // Bounds check
     if (tx < 0 || tx >= WW || ty < 0 || ty >= WH) return;
-
-    // Distance check (Reach limit of 4 tiles)
-    const px = Math.floor(s.pl.x / TZ);
-    const py = Math.floor(s.pl.y / TZ);
-    const distTiles = Math.abs(tx - px) + Math.abs(ty - py);
-
-    if (distTiles > 4) {
-      addLog("That tile is too far away to harvest! Get closer.", "#ff8888");
-      return;
-    }
 
     // Stamina check (harvesting requires stamina and consumes a bit)
     if ((s.pl.sta || 100) < 5) {
@@ -6040,7 +6790,7 @@ export default function SurvivalGame() {
     // Spend stamina
     s.pl.sta = Math.max(0, (s.pl.sta || 100) - 4);
 
-    // 2. Check if clicking on an object in s.objs
+    // Check if clicking on an object in s.objs
     let objGathered = false;
     for (let i = s.objs.length - 1; i >= 0; i--) {
       const o = s.objs[i];
@@ -6268,6 +7018,37 @@ export default function SurvivalGame() {
           }
           s.objs.splice(i, 1);
           spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#ccffaa', 8, 'spark');
+        } else if (o.type === 'supply_crate') {
+          setActiveCrateIndex(i);
+          if (!o.items) o.items = {};
+          addLog("📦 Opened Supply Crate. Click items in backpack or crate to transfer!", "#fb923c");
+          spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#fb923c', 8, 'spark');
+        } else if (o.type === 'water_pump') {
+          s.pl.th = 100;
+          let refilledCount = 0;
+          const canteenQty = s.pl.inv['canteen_empty'] || 0;
+          if (canteenQty > 0) {
+            s.pl.inv['canteen_empty'] = 0;
+            s.pl.inv['canteen_full'] = (s.pl.inv['canteen_full'] || 0) + canteenQty;
+            refilledCount = canteenQty;
+          }
+          addLog(`⛲ Activated Water Pump! Quenched thirst completely and refilled ${refilledCount} canteens!`, '#38bdf8');
+          spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#38bdf8', 12, 'spark');
+        } else if (o.type === 'water_reservoir') {
+          s.pl.th = 100;
+          let refilledCount = 0;
+          const canteenQty = s.pl.inv['canteen_empty'] || 0;
+          if (canteenQty > 0) {
+            s.pl.inv['canteen_empty'] = 0;
+            s.pl.inv['canteen_full'] = (s.pl.inv['canteen_full'] || 0) + canteenQty;
+            refilledCount = canteenQty;
+          }
+          addLog(`🛢️ Accessed Water Reservoir! Quenched thirst completely and refilled ${refilledCount} canteens!`, '#38bdf8');
+          spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#38bdf8', 12, 'spark');
+        } else if (o.type === 'water_pipe') {
+          s.pl.th = 100;
+          addLog(`🚰 Drank from Water Pipe: Quenched thirst completely!`, '#38bdf8');
+          spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#38bdf8', 8, 'spark');
         } else if (o.type === 'cave_treasure') {
           s.objs.splice(i, 1);
           const goldBonus = 150 + Math.floor(Math.random() * 250);
@@ -6286,7 +7067,7 @@ export default function SurvivalGame() {
       }
     }
 
-    // 3. If no object was clicked, harvest the raw tile directly from the terrain!
+    // If no object was clicked, harvest the raw tile directly from the terrain!
     if (!objGathered) {
       const tileType = s.world[ty]?.[tx];
       let collectedName = "";
@@ -6394,6 +7175,76 @@ export default function SurvivalGame() {
         
         spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, colVal, 6, 'spark');
       }
+    }
+  };
+
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // 1. Don't gather if a menu/modal is open
+    if (showSkills || showQuests || showMasteries || showCraft || showRecipeBook || showOracle || showSaveMenu || showWorldMenu || showSpellbook || showNFTMarket || showShop || showDeathScreen || showInv || showMusicMenu || isFishing || activeNPC) {
+      return;
+    }
+
+    const s = stateRef.current;
+    if (!s || !canvasRef.current) return;
+
+    // Convert mouse coordinates to world tile
+    const rect = canvasRef.current.getBoundingClientRect();
+    const mouseX = (e.clientX - rect.left) / gameZoom;
+    const mouseY = (e.clientY - rect.top) / gameZoom;
+    const tx = Math.floor((mouseX + s.cam.x) / TZ);
+    const ty = Math.floor((mouseY + s.cam.y) / TZ);
+
+    // Bounds check
+    if (tx < 0 || tx >= WW || ty < 0 || ty >= WH) return;
+
+    const px = Math.floor(s.pl.x / TZ);
+    const py = Math.floor(s.pl.y / TZ);
+    const distTiles = Math.abs(tx - px) + Math.abs(ty - py);
+
+    // Check if there is an enemy under the click/tap!
+    let clickedEnemy = null;
+    const clickWorldX = mouseX + s.cam.x;
+    const clickWorldY = mouseY + s.cam.y;
+    for (const enemy of s.enemies) {
+      const d = Math.hypot(enemy.x - clickWorldX, enemy.y - clickWorldY);
+      if (d < TZ * 1.3) {
+        clickedEnemy = enemy;
+        break;
+      }
+    }
+
+    if (clickedEnemy) {
+      const wp = getWeaponStats(s, s.pl.weapon);
+      const pxDist = dist(s.pl, clickedEnemy);
+      if (pxDist <= wp.rng) {
+        // Attack immediately!
+        s.pl.touchTarget = null;
+        handleAttack();
+      } else {
+        // Set target to walk and attack!
+        s.pl.touchTarget = {
+          tx: Math.floor(clickedEnemy.x / TZ),
+          ty: Math.floor(clickedEnemy.y / TZ),
+          action: { type: 'attack', targetId: clickedEnemy.id }
+        };
+        addLog(`🎯 Targeting ${ET[clickedEnemy.eid]?.n || 'enemy'}... Moving into attack range!`, '#ef4444');
+      }
+      setGameState({ ...s });
+      return;
+    }
+
+    // Check distance for immediate gathering vs auto-walk pathing
+    if (distTiles <= 4) {
+      s.pl.touchTarget = null;
+      executeInteractAtTile(tx, ty);
+    } else {
+      // Set path target to walk and harvest
+      s.pl.touchTarget = {
+        tx,
+        ty,
+        action: { type: 'gather_or_interact', tx, ty }
+      };
+      addLog(`🚶 Moving towards target tile...`, '#38bdf8');
     }
 
     setGameState({ ...s });
@@ -6703,7 +7554,7 @@ export default function SurvivalGame() {
           addLog(`🧔 Conversing with the local merchant...`, '#38bdf8');
           return;
         }
-        if (o.type === 'lost_explorer' || o.type === 'elven_druid' || o.type === 'tame_dog' || o.type === 'tavern_bard') {
+        if (o.type === 'lost_explorer' || o.type === 'elven_druid' || o.type === 'tame_dog' || o.type === 'tavern_bard' || o.type === 'resource_trader') {
           setActiveNPC(o);
           addLog(`💬 Conversing with the ${o.type.replace('_', ' ')}...`, '#38bdf8');
           return;
@@ -7215,6 +8066,15 @@ export default function SurvivalGame() {
       }
     }
 
+    // Check building skill level requirement
+    if (r.reqBld) {
+      const bldLvl = s.pl.skills?.building?.lvl || 1;
+      if (bldLvl < r.reqBld) {
+        addLog(`❌ Requires Building level ${r.reqBld} to craft this!`, '#ff4444');
+        return;
+      }
+    }
+
     // Check costs
     for (const [k, v] of Object.entries(r.c)) {
       if ((s.pl.inv[k] || 0) < (v as number) * qty) {
@@ -7248,6 +8108,8 @@ export default function SurvivalGame() {
       addSkillXPDirect(s, 'alchemy', 25 * qty);
     } else if (r.cat === 'Weapons' || r.cat === 'Armor' || r.out.includes('bar') || r.out.includes('pickaxe') || r.out.includes('axe')) {
       addSkillXPDirect(s, 'smithing', 20 * qty);
+    } else if (r.cat === 'Structures') {
+      addSkillXPDirect(s, 'building', 30 * qty);
     }
 
     s.pl.inv[r.out] = (s.pl.inv[r.out] || 0) + actualQty;
@@ -7927,6 +8789,7 @@ export default function SurvivalGame() {
                   { slot: 'legs', n: 'Legs', ico: '👖' },
                   { slot: 'feet', n: 'Feet', ico: '🥾' },
                   { slot: 'ring', n: 'Ring', ico: '💍' },
+                  { slot: 'back', n: 'Backpack', ico: '🎒' },
                 ].map(({ slot, n, ico }) => {
                   const itemKey = gameState?.pl.equip?.[slot];
                   const item = itemKey ? IT[itemKey] : null;
@@ -8159,7 +9022,32 @@ export default function SurvivalGame() {
           <div className="text-xs text-blue-300 opacity-80">
             {gameState?.zoneMaps?.[Math.floor((gameState?.pl.y || 0) / (ZH * TZ)) * ZCOLS + Math.floor((gameState?.pl.x || 0) / (ZW * TZ))]?.n || "Unknown"}
           </div>
-          <div className="text-[10px] font-mono text-orange-400 font-bold tracking-wider">
+
+          {gameState?.weather && (
+            <div className="mt-1 flex flex-col items-end gap-0.5 bg-black/50 border border-white/5 backdrop-blur-md p-1.5 rounded-xl max-w-[170px] text-right shadow-lg">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-white leading-none">
+                <span className="text-sm">{gameState.weather.icon}</span>
+                <span className="tracking-tight">{gameState.weather.label}</span>
+              </div>
+              <div className="flex items-center gap-1 text-[9px] font-mono leading-none">
+                <span className="opacity-50">Threat:</span>
+                <span className={
+                  gameState.weather.threat === 'Extreme' ? 'text-red-400 font-bold animate-pulse' :
+                  gameState.weather.threat === 'High' ? 'text-orange-400 font-bold' :
+                  gameState.weather.threat === 'Medium' ? 'text-yellow-400 font-bold' :
+                  gameState.weather.threat === 'Low' ? 'text-sky-300' :
+                  'text-emerald-400'
+                }>
+                  {gameState.weather.threat}
+                </span>
+              </div>
+              <p className="text-[8px] leading-tight text-white/50 select-none mt-0.5">
+                {gameState.weather.desc}
+              </p>
+            </div>
+          )}
+
+          <div className="text-[10px] font-mono text-orange-400 font-bold tracking-wider mt-0.5">
             {gameState?.waveActive ? (
               <span className="text-red-400 animate-pulse">⚠️ WAVE {gameState?.waveNum} ({gameState?.waveTimer}s left)</span>
             ) : (
@@ -8205,6 +9093,13 @@ export default function SurvivalGame() {
               >
                 <Hammer size={11} className="text-yellow-500" />
                 <span>CRAFT</span>
+              </button>
+              <button 
+                onClick={() => setShowResearch(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-cyan-500/20 hover:border-cyan-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-cyan-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Cpu size={11} className="text-cyan-400 font-bold" />
+                <span>RESEARCH</span>
               </button>
               <button 
                 onClick={() => setShowRecipeBook(true)}
@@ -8686,6 +9581,118 @@ export default function SurvivalGame() {
               : 'bottom-4 z-[52]'
           }`}
         >
+          {/* Quick Crafting Panel */}
+          {(!showInv && !showCraft && !showSkills && !showShop && !showTownShop) && (() => {
+            const getNearStations = () => {
+              if (!gameState || !gameState.pl || !gameState.objs) return [];
+              const ptx = Math.floor(gameState.pl.x / TZ);
+              const pty = Math.floor(gameState.pl.y / TZ);
+              const stations = ['campfire', 'camp_fire', 'workbench', 'forge', 'magic_altar'];
+              const near: string[] = [];
+              
+              for (const o of gameState.objs) {
+                if (stations.includes(o.type)) {
+                  const dx = o.tx - ptx;
+                  const dy = o.ty - pty;
+                  if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) {
+                    if (!near.includes(o.type)) {
+                      near.push(o.type);
+                    }
+                  }
+                }
+              }
+              return near;
+            };
+
+            const activeStations = getNearStations();
+            if (activeStations.length === 0) return null;
+
+            const getStationDisplayName = (station: string) => {
+              if (station === 'campfire' || station === 'camp_fire') return 'Campfire 🔥';
+              if (station === 'workbench') return 'Workbench 🪚';
+              if (station === 'forge') return 'Forge 🌋';
+              if (station === 'magic_altar') return 'Magic Altar 🔮';
+              return station;
+            };
+
+            const validQuickRecipes = recipes
+              .map((r, i) => ({ r, i }))
+              .filter(({ r }) => {
+                if (!r.discovered) return false;
+                
+                const isStationMatch = !r.req || activeStations.some(ns => {
+                  if (r.req === 'campfire' && ns === 'camp_fire') return true;
+                  if (r.req === 'camp_fire' && ns === 'campfire') return true;
+                  return r.req === ns;
+                });
+                if (!isStationMatch) return false;
+
+                const hasMats = Object.entries(r.c).every(([k, v]) => (gameState?.pl?.inv[k] || 0) >= (v as number));
+                if (!hasMats) return false;
+
+                const bldLvl = gameState?.pl?.skills?.building?.lvl || 1;
+                const bldMet = !r.reqBld || bldLvl >= r.reqBld;
+                if (!bldMet) return false;
+
+                return true;
+              });
+
+            return (
+              <motion.div
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                className="bg-zinc-950/95 border border-cyan-500/30 p-2.5 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.7)] w-[360px] md:w-[450px] flex flex-col gap-1.5 select-none shrink-0"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-white/5 pb-1 px-1">
+                  <span className="text-[9px] font-black tracking-widest text-cyan-400 flex items-center gap-1.5 uppercase">
+                    <span className="animate-pulse">⚡</span> QUICK CRAFT: {activeStations.map(getStationDisplayName).join(' & ')}
+                  </span>
+                  <span className="text-[8px] text-zinc-400 uppercase font-mono">
+                    {validQuickRecipes.length} item(s) available
+                  </span>
+                </div>
+
+                {/* Content */}
+                {validQuickRecipes.length > 0 ? (
+                  <div className="flex gap-2 overflow-x-auto py-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                    {validQuickRecipes.map(({ r, i }) => (
+                      <motion.button
+                        key={`${r.out}-${i}`}
+                        onClick={() => craft(i, 1)}
+                        whileHover={{ scale: 1.02, borderColor: 'rgba(6,182,212,0.5)' }}
+                        whileTap={{ scale: 0.96 }}
+                        className="flex-shrink-0 bg-white/[0.02] border border-white/10 hover:bg-cyan-500/[0.05] p-2 rounded-xl flex items-center gap-2 cursor-pointer transition-all duration-200 max-w-[150px] md:max-w-[180px]"
+                        title={`Craft 1x ${r.n}`}
+                      >
+                        <span className="text-lg shrink-0">{IT[r.out]?.ico || '📦'}</span>
+                        <div className="text-left min-w-0">
+                          <div className="text-[9px] font-black text-zinc-100 truncate uppercase leading-tight">
+                            {r.n}
+                          </div>
+                          {/* Cost preview */}
+                          <div className="flex gap-1 items-center mt-0.5 overflow-x-auto scrollbar-none">
+                            {Object.entries(r.c).map(([matKey, qty]) => (
+                              <span key={matKey} className="text-[7.5px] text-zinc-400 flex items-center gap-0.5 bg-black/40 px-1 rounded-sm shrink-0">
+                                <span>{IT[matKey]?.ico || '📦'}</span>
+                                <span className="font-sans font-bold">{qty}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </motion.button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-2 text-[8px] text-zinc-500 uppercase tracking-wider font-mono">
+                    No quick recipes can be forged. Collect materials to craft here!
+                  </div>
+                )}
+              </motion.div>
+            );
+          })()}
+
           {/* Visual Vital Status Progress HUD (Health, Hunger, Thirst, Mana) */}
           <div className="bg-zinc-950/90 border border-white/10 p-3 px-4 rounded-2xl backdrop-blur-md shadow-2xl grid grid-cols-2 gap-x-5 gap-y-2 select-none w-[360px] md:w-[450px] relative">
             {/* Health Bar */}
@@ -9040,6 +10047,7 @@ export default function SurvivalGame() {
                     { slot: 'legs', n: 'Legs', ico: '👖' },
                     { slot: 'feet', n: 'Feet', ico: '🥾' },
                     { slot: 'ring', n: 'Ring', ico: '💍' },
+                    { slot: 'back', n: 'Backpack', ico: '🎒' },
                   ].map(({ slot, n, ico }) => {
                     const itemKey = gameState?.pl.equip?.[slot];
                     const item = itemKey ? IT[itemKey] : null;
@@ -12321,6 +13329,25 @@ export default function SurvivalGame() {
       </AnimatePresence>
 
       <AnimatePresence>
+        {showResearch && (
+          <ResearchTree 
+            onClose={() => setShowResearch(false)}
+            gameState={gameState}
+            setGameState={setGameState}
+            addLog={addLog}
+            spawnExplosion={(col, count, style) => {
+              const s = stateRef.current;
+              if (s) {
+                spawnExplosion(s, s.pl.x, s.pl.y, col, count, style);
+                setGameState({ ...s });
+              }
+            }}
+            setRecipes={setRecipes}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {showMusicMenu && (
           <motion.div 
             initial={{ opacity: 0 }}
@@ -12450,6 +13477,196 @@ export default function SurvivalGame() {
               {/* Engine Technical Explainer */}
               <div className="bg-zinc-900/50 border border-white/5 p-4 rounded-2xl text-[9px] text-zinc-500 uppercase leading-relaxed font-sans">
                 💡 <span className="text-rose-400/80 font-mono font-bold">Procedural Synthesis Engine:</span> Unlike standard static audio streams, this engine utilizes raw browser oscillator nodes, envelope shaping, lowpass filter sweeping, and custom feedback delay lines to construct non-repeating, dynamic background tracks dynamically.
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- Supply Crate Storage UI Overlay --- */}
+      <AnimatePresence>
+        {activeCrateIndex !== null && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <div className="max-w-4xl w-full bg-zinc-950 border border-amber-500/30 rounded-3xl p-6 md:p-8 flex flex-col gap-6 shadow-[0_0_50px_rgba(245,158,11,0.1)] text-white font-mono pointer-events-auto">
+              <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-2xl">📦</span>
+                  <div>
+                    <h2 className="text-xl font-bold uppercase tracking-wider text-amber-400 font-mono">SUPPLY STORAGE CRATE</h2>
+                    <p className="text-[10px] opacity-50 uppercase mt-0.5 font-mono">Secure containment facility for storing resources and supplies</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setActiveCrateIndex(null)}
+                  className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all cursor-pointer text-zinc-400 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Two columns: Left is Crate Storage, Right is Player Backpack */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 overflow-hidden max-h-[60vh]">
+                {/* Left Column: Crate Storage */}
+                <div className="flex flex-col gap-3 bg-zinc-900/40 border border-white/5 rounded-2xl p-4 overflow-y-auto">
+                  <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                    <span className="text-xs font-bold text-amber-400">📦 CRATE CONTENTS</span>
+                    <button
+                      onClick={() => {
+                        const s = stateRef.current;
+                        if (!s || activeCrateIndex === null) return;
+                        const crate = s.objs[activeCrateIndex];
+                        if (!crate || !crate.items) return;
+                        // Move everything in crate to player inventory
+                        Object.entries(crate.items).forEach(([k, qty]: any) => {
+                          if (qty > 0) {
+                            s.pl.inv[k] = (s.pl.inv[k] || 0) + qty;
+                          }
+                        });
+                        crate.items = {};
+                        addLog("📦 Transferred all items to Backpack!", "#eab308");
+                        setGameState({ ...s });
+                      }}
+                      className="text-[9px] uppercase px-2 py-1 bg-amber-500/20 text-amber-300 rounded hover:bg-amber-500/30 active:scale-95 transition-all cursor-pointer"
+                    >
+                      Take All
+                    </button>
+                  </div>
+
+                  {/* Render storage slots */}
+                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 pb-2">
+                    {(() => {
+                      const crate = gameState?.objs?.[activeCrateIndex];
+                      const crateItems = crate?.items || {};
+                      const storedItems = Object.entries(crateItems).filter(([_, qty]: any) => qty > 0);
+
+                      if (storedItems.length === 0) {
+                        return (
+                          <div className="col-span-full py-12 text-center text-[10px] text-zinc-500 uppercase">
+                            Crate is empty. Click items in your backpack to store them here!
+                          </div>
+                        );
+                      }
+
+                      return storedItems.map(([k, qty]: any) => {
+                        const it = IT[k];
+                        return (
+                          <button
+                            key={k}
+                            onClick={() => {
+                              const s = stateRef.current;
+                              if (!s || activeCrateIndex === null) return;
+                              const targetCrate = s.objs[activeCrateIndex];
+                              if (!targetCrate || !targetCrate.items || !targetCrate.items[k]) return;
+                              
+                              // Withdraw 1 item
+                              targetCrate.items[k]--;
+                              s.pl.inv[k] = (s.pl.inv[k] || 0) + 1;
+                              if (targetCrate.items[k] <= 0) {
+                                delete targetCrate.items[k];
+                              }
+                              setGameState({ ...s });
+                            }}
+                            className="flex flex-col items-center justify-center p-2 rounded-xl bg-zinc-950 border border-white/5 hover:border-amber-500/40 hover:bg-zinc-900/50 active:scale-95 transition-all relative aspect-square cursor-pointer"
+                            title={`Click to withdraw 1 ${it?.n || k}`}
+                          >
+                            <span className="text-xl">{it?.ico || '📦'}</span>
+                            <span className="text-[8px] mt-1 text-zinc-400 truncate w-full text-center">{it?.n || k}</span>
+                            <span className="absolute top-1 right-1 bg-amber-500 text-zinc-950 text-[8px] font-black px-1 rounded-md min-w-[14px] text-center shadow">
+                              {qty}
+                            </span>
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+
+                {/* Right Column: Player Backpack */}
+                <div className="flex flex-col gap-3 bg-zinc-900/40 border border-white/5 rounded-2xl p-4 overflow-y-auto">
+                  <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                    <span className="text-xs font-bold text-emerald-400">🎒 BACKPACK INVENTORY</span>
+                    <button
+                      onClick={() => {
+                        const s = stateRef.current;
+                        if (!s || activeCrateIndex === null) return;
+                        const crate = s.objs[activeCrateIndex];
+                        if (!crate) return;
+                        if (!crate.items) crate.items = {};
+                        // Store all non-essential elements from backpack
+                        const nonEssentials = ['wood', 'stone', 'fiber', 'copper_ore', 'iron_ore', 'gold_ore', 'coal', 'sulfur', 'crystal', 'leather', 'feather', 'bone', 'resin', 'raw_meat', 'raw_fish', 'cooked_meat', 'cooked_fish'];
+                        let count = 0;
+                        nonEssentials.forEach((k) => {
+                          const qty = s.pl.inv[k] || 0;
+                          if (qty > 0) {
+                            crate.items[k] = (crate.items[k] || 0) + qty;
+                            s.pl.inv[k] = 0;
+                            count++;
+                          }
+                        });
+                        if (count > 0) {
+                          addLog("📦 Transferred all raw supplies to Crate!", "#10b981");
+                        }
+                        setGameState({ ...s });
+                      }}
+                      className="text-[9px] uppercase px-2 py-1 bg-emerald-500/20 text-emerald-300 rounded hover:bg-emerald-500/30 active:scale-95 transition-all cursor-pointer"
+                    >
+                      Store All Supplies
+                    </button>
+                  </div>
+
+                  {/* Render player inventory slots */}
+                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 pb-2">
+                    {(() => {
+                      const invItems = Object.entries(gameState?.pl?.inv || {}).filter(([k, qty]: any) => qty > 0 && k !== 'gold_coins');
+
+                      if (invItems.length === 0) {
+                        return (
+                          <div className="col-span-full py-12 text-center text-[10px] text-zinc-500 uppercase">
+                            Backpack is empty!
+                          </div>
+                        );
+                      }
+
+                      return invItems.map(([k, qty]: any) => {
+                        const it = IT[k];
+                        return (
+                          <button
+                            key={k}
+                            onClick={() => {
+                              const s = stateRef.current;
+                              if (!s || activeCrateIndex === null) return;
+                              const targetCrate = s.objs[activeCrateIndex];
+                              if (!targetCrate) return;
+                              if (!targetCrate.items) targetCrate.items = {};
+                              
+                              // Deposit 1 item
+                              s.pl.inv[k]--;
+                              targetCrate.items[k] = (targetCrate.items[k] || 0) + 1;
+                              setGameState({ ...s });
+                            }}
+                            className="flex flex-col items-center justify-center p-2 rounded-xl bg-zinc-950 border border-white/5 hover:border-emerald-500/40 hover:bg-zinc-900/50 active:scale-95 transition-all relative aspect-square cursor-pointer"
+                            title={`Click to deposit 1 ${it?.n || k}`}
+                          >
+                            <span className="text-xl">{it?.ico || '📦'}</span>
+                            <span className="text-[8px] mt-1 text-zinc-400 truncate w-full text-center">{it?.n || k}</span>
+                            <span className="absolute top-1 right-1 bg-emerald-500 text-zinc-950 text-[8px] font-black px-1 rounded-md min-w-[14px] text-center shadow">
+                              {qty}
+                            </span>
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900/50 border border-white/5 p-4 rounded-2xl text-[9px] text-zinc-500 uppercase leading-relaxed text-center">
+                💡 <span className="text-amber-400 font-bold">PRO-TIP:</span> Click any individual item inside either container to instantly transfer <span className="text-white font-black">1 unit</span> of it to the other container!
               </div>
             </div>
           </motion.div>

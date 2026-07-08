@@ -1,6 +1,20 @@
-import React from 'react';
-import { motion } from 'motion/react';
-import { X, MessageSquare, Sparkles, Heart, Compass, Music } from 'lucide-react';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  X, 
+  MessageSquare, 
+  Sparkles, 
+  Heart, 
+  Compass, 
+  Music, 
+  ArrowRight, 
+  ShoppingBag, 
+  Droplets, 
+  Hammer, 
+  Check,
+  AlertCircle
+} from 'lucide-react';
+import { IT } from './SurvivalGame';
 
 interface NPCDialogueProps {
   npc: any;
@@ -11,6 +25,95 @@ interface NPCDialogueProps {
   spawnExplosion: (col: string, count: number, style: string) => void;
 }
 
+interface BarterOffer {
+  id: string;
+  name: string;
+  category: 'food' | 'water' | 'materials';
+  give: { itemId: string; qty: number }[];
+  receive: { itemId: string; qty: number }[];
+  desc: string;
+}
+
+const BARTER_OFFERS: BarterOffer[] = [
+  {
+    id: 'gather_timber',
+    name: 'Foraged Timber',
+    category: 'materials',
+    give: [{ itemId: 'berry', qty: 15 }, { itemId: 'mushroom', qty: 8 }],
+    receive: [{ itemId: 'wood', qty: 15 }],
+    desc: 'Exchange woodland foraging finds for structural wood logs.'
+  },
+  {
+    id: 'clear_water',
+    name: 'Stonework Hydration',
+    category: 'water',
+    give: [{ itemId: 'stone', qty: 15 }],
+    receive: [{ itemId: 'canteen_full', qty: 1 }],
+    desc: 'Exchange rough mountain stones for a full canteen of clean drinking water.'
+  },
+  {
+    id: 'refill_canteen',
+    name: 'Canteen Sanitation & Refill',
+    category: 'water',
+    give: [{ itemId: 'canteen_empty', qty: 1 }, { itemId: 'fiber', qty: 10 }],
+    receive: [{ itemId: 'canteen_full', qty: 1 }],
+    desc: 'Clean and replenish an empty container with pure reservoir water.'
+  },
+  {
+    id: 'iron_bars',
+    name: 'Processed Iron Reinforcements',
+    category: 'materials',
+    give: [{ itemId: 'wood', qty: 30 }, { itemId: 'stone', qty: 25 }],
+    receive: [{ itemId: 'iron_bar', qty: 4 }],
+    desc: 'Consolidate basic logs and stones into refined architectural iron bars.'
+  },
+  {
+    id: 'hunters_rations',
+    name: "Trapper's Camp Rations",
+    category: 'food',
+    give: [{ itemId: 'fiber', qty: 15 }, { itemId: 'flint', qty: 5 }],
+    receive: [{ itemId: 'cooked_meat', qty: 3 }],
+    desc: 'Exchange basic binding materials and fire starters for prepared hot meats.'
+  },
+  {
+    id: 'cooked_fish_barter',
+    name: 'Angler Exchange',
+    category: 'water',
+    give: [{ itemId: 'cooked_fish', qty: 3 }],
+    receive: [{ itemId: 'canteen_full', qty: 1 }],
+    desc: 'Trade warm cooked river fish for a canteen of refreshing water.'
+  },
+  {
+    id: 'fortress_block',
+    name: 'Fortress Masonry Block',
+    category: 'materials',
+    give: [{ itemId: 'clay', qty: 20 }, { itemId: 'coal', qty: 8 }],
+    receive: [{ itemId: 'stone_wall', qty: 3 }],
+    desc: 'Convert wet clay and high-energy furnace fuel into finished stone walls.'
+  },
+  {
+    id: 'wood_for_apples',
+    name: 'Orchard Logistics',
+    category: 'food',
+    give: [{ itemId: 'wood', qty: 15 }],
+    receive: [{ itemId: 'apple', qty: 5 }],
+    desc: 'Provide raw timber lumber in exchange for sweet, crisp apples.'
+  },
+  {
+    id: 'advanced_clay',
+    name: 'Clay Harvesting Trades',
+    category: 'materials',
+    give: [{ itemId: 'stone', qty: 12 }, { itemId: 'fiber', qty: 10 }],
+    receive: [{ itemId: 'clay', qty: 8 }],
+    desc: 'Deliver structural debris and organic fibers for heavy molding clay.'
+  }
+];
+
+const RELEVANT_ITEMS = [
+  'wood', 'stone', 'fiber', 'flint', 'clay', 'coal', 'iron_bar', 'stone_wall',
+  'berry', 'mushroom', 'cooked_meat', 'cooked_fish', 'apple', 'canteen_empty', 'canteen_full'
+];
+
 export default function NPCDialogue({
   npc,
   onClose,
@@ -19,6 +122,8 @@ export default function NPCDialogue({
   addLog,
   spawnExplosion,
 }: NPCDialogueProps) {
+  const [activeTab, setActiveTab] = useState<'food' | 'water' | 'materials'>('food');
+
   if (!gameState || !gameState.pl) return null;
 
   const pl = gameState.pl;
@@ -46,6 +151,11 @@ export default function NPCDialogue({
     title = "Tavern Bard";
     subtitle = "Master of Ballads";
     intro = "Ah, a fresh face! I am writing the Grand Ballad of the ultimate survivor. Care for a song, or perhaps some witty banter?";
+  } else if (npc.type === 'resource_trader') {
+    title = "Silas";
+    subtitle = "Town Resource Broker";
+    intro = "Welcome to the Town Exchange, friend! Out here in the continuous wild, gold isn't the only currency that matters. True survival depends on cold, hard resources. Let's strike a barter deal!";
+    icon = npc.ico || "🤝";
   }
 
   // Handle specific interactions
@@ -239,14 +349,52 @@ export default function NPCDialogue({
     onClose();
   };
 
+  const handleExecuteBarter = (offer: BarterOffer) => {
+    // Check constraints
+    for (const req of offer.give) {
+      const currentQty = inv[req.itemId] || 0;
+      if (currentQty < req.qty) {
+        addLog(`❌ Missing materials! You need ${req.qty}x ${IT[req.itemId]?.n || req.itemId} to trade.`, '#ef4444');
+        return;
+      }
+    }
+
+    const s = { ...gameState };
+    
+    // Deduct inputs
+    for (const req of offer.give) {
+      s.pl.inv[req.itemId] -= req.qty;
+    }
+
+    // Add outputs
+    for (const reward of offer.receive) {
+      s.pl.inv[reward.itemId] = (s.pl.inv[reward.itemId] || 0) + reward.qty;
+    }
+
+    const rewardStrings = offer.receive.map(r => `${r.qty}x ${IT[r.itemId]?.ico || '📦'} ${IT[r.itemId]?.n || r.itemId}`).join(', ');
+    const spentStrings = offer.give.map(g => `${g.qty}x ${IT[g.itemId]?.n || g.itemId}`).join(', ');
+
+    addLog(`🤝 Trade complete! Exchanged ${spentStrings} for ${rewardStrings}!`, '#10b981');
+    spawnExplosion('#10b981', 18, 'spark');
+    setGameState(s);
+  };
+
+  const isResourceTrader = npc.type === 'resource_trader';
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4"
     >
-      <div className="max-w-md w-full bg-zinc-950 border border-cyan-500/30 rounded-3xl p-6 shadow-[0_0_50px_rgba(6,182,212,0.15)] text-white font-mono pointer-events-auto">
+      <div 
+        className={`w-full bg-zinc-950 border rounded-3xl p-5 md:p-6 shadow-[0_0_50px_rgba(6,182,212,0.15)] text-white font-mono pointer-events-auto transition-all ${
+          isResourceTrader 
+            ? 'max-w-4xl border-cyan-500/30' 
+            : 'max-w-md border-cyan-500/30'
+        }`}
+      >
         {/* Header */}
         <div className="flex justify-between items-start border-b border-white/10 pb-4 mb-4">
           <div className="flex items-center gap-3">
@@ -265,135 +413,299 @@ export default function NPCDialogue({
         </div>
 
         {/* Dialog bubble */}
-        <div className="relative bg-zinc-900/60 border border-white/5 p-4 rounded-2xl text-xs leading-relaxed text-zinc-300 italic mb-6">
+        <div className="relative bg-zinc-900/60 border border-white/5 p-4 rounded-2xl text-xs leading-relaxed text-zinc-300 italic mb-4">
           <div className="absolute -top-1.5 left-6 w-3 h-3 bg-zinc-900 border-l border-t border-white/5 rotate-45" />
           "{intro}"
         </div>
 
-        {/* Options */}
-        <div className="flex flex-col gap-2.5">
-          {npc.type === 'lost_explorer' && (
-            <>
+        {/* --- MAIN SPLIT CONTAINER FOR RESOURCE TRADER --- */}
+        {isResourceTrader ? (
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+            
+            {/* LEFT COLUMN: PLAYER INVENTORY HUDS */}
+            <div className="md:col-span-4 bg-zinc-900/40 border border-white/5 rounded-2xl p-4 flex flex-col gap-3">
+              <div className="flex items-center gap-1.5 border-b border-white/5 pb-2">
+                <ShoppingBag size={14} className="text-cyan-400" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-300">Your Resources</h3>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-1 gap-2 max-h-[180px] md:max-h-[300px] overflow-y-auto pr-1">
+                {RELEVANT_ITEMS.map((itemId) => {
+                  const item = IT[itemId];
+                  if (!item) return null;
+                  const qty = inv[itemId] || 0;
+                  return (
+                    <div 
+                      key={itemId} 
+                      className="flex items-center justify-between gap-2 bg-zinc-950/45 border border-white/5 rounded-xl px-2.5 py-1.5 hover:bg-zinc-950/80 transition-all"
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-lg select-none shrink-0">{item.ico}</span>
+                        <span className="text-[10px] text-zinc-400 truncate font-sans">{item.n}</span>
+                      </div>
+                      <span className={`text-[10px] font-bold font-mono px-1.5 py-0.5 rounded ${
+                        qty > 0 ? 'bg-cyan-950/80 text-cyan-400 border border-cyan-800/30' : 'bg-zinc-900 text-zinc-600'
+                      }`}>
+                        {qty}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-auto border-t border-white/5 pt-3 flex items-center gap-2 text-[9px] text-zinc-500 uppercase leading-relaxed font-sans">
+                <AlertCircle size={12} className="text-cyan-500 shrink-0" />
+                <span>Silas trades materials directly. No gold coins required.</span>
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN: OFFERS & TABS */}
+            <div className="md:col-span-8 flex flex-col gap-4">
+              
+              {/* Deals Filter Tabs */}
+              <div className="flex items-center gap-1.5 bg-zinc-900 border border-white/5 p-1 rounded-xl">
+                <button
+                  onClick={() => setActiveTab('food')}
+                  className={`flex-1 py-1.5 text-[9px] font-bold rounded-lg uppercase tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                    activeTab === 'food' ? 'bg-cyan-600 text-white font-extrabold shadow-md' : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  🥬 Food Deals
+                </button>
+                <button
+                  onClick={() => setActiveTab('water')}
+                  className={`flex-1 py-1.5 text-[9px] font-bold rounded-lg uppercase tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                    activeTab === 'water' ? 'bg-cyan-600 text-white font-extrabold shadow-md' : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  💧 Pure Water
+                </button>
+                <button
+                  onClick={() => setActiveTab('materials')}
+                  className={`flex-1 py-1.5 text-[9px] font-bold rounded-lg uppercase tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                    activeTab === 'materials' ? 'bg-cyan-600 text-white font-extrabold shadow-md' : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  🪵 Supplies
+                </button>
+              </div>
+
+              {/* Barter Deals List */}
+              <div className="flex-1 max-h-[300px] overflow-y-auto pr-1 flex flex-col gap-3">
+                {BARTER_OFFERS.filter(offer => offer.category === activeTab).map((offer) => {
+                  // Check if player has all materials to afford the trade
+                  const canAfford = offer.give.every(req => (inv[req.itemId] || 0) >= req.qty);
+
+                  return (
+                    <div 
+                      key={offer.id} 
+                      className="bg-zinc-900/35 border border-white/5 hover:border-white/10 rounded-2xl p-3 flex flex-col gap-2 transition-all"
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <h4 className="text-[11px] font-black text-cyan-300 uppercase tracking-wide">{offer.name}</h4>
+                          <p className="text-[9px] text-zinc-500 font-sans mt-0.5 leading-tight">{offer.desc}</p>
+                        </div>
+                      </div>
+
+                      {/* Bartering Pipeline Visualizer */}
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-zinc-950/40 border border-white/5 rounded-xl p-2.5">
+                        
+                        {/* INPUTS (GIVE) */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[9px] uppercase tracking-wider font-extrabold text-red-400/80">GIVE:</span>
+                          {offer.give.map((req, idx) => {
+                            const item = IT[req.itemId];
+                            const currentQty = inv[req.itemId] || 0;
+                            const enough = currentQty >= req.qty;
+                            return (
+                              <div key={idx} className="flex items-center gap-1 bg-black/40 border border-white/5 rounded-lg px-2 py-1 text-[10px]">
+                                <span>{item?.ico || '📦'}</span>
+                                <span className={enough ? 'text-zinc-300' : 'text-red-400 font-extrabold'}>
+                                  {currentQty}/{req.qty}
+                                </span>
+                                <span className="text-zinc-500 text-[9px] truncate max-w-[60px] font-sans">{item?.n || req.itemId}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* CONNECTOR ARROW */}
+                        <ArrowRight size={14} className="text-cyan-500/50 rotate-90 sm:rotate-0 shrink-0" />
+
+                        {/* OUTPUTS (RECEIVE) */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[9px] uppercase tracking-wider font-extrabold text-emerald-400/80">GET:</span>
+                          {offer.receive.map((reward, idx) => {
+                            const item = IT[reward.itemId];
+                            return (
+                              <div key={idx} className="flex items-center gap-1 bg-emerald-950/10 border border-emerald-500/10 rounded-lg px-2 py-1 text-[10px] text-emerald-300">
+                                <span>{item?.ico || '📦'}</span>
+                                <span className="font-bold">+{reward.qty}</span>
+                                <span className="text-[9px] truncate max-w-[60px] font-sans">{item?.n || reward.itemId}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Trade Buttons */}
+                      <div className="flex justify-end mt-1">
+                        <button
+                          onClick={() => handleExecuteBarter(offer)}
+                          disabled={!canAfford}
+                          className={`w-full sm:w-auto px-4 py-1.5 text-[9px] font-bold rounded-xl border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                            canAfford 
+                              ? 'bg-zinc-100 text-zinc-950 border-white hover:bg-white active:scale-95 shadow-md font-extrabold hover:shadow-cyan-500/10'
+                              : 'bg-zinc-900 text-zinc-600 border-zinc-800/40 cursor-not-allowed'
+                          }`}
+                        >
+                          <Check size={12} />
+                          <span>Barter Now</span>
+                        </button>
+                      </div>
+
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Close Conversation */}
               <button
-                onClick={handleDirections}
-                className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-cyan-500/40 text-left text-xs text-zinc-200 hover:text-white transition-all duration-200 flex items-center gap-2 cursor-pointer"
+                onClick={onClose}
+                className="w-full py-2 bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-white font-bold border border-white/5 text-[10px] tracking-wider rounded-xl transition-all cursor-pointer uppercase text-center mt-2"
               >
-                <Compass size={14} className="text-cyan-400" />
-                <div className="flex flex-col">
-                  <span className="font-bold">Ask for Directions</span>
-                  <span className="text-[9px] opacity-50">Tells a randomized tip about a key landmark or biome</span>
-                </div>
+                Leave conversation
               </button>
 
-              <button
-                onClick={handleExplorerFeed}
-                className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-emerald-500/40 text-left text-xs text-zinc-200 hover:text-white transition-all duration-200 flex items-center gap-2 cursor-pointer"
-              >
-                <MessageSquare size={14} className="text-emerald-400" />
-                <div className="flex flex-col">
-                  <span className="font-bold">Share Provisions (1 Meat or Raw Fish)</span>
-                  <span className="text-[9px] opacity-50">Exchange raw meat/fish for a high-value steel bar or gem</span>
-                </div>
-              </button>
-            </>
-          )}
+            </div>
+          </div>
+        ) : (
+          /* --- STANDARD NPC OPTIONS FOR REGULAR DIALOGUE --- */
+          <div className="flex flex-col gap-2.5">
+            {npc.type === 'lost_explorer' && (
+              <>
+                <button
+                  onClick={handleDirections}
+                  className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-cyan-500/40 text-left text-xs text-zinc-200 hover:text-white transition-all duration-200 flex items-center gap-2 cursor-pointer"
+                >
+                  <Compass size={14} className="text-cyan-400" />
+                  <div className="flex flex-col">
+                    <span className="font-bold">Ask for Directions</span>
+                    <span className="text-[9px] opacity-50">Tells a randomized tip about a key landmark or biome</span>
+                  </div>
+                </button>
 
-          {npc.type === 'elven_druid' && (
-            <>
-              <button
-                onClick={handleDruidWisdom}
-                className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-purple-500/40 text-left text-xs text-zinc-200 hover:text-white transition-all duration-200 flex items-center gap-2 cursor-pointer"
-              >
-                <Sparkles size={14} className="text-purple-400" />
-                <div className="flex flex-col">
-                  <span className="font-bold">Request Wisdom</span>
-                  <span className="text-[9px] opacity-50">Learn deep forest knowledge about trees, crops, or skills</span>
-                </div>
-              </button>
+                <button
+                  onClick={handleExplorerFeed}
+                  className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-emerald-500/40 text-left text-xs text-zinc-200 hover:text-white transition-all duration-200 flex items-center gap-2 cursor-pointer"
+                >
+                  <MessageSquare size={14} className="text-emerald-400" />
+                  <div className="flex flex-col">
+                    <span className="font-bold">Share Provisions (1 Meat or Raw Fish)</span>
+                    <span className="text-[9px] opacity-50">Exchange raw meat/fish for a high-value steel bar or gem</span>
+                  </div>
+                </button>
+              </>
+            )}
 
-              <button
-                onClick={handleDruidHeal}
-                className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-emerald-500/40 text-left text-xs text-zinc-200 hover:text-white transition-all duration-200 flex items-center gap-2 cursor-pointer"
-              >
-                <Heart size={14} className="text-emerald-400" />
-                <div className="flex flex-col">
-                  <span className="font-bold">Healing Touch (Requires 5 Herbs 🌱)</span>
-                  <span className="text-[9px] opacity-50">Fully restore Health and Mana instantly</span>
-                </div>
-              </button>
+            {npc.type === 'elven_druid' && (
+              <>
+                <button
+                  onClick={handleDruidWisdom}
+                  className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-purple-500/40 text-left text-xs text-zinc-200 hover:text-white transition-all duration-200 flex items-center gap-2 cursor-pointer"
+                >
+                  <Sparkles size={14} className="text-purple-400" />
+                  <div className="flex flex-col">
+                    <span className="font-bold">Request Wisdom</span>
+                    <span className="text-[9px] opacity-50">Learn deep forest knowledge about trees, crops, or skills</span>
+                  </div>
+                </button>
 
-              <button
-                onClick={handleDruidPotion}
-                className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-cyan-500/40 text-left text-xs text-zinc-200 hover:text-white transition-all duration-200 flex items-center gap-2 cursor-pointer"
-              >
-                <Sparkles size={14} className="text-cyan-400" />
-                <div className="flex flex-col">
-                  <span className="font-bold">Brew Health Potion (Requires 10 Berries 🫐)</span>
-                  <span className="text-[9px] opacity-50">Transmute common woodland berries into a high-grade potion</span>
-                </div>
-              </button>
-            </>
-          )}
+                <button
+                  onClick={handleDruidHeal}
+                  className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-emerald-500/40 text-left text-xs text-zinc-200 hover:text-white transition-all duration-200 flex items-center gap-2 cursor-pointer"
+                >
+                  <Heart size={14} className="text-emerald-400" />
+                  <div className="flex flex-col">
+                    <span className="font-bold">Healing Touch (Requires 5 Herbs 🌱)</span>
+                    <span className="text-[9px] opacity-50">Fully restore Health and Mana instantly</span>
+                  </div>
+                </button>
 
-          {npc.type === 'tame_dog' && (
-            <>
-              <button
-                onClick={handlePetDog}
-                className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-rose-500/40 text-left text-xs text-zinc-200 hover:text-white transition-all duration-200 flex items-center gap-2 cursor-pointer"
-              >
-                <Heart size={14} className="text-rose-400" />
-                <div className="flex flex-col">
-                  <span className="font-bold">Pet the Dog</span>
-                  <span className="text-[9px] opacity-50">Gives head scratches. Restores +30 Stamina!</span>
-                </div>
-              </button>
+                <button
+                  onClick={handleDruidPotion}
+                  className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-cyan-500/40 text-left text-xs text-zinc-200 hover:text-white transition-all duration-200 flex items-center gap-2 cursor-pointer"
+                >
+                  <Sparkles size={14} className="text-cyan-400" />
+                  <div className="flex flex-col">
+                    <span className="font-bold">Brew Health Potion (Requires 10 Berries 🫐)</span>
+                    <span className="text-[9px] opacity-50">Transmute common woodland berries into a high-grade potion</span>
+                  </div>
+                </button>
+              </>
+            )}
 
-              <button
-                onClick={handleFeedDog}
-                className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-yellow-500/40 text-left text-xs text-zinc-200 hover:text-white transition-all duration-200 flex items-center gap-2 cursor-pointer"
-              >
-                <Sparkles size={14} className="text-yellow-400" />
-                <div className="flex flex-col">
-                  <span className="font-bold">Feed Raw Meat (1 Meat 🥩)</span>
-                  <span className="text-[9px] opacity-50">Give food to have him dig up bones, gold, or a rare ring!</span>
-                </div>
-              </button>
-            </>
-          )}
+            {npc.type === 'tame_dog' && (
+              <>
+                <button
+                  onClick={handlePetDog}
+                  className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-rose-500/40 text-left text-xs text-zinc-200 hover:text-white transition-all duration-200 flex items-center gap-2 cursor-pointer"
+                >
+                  <Heart size={14} className="text-rose-400" />
+                  <div className="flex flex-col">
+                    <span className="font-bold">Pet the Dog</span>
+                    <span className="text-[9px] opacity-50">Gives head scratches. Restores +30 Stamina!</span>
+                  </div>
+                </button>
 
-          {npc.type === 'tavern_bard' && (
-            <>
-              <button
-                onClick={handleBardJoke}
-                className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-rose-500/40 text-left text-xs text-zinc-200 hover:text-white transition-all duration-200 flex items-center gap-2 cursor-pointer"
-              >
-                <MessageSquare size={14} className="text-rose-400" />
-                <div className="flex flex-col">
-                  <span className="font-bold">Listen to a Joke</span>
-                  <span className="text-[9px] opacity-50">Hear a witty survivor pun from the high road</span>
-                </div>
-              </button>
+                <button
+                  onClick={handleFeedDog}
+                  className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-yellow-500/40 text-left text-xs text-zinc-200 hover:text-white transition-all duration-200 flex items-center gap-2 cursor-pointer"
+                >
+                  <Sparkles size={14} className="text-yellow-400" />
+                  <div className="flex flex-col">
+                    <span className="font-bold">Feed Raw Meat (1 Meat 🥩)</span>
+                    <span className="text-[9px] opacity-50">Give food to have him dig up bones, gold, or a rare ring!</span>
+                  </div>
+                </button>
+              </>
+            )}
 
-              <button
-                onClick={handleBardSong}
-                className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-yellow-500/40 text-left text-xs text-zinc-200 hover:text-white transition-all duration-200 flex items-center gap-2 cursor-pointer"
-              >
-                <Music size={14} className="text-yellow-400" />
-                <div className="flex flex-col">
-                  <span className="font-bold">Inspiring Ballad (Costs 15 Gold 🪙)</span>
-                  <span className="text-[9px] opacity-50">Restores full Stamina, +25 MP, and cures any slow effects</span>
-                </div>
-              </button>
-            </>
-          )}
+            {npc.type === 'tavern_bard' && (
+              <>
+                <button
+                  onClick={handleBardJoke}
+                  className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-rose-500/40 text-left text-xs text-zinc-200 hover:text-white transition-all duration-200 flex items-center gap-2 cursor-pointer"
+                >
+                  <MessageSquare size={14} className="text-rose-400" />
+                  <div className="flex flex-col">
+                    <span className="font-bold">Listen to a Joke</span>
+                    <span className="text-[9px] opacity-50">Hear a witty survivor pun from the high road</span>
+                  </div>
+                </button>
 
-          <button
-            onClick={onClose}
-            className="w-full py-2 bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-white font-bold border border-white/5 text-[10px] tracking-wider rounded-xl transition-all cursor-pointer mt-2 uppercase text-center"
-          >
-            Leave conversation
-          </button>
-        </div>
+                <button
+                  onClick={handleBardSong}
+                  className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-yellow-500/40 text-left text-xs text-zinc-200 hover:text-white transition-all duration-200 flex items-center gap-2 cursor-pointer"
+                >
+                  <Music size={14} className="text-yellow-400" />
+                  <div className="flex flex-col">
+                    <span className="font-bold">Inspiring Ballad (Costs 15 Gold 🪙)</span>
+                    <span className="text-[9px] opacity-50">Restores full Stamina, +25 MP, and cures any slow effects</span>
+                  </div>
+                </button>
+              </>
+            )}
+
+            <button
+              onClick={onClose}
+              className="w-full py-2 bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-white font-bold border border-white/5 text-[10px] tracking-wider rounded-xl transition-all cursor-pointer mt-2 uppercase text-center"
+            >
+              Leave conversation
+            </button>
+          </div>
+        )}
       </div>
     </motion.div>
   );
