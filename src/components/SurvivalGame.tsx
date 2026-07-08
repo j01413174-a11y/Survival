@@ -1382,6 +1382,14 @@ export default function SurvivalGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mouseTileRef = useRef<{ tx: number; ty: number } | null>(null);
   const [gameState, setGameState] = useState<any>(null);
+  const [gameZoom, setGameZoom] = useState<number>(0.85); // default to a comfortable, spacious zoom level!
+  const gameZoomRef = useRef<number>(0.85);
+  const [isHUDHidden, setIsHUDHidden] = useState(false);
+
+  useEffect(() => {
+    gameZoomRef.current = gameZoom;
+  }, [gameZoom]);
+
   const [showInv, setShowInv] = useState(false);
   const [showNFTMarket, setShowNFTMarket] = useState(false);
   const [showShop, setShowShop] = useState(false);
@@ -1937,8 +1945,9 @@ export default function SurvivalGame() {
       s.parts = [];
 
       // 6. Center camera
-      s.cam.x = s.pl.x - window.innerWidth / 2;
-      s.cam.y = s.pl.y - window.innerHeight / 2;
+      const initZoom = gameZoomRef.current;
+      s.cam.x = s.pl.x - (window.innerWidth / initZoom) / 2;
+      s.cam.y = s.pl.y - (window.innerHeight / initZoom) / 2;
 
       addLog("Successfully loaded saved game progress!", "#38bdf8");
       setGameState({ ...s });
@@ -2905,7 +2914,7 @@ export default function SurvivalGame() {
       waveNum: 0,
       waveTimer: 300,
       waveActive: false,
-      cam: { x: initialPl.x - window.innerWidth / 2, y: initialPl.y - window.innerHeight / 2 },
+      cam: { x: initialPl.x - (window.innerWidth / gameZoomRef.current) / 2, y: initialPl.y - (window.innerHeight / gameZoomRef.current) / 2 },
       camShake: 0,
       zoneMaps,
       worldSeed: currentSeed
@@ -2958,6 +2967,12 @@ export default function SurvivalGame() {
         // Select slot or use the item in it
         e.preventDefault();
         handleHotbarClick(slotIdx);
+      }
+
+      // Toggle HUD visibility
+      if (e.key === 'h' || e.key === 'H') {
+        e.preventDefault();
+        setIsHUDHidden(prev => !prev);
       }
     };
 
@@ -3679,9 +3694,12 @@ export default function SurvivalGame() {
         }
       }
 
-      // Camera
-      s.cam.x += (s.pl.x - window.innerWidth / 2 - s.cam.x) * 0.1;
-      s.cam.y += (s.pl.y - window.innerHeight / 2 - s.cam.y) * 0.1;
+      // Camera (accounting for game zoom factor)
+      const curZoom = gameZoomRef.current;
+      const targetCamX = s.pl.x - (window.innerWidth / curZoom) / 2;
+      const targetCamY = s.pl.y - (window.innerHeight / curZoom) / 2;
+      s.cam.x += (targetCamX - s.cam.x) * 0.1;
+      s.cam.y += (targetCamY - s.cam.y) * 0.1;
 
       // --- Combat Update ---
       if (s.pl.atkcd > 0) s.pl.atkcd--;
@@ -4314,6 +4332,11 @@ export default function SurvivalGame() {
       ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
       
       ctx.save();
+      
+      // Apply game zoom
+      const zoom = gameZoomRef.current;
+      ctx.scale(zoom, zoom);
+
       // Apply camera shake if any
       let shakeX = 0;
       let shakeY = 0;
@@ -4328,8 +4351,8 @@ export default function SurvivalGame() {
       // Tiles
       const sx0 = Math.max(0, Math.floor(s.cam.x / TZ) - 1);
       const sy0 = Math.max(0, Math.floor(s.cam.y / TZ) - 1);
-      const ex = Math.min(WW, sx0 + Math.floor(ctx.canvas.width / TZ) + 2);
-      const ey = Math.min(WH, sy0 + Math.floor(ctx.canvas.height / TZ) + 2);
+      const ex = Math.min(WW, sx0 + Math.floor((ctx.canvas.width / zoom) / TZ) + 2);
+      const ey = Math.min(WH, sy0 + Math.floor((ctx.canvas.height / zoom) / TZ) + 2);
 
       for (let y = sy0; y < ey; y++) {
         for (let x = sx0; x < ex; x++) {
@@ -4421,7 +4444,7 @@ export default function SurvivalGame() {
       for (const o of s.objs) {
         const ox = o.tx * TZ + TZ / 2 - s.cam.x;
         const oy = o.ty * TZ + TZ / 2 - s.cam.y;
-        if (ox < -TZ || ox > ctx.canvas.width + TZ || oy < -TZ || oy > ctx.canvas.height + TZ) continue;
+        if (ox < -TZ || ox > (ctx.canvas.width / zoom) + TZ || oy < -TZ || oy > (ctx.canvas.height / zoom) + TZ) continue;
         
         let ico = '?';
         if (o.type === 'lore_node') {
@@ -4597,7 +4620,7 @@ export default function SurvivalGame() {
           const sx = sn.tx * TZ + TZ / 2 - s.cam.x;
           const sy = sn.ty * TZ + TZ / 2 - s.cam.y;
           
-          if (sx < -TZ || sx > ctx.canvas.width + TZ || sy < -TZ || sy > ctx.canvas.height + TZ) continue;
+          if (sx < -TZ || sx > (ctx.canvas.width / zoom) + TZ || sy < -TZ || sy > (ctx.canvas.height / zoom) + TZ) continue;
 
           // Drawing pulse wave
           const size = TZ * 0.75 + Math.sin(s.ticks * 0.12) * 6;
@@ -4662,7 +4685,7 @@ export default function SurvivalGame() {
       for (const e of s.enemies) {
         const ex = e.x - s.cam.x;
         const ey = e.y - s.cam.y;
-        if (ex < -TZ || ex > ctx.canvas.width + TZ || ey < -TZ || ey > ctx.canvas.height + TZ) continue;
+        if (ex < -TZ || ex > (ctx.canvas.width / zoom) + TZ || ey < -TZ || ey > (ctx.canvas.height / zoom) + TZ) continue;
 
         // Beautiful Bobbing and Squish-Stretch Animations
         const bob = Math.sin(s.ticks * 0.12 + e.id * 1.5) * 4;
@@ -4718,7 +4741,7 @@ export default function SurvivalGame() {
       for (const c of s.companions) {
         const cx = c.x - s.cam.x;
         const cy = c.y - s.cam.y;
-        if (cx < -TZ || cx > ctx.canvas.width + TZ || cy < -TZ || cy > ctx.canvas.height + TZ) continue;
+        if (cx < -TZ || cx > (ctx.canvas.width / zoom) + TZ || cy < -TZ || cy > (ctx.canvas.height / zoom) + TZ) continue;
 
         // Target Indicator
         if (c.target && c.target.hp > 0) {
@@ -4820,7 +4843,7 @@ export default function SurvivalGame() {
       for (const pt of s.parts) {
         const px = pt.x - s.cam.x;
         const py = pt.y - s.cam.y;
-        if (px < -40 || px > ctx.canvas.width + 40 || py < -40 || py > ctx.canvas.height + 40) continue;
+        if (px < -40 || px > (ctx.canvas.width / zoom) + 40 || py < -40 || py > (ctx.canvas.height / zoom) + 40) continue;
         
         ctx.save();
         ctx.fillStyle = pt.col || '#fff';
@@ -4872,7 +4895,7 @@ export default function SurvivalGame() {
         for (const o of s.objs) {
           const ox = o.tx * TZ + TZ/2 - s.cam.x;
           const oy = o.ty * TZ + TZ/2 - s.cam.y;
-          if (ox < -TZ || ox > ctx.canvas.width + TZ || oy < -TZ || oy > ctx.canvas.height + TZ) continue;
+          if (ox < -TZ || ox > (ctx.canvas.width / zoom) + TZ || oy < -TZ || oy > (ctx.canvas.height / zoom) + TZ) continue;
           
           let sRad = 0;
           if (o.type === 'campfire' || o.type === 'camp_fire') {
@@ -4900,7 +4923,7 @@ export default function SurvivalGame() {
         for (const o of s.objs) {
           const ox = o.tx * TZ + TZ/2 - s.cam.x;
           const oy = o.ty * TZ + TZ/2 - s.cam.y;
-          if (ox < -TZ || ox > ctx.canvas.width + TZ || oy < -TZ || oy > ctx.canvas.height + TZ) continue;
+          if (ox < -TZ || ox > (ctx.canvas.width / zoom) + TZ || oy < -TZ || oy > (ctx.canvas.height / zoom) + TZ) continue;
           
           if (o.type === 'campfire' || o.type === 'camp_fire') {
             const size = 30 + Math.sin(s.ticks * 0.15) * 3;
@@ -4928,12 +4951,14 @@ export default function SurvivalGame() {
       // Draw procedural weather/atmospheric particles
       const mapIdx = Math.floor(s.pl.y / (ZH * TZ)) * ZCOLS + Math.floor(s.pl.x / (ZW * TZ));
       const bName = s.zoneMaps?.[mapIdx]?.n || MAPS[mapIdx]?.n || MAPS[0].n;
+      const viewW = ctx.canvas.width / zoom;
+      const viewH = ctx.canvas.height / zoom;
       
       if (bName.includes('Frozen') || bName.includes('Tundra')) {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
         for (let i = 0; i < 40; i++) {
-          const px = ((Math.sin(i * 123.45) * 0.5 + 0.5) * ctx.canvas.width) % ctx.canvas.width;
-          const py = ((i * 45.67 + s.ticks * 1.5) % ctx.canvas.height);
+          const px = ((Math.sin(i * 123.45) * 0.5 + 0.5) * viewW) % viewW;
+          const py = ((i * 45.67 + s.ticks * 1.5) % viewH);
           ctx.beginPath();
           ctx.arc(px, py, 1.5 + Math.sin(i + s.ticks * 0.05) * 0.8, 0, Math.PI * 2);
           ctx.fill();
@@ -4941,15 +4966,15 @@ export default function SurvivalGame() {
       } else if (bName.includes('Desert') || bName.includes('Waste') || bName.includes('Oasis')) {
         ctx.fillStyle = 'rgba(219, 180, 110, 0.35)'; // Sand dust
         for (let i = 0; i < 30; i++) {
-          const px = ((Math.sin(i * 54.32) * 0.5 + 0.5) * ctx.canvas.width - s.ticks * 2) % ctx.canvas.width;
-          const py = (i * 98.76) % ctx.canvas.height;
-          ctx.fillRect(px < 0 ? px + ctx.canvas.width : px, py, 3, 1.2);
+          const px = ((Math.sin(i * 54.32) * 0.5 + 0.5) * viewW - s.ticks * 2) % viewW;
+          const py = (i * 98.76) % viewH;
+          ctx.fillRect(px < 0 ? px + viewW : px, py, 3, 1.2);
         }
       } else if (bName.includes('Volcanic') || bName.includes('Scorched') || bName.includes('Spire')) {
         ctx.fillStyle = `rgba(239, 68, 68, ${0.45 + Math.sin(s.ticks * 0.08) * 0.2})`; // Ash/ember glowing particles
         for (let i = 0; i < 25; i++) {
-          const px = (Math.sin(i * 87.65) * 0.5 + 0.5) * ctx.canvas.width;
-          const py = (ctx.canvas.height - (i * 32.1 + s.ticks * 0.8) % ctx.canvas.height);
+          const px = (Math.sin(i * 87.65) * 0.5 + 0.5) * viewW;
+          const py = (viewH - (i * 32.1 + s.ticks * 0.8) % viewH);
           ctx.shadowColor = '#ef4444';
           ctx.shadowBlur = 6;
           ctx.beginPath();
@@ -4960,24 +4985,24 @@ export default function SurvivalGame() {
       } else if (bName.includes('Swamp') || bName.includes('Forest') || bName.includes('Grove') || bName.includes('Cavern') || bName.includes('Garden')) {
         ctx.fillStyle = `rgba(132, 204, 22, ${0.55 + Math.sin(s.ticks * 0.05) * 0.3})`; // Glow flies
         for (let i = 0; i < 20; i++) {
-          const px = ((Math.sin(i * 92.11) * 0.5 + 0.5) * ctx.canvas.width + Math.sin(s.ticks * 0.02 + i) * 30) % ctx.canvas.width;
-          const py = ((Math.cos(i * 41.22) * 0.5 + 0.5) * ctx.canvas.height + Math.cos(s.ticks * 0.02 + i) * 30) % ctx.canvas.height;
+          const px = ((Math.sin(i * 92.11) * 0.5 + 0.5) * viewW + Math.sin(s.ticks * 0.02 + i) * 30) % viewW;
+          const py = ((Math.cos(i * 41.22) * 0.5 + 0.5) * viewH + Math.cos(s.ticks * 0.02 + i) * 30) % viewH;
           ctx.shadowColor = '#84cc16';
           ctx.shadowBlur = 8;
           ctx.beginPath();
-          ctx.arc(px < 0 ? px + ctx.canvas.width : px, py < 0 ? py + ctx.canvas.height : py, 1.5, 0, Math.PI * 2);
+          ctx.arc(px < 0 ? px + viewW : px, py < 0 ? py + viewH : py, 1.5, 0, Math.PI * 2);
           ctx.fill();
           ctx.shadowBlur = 0;
         }
       } else if (bName.includes('Celestial') || bName.includes('Void') || bName.includes('Ruins') || bName.includes('Archipelago') || bName.includes('Cyber-Grid')) {
         ctx.fillStyle = `rgba(168, 85, 247, ${0.45 + Math.sin(s.ticks * 0.04) * 0.2})`; // Void cosmic stardust
         for (let i = 0; i < 35; i++) {
-          const px = ((Math.sin(i * 111.11) * 0.5 + 0.5) * ctx.canvas.width + Math.sin(s.ticks * 0.01 + i) * 15) % ctx.canvas.width;
-          const py = ((Math.cos(i * 22.22) * 0.5 + 0.5) * ctx.canvas.height + Math.cos(s.ticks * 0.01 + i) * 15) % ctx.canvas.height;
+          const px = ((Math.sin(i * 111.11) * 0.5 + 0.5) * viewW + Math.sin(s.ticks * 0.01 + i) * 15) % viewW;
+          const py = ((Math.cos(i * 22.22) * 0.5 + 0.5) * viewH + Math.cos(s.ticks * 0.01 + i) * 15) % viewH;
           ctx.shadowColor = '#a855f7';
           ctx.shadowBlur = 10;
           ctx.beginPath();
-          ctx.arc(px < 0 ? px + ctx.canvas.width : px, py < 0 ? py + ctx.canvas.height : py, 1 + Math.abs(Math.sin(i + s.ticks * 0.05)) * 2, 0, Math.PI * 2);
+          ctx.arc(px < 0 ? px + viewW : px, py < 0 ? py + viewH : py, 1 + Math.abs(Math.sin(i + s.ticks * 0.05)) * 2, 0, Math.PI * 2);
           ctx.fill();
           ctx.shadowBlur = 0;
         }
@@ -5988,8 +6013,8 @@ export default function SurvivalGame() {
 
     // Convert mouse coordinates to world tile
     const rect = canvasRef.current.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+    const mouseX = (e.clientX - rect.left) / gameZoom;
+    const mouseY = (e.clientY - rect.top) / gameZoom;
     const tx = Math.floor((mouseX + s.cam.x) / TZ);
     const ty = Math.floor((mouseY + s.cam.y) / TZ);
 
@@ -7651,8 +7676,8 @@ export default function SurvivalGame() {
           const s = stateRef.current;
           if (!s || !canvasRef.current) return;
           const rect = canvasRef.current.getBoundingClientRect();
-          const mouseX = e.clientX - rect.left;
-          const mouseY = e.clientY - rect.top;
+          const mouseX = (e.clientX - rect.left) / gameZoom;
+          const mouseY = (e.clientY - rect.top) / gameZoom;
           const tx = Math.floor((mouseX + s.cam.x) / TZ);
           const ty = Math.floor((mouseY + s.cam.y) / TZ);
           if (tx >= 0 && tx < WW && ty >= 0 && ty < WH) {
@@ -7716,8 +7741,36 @@ export default function SurvivalGame() {
         )}
       </AnimatePresence>
 
+      {/* Floating HUD Controller & Zoom Pill (Always interactive, clean and modern) */}
+      <div className="absolute top-4 left-4 z-50 flex items-center gap-1.5 pointer-events-auto bg-zinc-950/90 border border-white/10 p-1.5 rounded-xl backdrop-blur-md shadow-2xl text-xs font-mono font-bold select-none">
+        <button 
+          onClick={() => setIsHUDHidden(prev => !prev)}
+          className="px-2 py-1 bg-white/5 border border-white/10 hover:border-yellow-500/50 hover:bg-yellow-500/10 rounded-lg text-[10px] text-zinc-300 hover:text-yellow-400 cursor-pointer transition-all active:scale-95 flex items-center gap-1"
+          title="Toggle HUD Visibility (H)"
+        >
+          {isHUDHidden ? '👁️ SHOW HUD' : '🙈 HIDE HUD'}
+          <span className="text-[8px] bg-white/10 px-1 rounded text-zinc-400 font-bold">H</span>
+        </button>
+        <div className="h-4 w-px bg-white/10 mx-0.5" />
+        <button 
+          onClick={() => setGameZoom(prev => Math.max(0.4, Number((prev - 0.15).toFixed(2))))}
+          className="w-6 h-6 flex items-center justify-center bg-white/5 border border-white/10 hover:border-cyan-500/50 hover:bg-cyan-500/10 rounded-lg text-zinc-300 hover:text-cyan-400 cursor-pointer transition-all active:scale-95 font-black"
+          title="Zoom Out"
+        >
+          ➖
+        </button>
+        <span className="text-[10px] text-zinc-400 px-1 text-center min-w-[32px]">{Math.round(gameZoom * 100)}%</span>
+        <button 
+          onClick={() => setGameZoom(prev => Math.min(1.5, Number((prev + 0.15).toFixed(2))))}
+          className="w-6 h-6 flex items-center justify-center bg-white/5 border border-white/10 hover:border-cyan-500/50 hover:bg-cyan-500/10 rounded-lg text-zinc-300 hover:text-cyan-400 cursor-pointer transition-all active:scale-95 font-black"
+          title="Zoom In"
+        >
+          ➕
+        </button>
+      </div>
+
       {/* --- HUD --- */}
-      <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none z-10">
+      <div className={`absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none z-10 transition-all duration-300 ${isHUDHidden ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
         <div className="flex flex-col gap-2 max-h-[85vh] overflow-y-auto pr-2 scrollbar-none pointer-events-none select-none">
           
           {/* Detailed, RPG-Style Survival Status Panel */}
@@ -8247,7 +8300,8 @@ export default function SurvivalGame() {
       </div>
 
       {/* --- MINIMAP OVERLAY PANEL --- */}
-      {!isMinimapCollapsed ? (
+      <div className={`transition-all duration-300 ${isHUDHidden ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
+        {!isMinimapCollapsed ? (
         <div className="absolute top-[280px] sm:top-[220px] right-4 flex flex-col gap-2 p-3 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto w-[200px] select-none z-10">
           <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-1">
             <span className="text-[10px] font-extrabold tracking-wider text-cyan-400 uppercase flex items-center gap-1">
@@ -8456,8 +8510,28 @@ export default function SurvivalGame() {
           </button>
         </div>
       )}
+      </div>
 
-      {/* --- Logs (Removed as per user request to remove notifications) --- */}
+      {/* --- Logs (Restored as a clean, sleek, auto-fading game console feed) --- */}
+      {!isHUDHidden && logs && logs.length > 0 && (
+        <div className="absolute bottom-[280px] sm:bottom-[160px] left-4 z-40 flex flex-col gap-1 max-w-[280px] pointer-events-none select-none font-mono">
+          <AnimatePresence>
+            {logs.slice(0, 4).map((log) => (
+              <motion.div
+                key={log.id}
+                initial={{ opacity: 0, x: -20, scale: 0.95 }}
+                animate={{ opacity: 0.85, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: -20, scale: 0.95 }}
+                transition={{ duration: 0.2 }}
+                className="px-2.5 py-1 bg-black/80 border border-white/5 rounded-lg shadow-md backdrop-blur-xs text-[10px] font-bold leading-normal"
+                style={{ color: log.col || '#fff' }}
+              >
+                {log.msg}
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
 
       {/* --- Active World Event Banner --- */}
       {gameState?.activeEvent && (
