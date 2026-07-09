@@ -267,7 +267,8 @@ function lzw_decode(s: string): string {
 
 function safeSetItem(key: string, value: string): void {
   try {
-    localStorage.setItem(key, value);
+    const compressed = value.startsWith("lz:") ? value : "lz:" + lzw_encode(value);
+    localStorage.setItem(key, compressed);
   } catch (err) {
     console.error("Failed to set item in localStorage", err);
   }
@@ -1744,13 +1745,32 @@ export default function SurvivalGame() {
   const [showMinimapLegend, setShowMinimapLegend] = useState<boolean>(false);
   const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
 
+  // Interactive state
+  const [minimapPanX, setMinimapPanX] = useState<number>(0);
+  const [minimapPanY, setMinimapPanY] = useState<number>(0);
+  const [minimapWaypoint, setMinimapWaypoint] = useState<{ tx: number; ty: number } | null>(null);
+  const [minimapHoverPos, setMinimapHoverPos] = useState<{ tx: number; ty: number; canvasX: number; canvasY: number } | null>(null);
+
   const minimapModeRef = useRef<'local' | 'world'>('local');
   const minimapZoomRef = useRef<number>(1.2);
   const isMinimapCollapsedRef = useRef<boolean>(true);
+  
+  const minimapPanXRef = useRef<number>(0);
+  const minimapPanYRef = useRef<number>(0);
+  const minimapWaypointRef = useRef<{ tx: number; ty: number } | null>(null);
+  const minimapHoverPosRef = useRef<{ tx: number; ty: number; canvasX: number; canvasY: number } | null>(null);
+
+  const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const isDraggingRef = useRef<boolean>(false);
+  const dragMovedRef = useRef<boolean>(false);
 
   useEffect(() => { minimapModeRef.current = minimapMode; }, [minimapMode]);
   useEffect(() => { minimapZoomRef.current = minimapZoom; }, [minimapZoom]);
   useEffect(() => { isMinimapCollapsedRef.current = isMinimapCollapsed; }, [isMinimapCollapsed]);
+  useEffect(() => { minimapPanXRef.current = minimapPanX; }, [minimapPanX]);
+  useEffect(() => { minimapPanYRef.current = minimapPanY; }, [minimapPanY]);
+  useEffect(() => { minimapWaypointRef.current = minimapWaypoint; }, [minimapWaypoint]);
+  useEffect(() => { minimapHoverPosRef.current = minimapHoverPos; }, [minimapHoverPos]);
 
   // --- Save / Load & Backup System States ---
   const [showSaveMenu, setShowSaveMenu] = useState(false);
@@ -2034,6 +2054,139 @@ export default function SurvivalGame() {
         desc: 'Perfect survival conditions. Standard movement and regeneration.'
       };
 
+      // Restore seed and config
+      s.worldSeed = data.worldSeed ?? 1337;
+      setWorldSeed(s.worldSeed);
+      if (data.genConfig) {
+        setGenWaterLevel(data.genConfig.waterLevel ?? 0.18);
+        setGenCoastLevel(data.genConfig.coastLevel ?? 0.25);
+        setGenMountainLevel(data.genConfig.mountainLevel ?? 0.78);
+        setGenTreeDensity(data.genConfig.treeDensity ?? 1.0);
+        setGenOreDensity(data.genConfig.oreDensity ?? 1.0);
+        setGenFreqScale(data.genConfig.frequencyScale ?? 1.0);
+        genConfigRef.current = {
+          waterLevel: data.genConfig.waterLevel ?? 0.18,
+          coastLevel: data.genConfig.coastLevel ?? 0.25,
+          mountainLevel: data.genConfig.mountainLevel ?? 0.78,
+          treeDensity: data.genConfig.treeDensity ?? 1.0,
+          oreDensity: data.genConfig.oreDensity ?? 1.0,
+          frequencyScale: data.genConfig.frequencyScale ?? 1.0
+        };
+      }
+
+      // Re-generate zoneMaps
+      const restoredZoneMaps: any[] = [];
+      for (let zr = 0; zr < ZROWS; zr++) {
+        for (let zc = 0; zc < ZCOLS; zc++) {
+          restoredZoneMaps.push(getProceduralBiomeForZone(zc, zr, s.worldSeed));
+        }
+      }
+      s.zoneMaps = restoredZoneMaps;
+
+      // Handle Cave vs Surface Restore
+      s.inCave = data.inCave || false;
+      if (s.inCave && data.surfacePlCoords) {
+        // Build surface zoneMaps and surfaceWorld procedural tiles for safety when exiting the cave
+        const surfaceZoneMaps: any[] = [];
+        for (let zr = 0; zr < ZROWS; zr++) {
+          for (let zc = 0; zc < ZCOLS; zc++) {
+            surfaceZoneMaps.push(getProceduralBiomeForZone(zc, zr, s.worldSeed));
+          }
+        }
+        const surfaceWorld: number[][] = [];
+        for (let zr = 0; zr < ZROWS; zr++) {
+          for (let zc = 0; zc < ZCOLS; zc++) {
+            const mi = zr * ZCOLS + zc;
+            const M = surfaceZoneMaps[mi];
+            const ox = zc * ZW, oy = zr * ZH;
+            const isTownZone = (zc === 1 && zr === 0) || (zc === 4 && zr === 4) || (zc === 2 && zr === 6) || (zc === 7 && zr === 2);
+            const isBanditZone = (zc === 2 && zr === 1) || (zc === 5 && zr === 3) || (zc === 6 && zr === 5);
+
+            for (let ly = 0; ly < ZH; ly++) {
+              if (!surfaceWorld[oy + ly]) surfaceWorld[oy + ly] = [];
+              for (let lx = 0; lx < ZW; lx++) {
+                const wx = ox + lx, wy = oy + ly;
+                const tileM = getDynamicBiomeAt(wx, wy, s.worldSeed, surfaceZoneMaps);
+                if (isTownZone && lx >= 34 && lx <= 46 && ly >= 34 && ly <= 46) {
+                  surfaceWorld[wy][wx] = TS;
+                } else if (isBanditZone && lx >= 37 && lx <= 43 && ly >= 37 && ly <= 43) {
+                  surfaceWorld[wy][wx] = TD;
+                } else {
+                  surfaceWorld[wy][wx] = getProceduralTile(wx, wy, tileM, s.worldSeed, genConfigRef.current);
+                }
+              }
+            }
+          }
+        }
+
+        s.surfacePlCoords = {
+          x: data.surfacePlCoords.x,
+          y: data.surfacePlCoords.y,
+          world: surfaceWorld,
+          objs: decompressObjs(data.surfacePlCoords.objs) || [],
+          enemies: [],
+          zoneMaps: surfaceZoneMaps,
+          lastZc: data.surfacePlCoords.lastZc,
+          lastZr: data.surfacePlCoords.lastZr
+        };
+
+        // Reconstruct the procedurally skinned Cave world tile grid
+        const surfaceBiome = getProceduralBiomeForZone(s.surfacePlCoords.lastZc, s.surfacePlCoords.lastZr, s.worldSeed);
+        const bName = surfaceBiome?.n || 'Verdant Forest';
+        const isIceCave = bName.includes('Frozen') || bName.includes('Tundra');
+        const isFireCave = bName.includes('Volcanic') || bName.includes('Scorched') || bName.includes('Dragon');
+
+        const caveWorld: number[][] = [];
+        const borderWallTile = isFireCave ? TLV : TW;
+        const floorTile = isIceCave ? TSN : TS;
+
+        for (let y = 0; y < WH; y++) {
+          caveWorld[y] = [];
+          for (let x = 0; x < WW; x++) {
+            caveWorld[y][x] = borderWallTile;
+          }
+        }
+        for (let y = 5; y < WH - 5; y++) {
+          for (let x = 5; x < WW - 5; x++) {
+            caveWorld[y][x] = floorTile;
+          }
+        }
+        s.world = caveWorld;
+      } else {
+        s.inCave = false;
+        s.surfacePlCoords = null;
+
+        // Re-generate surface World tile grid
+        const newWorldGrid: number[][] = [];
+        for (let zr = 0; zr < ZROWS; zr++) {
+          for (let zc = 0; zc < ZCOLS; zc++) {
+            const mi = zr * ZCOLS + zc;
+            const M = s.zoneMaps[mi];
+            const ox = zc * ZW, oy = zr * ZH;
+            const isTownZone = (zc === 1 && zr === 0) || (zc === 4 && zr === 4) || (zc === 2 && zr === 6) || (zc === 7 && zr === 2);
+            const isBanditZone = (zc === 2 && zr === 1) || (zc === 5 && zr === 3) || (zc === 6 && zr === 5);
+
+            for (let ly = 0; ly < ZH; ly++) {
+              if (!newWorldGrid[oy + ly]) newWorldGrid[oy + ly] = [];
+              for (let lx = 0; lx < ZW; lx++) {
+                const wx = ox + lx, wy = oy + ly;
+                const tileM = getDynamicBiomeAt(wx, wy, s.worldSeed, s.zoneMaps);
+                
+                // Town plaza paved stone floor
+                if (isTownZone && lx >= 34 && lx <= 46 && ly >= 34 && ly <= 46) {
+                  newWorldGrid[wy][wx] = TS; // Stone
+                } else if (isBanditZone && lx >= 37 && lx <= 43 && ly >= 37 && ly <= 43) {
+                  newWorldGrid[wy][wx] = TD; // Dirt floor
+                } else {
+                  newWorldGrid[wy][wx] = getProceduralTile(wx, wy, tileM, s.worldSeed, genConfigRef.current);
+                }
+              }
+            }
+          }
+        }
+        s.world = newWorldGrid;
+      }
+
       // 5. Purge transient objects
       s.enemies = [];
       s.projs = [];
@@ -2117,6 +2270,16 @@ export default function SurvivalGame() {
           threat: 'None',
           desc: 'Perfect survival conditions. Standard movement and regeneration.'
         },
+        worldSeed: s.worldSeed || 1337,
+        genConfig: genConfigRef.current,
+        inCave: s.inCave || false,
+        surfacePlCoords: s.inCave ? {
+          x: s.surfacePlCoords?.x ?? 0,
+          y: s.surfacePlCoords?.y ?? 0,
+          objs: compressObjs(s.surfacePlCoords?.objs || []),
+          lastZc: s.surfacePlCoords?.lastZc ?? 0,
+          lastZr: s.surfacePlCoords?.lastZr ?? 0
+        } : null,
         timestamp: Date.now()
       };
 
@@ -2450,6 +2613,16 @@ export default function SurvivalGame() {
           threat: 'None',
           desc: 'Perfect survival conditions. Standard movement and regeneration.'
         },
+        worldSeed: s.worldSeed || 1337,
+        genConfig: genConfigRef.current,
+        inCave: s.inCave || false,
+        surfacePlCoords: s.inCave ? {
+          x: s.surfacePlCoords?.x ?? 0,
+          y: s.surfacePlCoords?.y ?? 0,
+          objs: compressObjs(s.surfacePlCoords?.objs || []),
+          lastZc: s.surfacePlCoords?.lastZc ?? 0,
+          lastZr: s.surfacePlCoords?.lastZr ?? 0
+        } : null,
         timestamp: Date.now()
       };
 
@@ -3233,18 +3406,22 @@ export default function SurvivalGame() {
 
         for (let cy = 0; cy < chunkCount; cy++) {
           for (let cx = 0; cx < chunkCount; cx++) {
-            const isDiscovered = revealAll || (s.pl.discoveredChunks && s.pl.discoveredChunks[`${cx}_${cy}`]);
+            // Check chunk discovery (each chunk is 16x16 tiles)
+            const chunkX = Math.floor((cx / chunkCount) * (WW / 10));
+            const chunkY = Math.floor((cy / chunkCount) * (WH / 10));
+            const isDiscovered = revealAll || (s.pl.discoveredChunks && s.pl.discoveredChunks[`${chunkX}_${chunkY}`]);
             
+            const ty = Math.floor((cy / chunkCount) * WH);
+            const tx = Math.floor((cx / chunkCount) * WW);
+            const tile = s.world[ty]?.[tx] ?? 0;
+            const tc = TC[tile] || TC[0];
+
             if (isDiscovered) {
-              const ty = cy * 10 + 5;
-              const tx = cx * 10 + 5;
-              const tile = s.world[ty]?.[tx] ?? 0;
-              const tc = TC[tile] || TC[0];
               mctx.fillStyle = tc[0];
             } else {
-              mctx.fillStyle = '#0f172a';
+              mctx.fillStyle = tc[2]; // Render beautiful biome dark fog of war!
             }
-            mctx.fillRect(cx * cellSize, cy * cellSize, cellSize, cellSize);
+            mctx.fillRect(cx * cellSize, cy * cellSize, cellSize + 0.5, cellSize + 0.5);
 
             if (cx % 8 === 0 || cy % 8 === 0) {
               mctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
@@ -3254,12 +3431,14 @@ export default function SurvivalGame() {
           }
         }
 
+        // Highlight the player's active zone
         const currentZoneC = Math.floor(ptx / ZW);
         const currentZoneR = Math.floor(pty / ZH);
         mctx.strokeStyle = 'rgba(34, 211, 238, 0.4)';
         mctx.lineWidth = 1.5;
         mctx.strokeRect(currentZoneC * 8 * cellSize, currentZoneR * 8 * cellSize, 8 * cellSize, 8 * cellSize);
 
+        // Player icon on world minimap
         const px = (s.pl.x / (WW * TZ)) * canvas.width;
         const py = (s.pl.y / (WH * TZ)) * canvas.height;
 
@@ -3276,6 +3455,27 @@ export default function SurvivalGame() {
         mctx.strokeStyle = '#ffffff';
         mctx.lineWidth = 0.75;
         mctx.stroke();
+
+        // Draw Waypoint on World minimap if active
+        if (minimapWaypointRef.current) {
+          const wp = minimapWaypointRef.current;
+          const wpx = (wp.tx / WW) * canvas.width;
+          const wpy = (wp.ty / WH) * canvas.height;
+          const wpPulse = 1 + Math.sin(s.ticks * 0.15) * 0.4;
+
+          mctx.fillStyle = 'rgba(34, 211, 238, 0.4)';
+          mctx.beginPath();
+          mctx.arc(wpx, wpy, 6 * wpPulse, 0, Math.PI * 2);
+          mctx.fill();
+
+          mctx.fillStyle = '#22d3ee';
+          mctx.beginPath();
+          mctx.arc(wpx, wpy, 2.5, 0, Math.PI * 2);
+          mctx.fill();
+          mctx.strokeStyle = '#ffffff';
+          mctx.lineWidth = 0.75;
+          mctx.stroke();
+        }
 
         // Draw Cave Entrances on World Minimap Scan
         const caveZones = [
@@ -3304,6 +3504,28 @@ export default function SurvivalGame() {
           mctx.fill();
         }
 
+        // Draw Shelters on World Minimap Scan
+        for (const o of s.objs) {
+          if (o.type === 'shelter' || o.type === 'settler_shelter') {
+            const sx = (o.tx / WW) * canvas.width;
+            const sy = (o.ty / WH) * canvas.height;
+
+            const spulse = 1 + Math.sin(s.ticks * 0.1) * 0.3;
+            mctx.fillStyle = 'rgba(234, 179, 8, 0.4)';
+            mctx.beginPath();
+            mctx.arc(sx, sy, 5 * spulse, 0, Math.PI * 2);
+            mctx.fill();
+
+            mctx.fillStyle = '#eab308';
+            mctx.beginPath();
+            mctx.arc(sx, sy, 2.5, 0, Math.PI * 2);
+            mctx.fill();
+            mctx.strokeStyle = '#ffffff';
+            mctx.lineWidth = 0.75;
+            mctx.stroke();
+          }
+        }
+
       } else {
         const range = Math.round(18 / zoom);
         const size = range * 2 + 1;
@@ -3323,16 +3545,15 @@ export default function SurvivalGame() {
 
             if (tx >= 0 && tx < WW && ty >= 0 && ty < WH) {
               const isDiscovered = revealAll || (s.pl.discoveredChunks && s.pl.discoveredChunks[`${cx}_${cy}`]);
-              
+              const tile = s.world[ty][tx];
+              const tc = TC[tile] || TC[0];
+
               if (isDiscovered) {
-                const tile = s.world[ty][tx];
-                const tc = TC[tile] || TC[0];
                 mctx.fillStyle = tc[0];
-                mctx.fillRect(canvasX, canvasY, tileSize + 0.5, tileSize + 0.5);
               } else {
-                mctx.fillStyle = '#090d16';
-                mctx.fillRect(canvasX, canvasY, tileSize + 0.5, tileSize + 0.5);
+                mctx.fillStyle = tc[2]; // Procedural map layout dark fog of war!
               }
+              mctx.fillRect(canvasX, canvasY, tileSize + 0.5, tileSize + 0.5);
             } else {
               mctx.fillStyle = '#020408';
               mctx.fillRect(canvasX, canvasY, tileSize + 0.5, tileSize + 0.5);
@@ -3340,6 +3561,7 @@ export default function SurvivalGame() {
           }
         }
 
+        // Draw Objects on Local Minimap
         for (const o of s.objs) {
           const dx = o.tx - ptx;
           const dy = o.ty - pty;
@@ -3347,58 +3569,70 @@ export default function SurvivalGame() {
             const canvasX = (dx + range) * tileSize + tileSize / 2;
             const canvasY = (dy + range) * tileSize + tileSize / 2;
 
-            if (o.type === 'campfire' || o.type === 'workbench' || o.type === 'forge' || o.type === 'shelter' || o.type === 'magic_altar') {
+            if (o.type === 'shelter' || o.type === 'settler_shelter') {
+              const spulse = 1 + Math.sin(s.ticks * 0.1) * 0.3;
+              mctx.fillStyle = 'rgba(234, 179, 8, 0.4)';
+              mctx.beginPath();
+              mctx.arc(canvasX, canvasY, 6 * spulse, 0, Math.PI * 2);
+              mctx.fill();
+
+              mctx.fillStyle = '#eab308';
+              mctx.beginPath();
+              mctx.arc(canvasX, canvasY, 3.5, 0, Math.PI * 2);
+              mctx.fill();
+              mctx.strokeStyle = '#ffffff';
+              mctx.lineWidth = 1;
+              mctx.stroke();
+            } else if (o.type === 'campfire' || o.type === 'workbench' || o.type === 'forge' || o.type === 'magic_altar') {
               mctx.fillStyle = '#f97316';
               mctx.beginPath();
               mctx.arc(canvasX, canvasY, 2.5, 0, Math.PI * 2);
               mctx.fill();
             } else if (o.type === 'rock') {
-              let rockCol = '#94a3b8'; // Default stone
-              if (o.subtype === 'copper') rockCol = '#f97316'; // Copper (Orange)
-              else if (o.subtype === 'iron') rockCol = '#818cf8'; // Iron (Indigo)
-              else if (o.subtype === 'coal') rockCol = '#4b5563'; // Coal (Dark Gray)
-              else if (o.subtype === 'gold') rockCol = '#facc15'; // Gold (Yellow)
-              else if (o.subtype === 'mithril') rockCol = '#22d3ee'; // Mithril (Cyan)
-              else if (o.subtype === 'sulfur') rockCol = '#fbbf24'; // Sulfur (Amber)
-              else if (o.subtype === 'mana_crystal') rockCol = '#c084fc'; // Mana Crystal (Purple)
-              else if (o.subtype === 'void_crystal' || o.subtype === 'crystal') rockCol = '#ec4899'; // Void/Crystals (Pink)
-              else if (o.subtype === 'celestial') rockCol = '#38bdf8'; // Celestial (Sky blue)
+              let rockCol = '#94a3b8';
+              if (o.subtype === 'copper') rockCol = '#f97316';
+              else if (o.subtype === 'iron') rockCol = '#818cf8';
+              else if (o.subtype === 'coal') rockCol = '#4b5563';
+              else if (o.subtype === 'gold') rockCol = '#facc15';
+              else if (o.subtype === 'mithril') rockCol = '#22d3ee';
+              else if (o.subtype === 'sulfur') rockCol = '#fbbf24';
+              else if (o.subtype === 'mana_crystal') rockCol = '#c084fc';
+              else if (o.subtype === 'void_crystal' || o.subtype === 'crystal') rockCol = '#ec4899';
+              else if (o.subtype === 'celestial') rockCol = '#38bdf8';
               
               mctx.fillStyle = rockCol;
               mctx.beginPath();
               mctx.arc(canvasX, canvasY, 2, 0, Math.PI * 2);
               mctx.fill();
               
-              // fine high-contrast outline
               mctx.strokeStyle = '#000000';
               mctx.lineWidth = 0.35;
               mctx.stroke();
             } else if (o.type === 'tree') {
-              let treeCol = '#15803d'; // Default green
-              if (o.subtype === 'cactus') treeCol = '#a3e635'; // Cactus (Lime)
-              else if (o.subtype === 'snowpine') treeCol = '#93c5fd'; // Snowpine (Light blue)
-              else if (o.subtype === 'blossom') treeCol = '#f472b6'; // Blossom (Pink)
-              else if (o.subtype === 'cosmic') treeCol = '#a855f7'; // Cosmic (Purple)
+              let treeCol = '#15803d';
+              if (o.subtype === 'cactus') treeCol = '#a3e635';
+              else if (o.subtype === 'snowpine') treeCol = '#93c5fd';
+              else if (o.subtype === 'blossom') treeCol = '#f472b6';
+              else if (o.subtype === 'cosmic') treeCol = '#a855f7';
               
               mctx.fillStyle = treeCol;
               mctx.beginPath();
               mctx.arc(canvasX, canvasY, 2, 0, Math.PI * 2);
               mctx.fill();
               
-              // fine outline
               mctx.strokeStyle = '#000000';
               mctx.lineWidth = 0.35;
               mctx.stroke();
             } else if (o.type === 'drop') {
-              let dropCol = '#f1f5f9'; // Default light gray
-              if (o.item === 'wood' || o.item === 'stick') dropCol = '#b45309'; // Brown
-              else if (o.item === 'stone' || o.item === 'flint') dropCol = '#6b7280'; // Gray
-              else if (o.item === 'fiber' || o.item === 'cotton') dropCol = '#10b981'; // Lime-ish/emerald
-              else if (o.item === 'berry' || o.item === 'snowberry') dropCol = '#c084fc'; // Purple for berries
-              else if (o.item === 'mushroom') dropCol = '#f472b6'; // Pink
-              else if (o.item === 'herb') dropCol = '#34d399'; // Teal-ish green
-              else if (o.item === 'coal') dropCol = '#374151'; // Dark gray
-              else if (o.item?.includes('ore')) dropCol = '#f97316'; // Orange ores
+              let dropCol = '#f1f5f9';
+              if (o.item === 'wood' || o.item === 'stick') dropCol = '#b45309';
+              else if (o.item === 'stone' || o.item === 'flint') dropCol = '#6b7280';
+              else if (o.item === 'fiber' || o.item === 'cotton') dropCol = '#10b981';
+              else if (o.item === 'berry' || o.item === 'snowberry') dropCol = '#c084fc';
+              else if (o.item === 'mushroom') dropCol = '#f472b6';
+              else if (o.item === 'herb') dropCol = '#34d399';
+              else if (o.item === 'coal') dropCol = '#374151';
+              else if (o.item?.includes('ore')) dropCol = '#f97316';
               
               mctx.fillStyle = dropCol;
               mctx.beginPath();
@@ -3437,6 +3671,7 @@ export default function SurvivalGame() {
           }
         }
 
+        // Draw enemies
         if (s.enemies) {
           for (const e of s.enemies) {
             const etx = Math.floor(e.x / TZ);
@@ -3460,6 +3695,7 @@ export default function SurvivalGame() {
           }
         }
 
+        // Center Player Marker
         const centerX = range * tileSize + tileSize / 2;
         const centerY = range * tileSize + tileSize / 2;
 
@@ -3476,8 +3712,34 @@ export default function SurvivalGame() {
         mctx.strokeStyle = '#ffffff';
         mctx.lineWidth = 1;
         mctx.stroke();
+
+        // Draw Waypoint if active in local mode
+        if (minimapWaypointRef.current) {
+          const wp = minimapWaypointRef.current;
+          const dx = wp.tx - ptx;
+          const dy = wp.ty - pty;
+          if (Math.abs(dx) <= range && Math.abs(dy) <= range) {
+            const canvasX = (dx + range) * tileSize + tileSize / 2;
+            const canvasY = (dy + range) * tileSize + tileSize / 2;
+            const wpPulse = 1 + Math.sin(s.ticks * 0.15) * 0.4;
+
+            mctx.fillStyle = 'rgba(34, 211, 238, 0.4)';
+            mctx.beginPath();
+            mctx.arc(canvasX, canvasY, 6 * wpPulse, 0, Math.PI * 2);
+            mctx.fill();
+
+            mctx.fillStyle = '#22d3ee';
+            mctx.beginPath();
+            mctx.arc(canvasX, canvasY, 3, 0, Math.PI * 2);
+            mctx.fill();
+            mctx.strokeStyle = '#ffffff';
+            mctx.lineWidth = 1;
+            mctx.stroke();
+          }
+        }
       }
 
+      // Draw Scope Crosshair Rings
       mctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
       mctx.lineWidth = 0.5;
       mctx.beginPath();
@@ -5048,87 +5310,249 @@ export default function SurvivalGame() {
         for (let x = sx0; x < ex; x++) {
           const t = s.world[y][x];
           const tc = TC[t] || TC[0];
-          ctx.fillStyle = (x + y) % 2 === 0 ? tc[0] : tc[1];
-          ctx.fillRect(x * TZ - s.cam.x, y * TZ - s.cam.y, TZ, TZ);
+          const txCoord = x * TZ - s.cam.x;
+          const tyCoord = y * TZ - s.cam.y;
           
-          // Subtle grid lines to elevate styling
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.015)';
+          // Draw base tile checkering
+          ctx.fillStyle = (x + y) % 2 === 0 ? tc[0] : tc[1];
+          ctx.fillRect(txCoord, tyCoord, TZ, TZ);
+          
+          // Subtle grid lines
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.012)';
           ctx.lineWidth = 0.5;
-          ctx.strokeRect(x * TZ - s.cam.x, y * TZ - s.cam.y, TZ, TZ);
+          ctx.strokeRect(txCoord, tyCoord, TZ, TZ);
 
-          // Styled visual accents for ground tiles to upgrade graphics
-          const dx_acc = x * TZ - s.cam.x;
-          const dy_acc = y * TZ - s.cam.y;
-          const hVal = (x * 31 + y * 17) % 100;
-          if (hVal < 15) {
-            ctx.save();
-            if (t === TG) {
-              ctx.strokeStyle = '#22c55e'; // Grass V tuft
-              ctx.lineWidth = 1;
+          // Draw premium micro-textures and shader effects on tiles
+          ctx.save();
+          const pSeed = (x * 37 + y * 13) % 100; // deterministic pseudo-random seed per tile
+
+          if (t === TG) {
+            // --- GRASS BIOME OVERHAUL ---
+            // Draw soft grass blades
+            ctx.strokeStyle = 'rgba(34, 197, 94, 0.35)';
+            ctx.lineWidth = 1;
+            if (pSeed < 30) {
+              const gx = txCoord + 4 + (pSeed % 12);
+              const gy = tyCoord + 6 + (pSeed % 10);
               ctx.beginPath();
-              ctx.moveTo(dx_acc + TZ/2 - 2, dy_acc + TZ/2 + 3);
-              ctx.lineTo(dx_acc + TZ/2, dy_acc + TZ/2 - 2);
-              ctx.lineTo(dx_acc + TZ/2 + 2, dy_acc + TZ/2 + 3);
+              ctx.moveTo(gx, gy + 10);
+              ctx.quadraticCurveTo(gx - 2, gy + 2, gx - 4, gy);
+              ctx.moveTo(gx + 3, gy + 10);
+              ctx.quadraticCurveTo(gx + 4, gy + 3, gx + 6, gy + 1);
               ctx.stroke();
-            } else if (t === TS) {
-              ctx.strokeStyle = '#475569'; // Slate crack
-              ctx.lineWidth = 0.75;
+            }
+            // Tiny wild flowers
+            if (pSeed < 10) {
+              const fx = txCoord + 6 + (pSeed * 2) % 14;
+              const fy = tyCoord + 6 + (pSeed * 3) % 14;
+              ctx.fillStyle = pSeed % 3 === 0 ? '#fbbf24' : pSeed % 3 === 1 ? '#f43f5e' : '#ffffff'; // yellow, rose, white
               ctx.beginPath();
-              ctx.moveTo(dx_acc + 4, dy_acc + TZ/2);
-              ctx.lineTo(dx_acc + TZ - 4, dy_acc + TZ/2);
-              ctx.stroke();
-            } else if (t === TSA) {
-              ctx.strokeStyle = '#d97706'; // Sand wavy ripple
-              ctx.lineWidth = 0.75;
-              ctx.beginPath();
-              ctx.arc(dx_acc + TZ/2, dy_acc + TZ/2 + 2, 4, Math.PI, 0, false);
-              ctx.stroke();
-            } else if (t === TSN) {
-              ctx.fillStyle = '#f8fafc'; // Snowy soft snowflake dot
-              ctx.beginPath();
-              ctx.arc(dx_acc + TZ/2, dy_acc + TZ/2, 1.2, 0, Math.PI * 2);
+              ctx.arc(fx, fy, 1.5, 0, Math.PI * 2);
               ctx.fill();
-            } else if (t === TCR) {
-              ctx.fillStyle = '#c084fc'; // Purple void spec
+              // Tiny flower center
+              ctx.fillStyle = '#fb7185';
               ctx.beginPath();
-              ctx.arc(dx_acc + TZ/2, dy_acc + TZ/2, 1, 0, Math.PI * 2);
+              ctx.arc(fx, fy, 0.5, 0, Math.PI * 2);
               ctx.fill();
             }
-            ctx.restore();
-          }
-
-          // Celestial Realm Glow
-          if (t === TCR) {
-            ctx.fillStyle = `rgba(168, 85, 247, ${0.08 + Math.sin(s.ticks * 0.05 + x + y) * 0.03})`;
-            ctx.fillRect(x * TZ - s.cam.x, y * TZ - s.cam.y, TZ, TZ);
-          } else if (t === TW) {
-            // Draw subtle wave lines
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+          } else if (t === TD) {
+            // --- SOIL BIOME OVERHAUL ---
+            // Small stones
+            if (pSeed < 20) {
+              const sx = txCoord + 5 + (pSeed * 2) % 12;
+              const sy = tyCoord + 5 + (pSeed * 3) % 12;
+              ctx.fillStyle = '#4b5563';
+              ctx.beginPath();
+              ctx.ellipse(sx, sy, 2, 1.2, Math.PI / 4, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            // Dirt crevices / plow-lines
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
             ctx.lineWidth = 1;
             ctx.beginPath();
-            const wx0 = x * TZ - s.cam.x;
-            const wy0 = y * TZ - s.cam.y;
-            const waveY = wy0 + TZ/2 + Math.sin(s.ticks * 0.04 + x + y) * 3;
-            ctx.moveTo(wx0 + 4, waveY);
-            ctx.lineTo(wx0 + TZ - 4, waveY);
+            ctx.moveTo(txCoord + 3, tyCoord + TZ/2 + (pSeed % 6) - 3);
+            ctx.quadraticCurveTo(txCoord + TZ/2, tyCoord + TZ/2 + (pSeed % 4) - 2, txCoord + TZ - 3, tyCoord + TZ/2 + (pSeed % 6) - 3);
             ctx.stroke();
+          } else if (t === TS) {
+            // --- STONE BIOME OVERHAUL ---
+            // Cobble fissures
+            ctx.strokeStyle = 'rgba(15, 23, 42, 0.25)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(txCoord + (pSeed % 8), tyCoord);
+            ctx.lineTo(txCoord + TZ/2 + (pSeed % 4), tyCoord + TZ/2);
+            ctx.lineTo(txCoord + (pSeed % 10), tyCoord + TZ);
+            ctx.stroke();
+
+            // Shaded crevices
+            if (pSeed < 25) {
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.04)'; // Highlights
+              ctx.fillRect(txCoord + 2, tyCoord + 2, TZ - 4, 2);
+              ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'; // Shading
+              ctx.fillRect(txCoord + 2, tyCoord + TZ - 4, TZ - 4, 2);
+            }
+          } else if (t === TW) {
+            // --- WATER BIOME OVERHAUL ---
+            // Dynamic waves
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.22)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            const waveOffset = Math.sin(s.ticks * 0.04 + x + y) * 4;
+            ctx.moveTo(txCoord + 4, tyCoord + TZ/2 + waveOffset);
+            ctx.quadraticCurveTo(txCoord + TZ/2, tyCoord + TZ/2 - 3 + waveOffset, txCoord + TZ - 4, tyCoord + TZ/2 + waveOffset);
+            ctx.stroke();
+
+            // Water glint sparkling dots
+            if (pSeed < 8) {
+              const pulseGlint = 0.2 + Math.abs(Math.sin(s.ticks * 0.03 + pSeed)) * 0.6;
+              ctx.fillStyle = `rgba(255, 255, 255, ${pulseGlint})`;
+              ctx.fillRect(txCoord + 6 + (pSeed % 12), tyCoord + 6 + (pSeed % 12), 1.5, 1.5);
+            }
+
+            // Shoreline / coastal foam! (Check if adjacent is land)
+            const hasNorthLand = y > 0 && s.world[y - 1][x] !== TW && s.world[y - 1][x] !== TSW;
+            const hasSouthLand = y < WH - 1 && s.world[y + 1][x] !== TW && s.world[y + 1][x] !== TSW;
+            const hasWestLand = x > 0 && s.world[y][x - 1] !== TW && s.world[y][x - 1] !== TSW;
+            const hasEastLand = x < WW - 1 && s.world[y][x + 1] !== TW && s.world[y][x + 1] !== TSW;
+
+            if (hasNorthLand || hasSouthLand || hasWestLand || hasEastLand) {
+              ctx.strokeStyle = `rgba(255, 255, 255, ${0.35 + Math.sin(s.ticks * 0.08) * 0.15})`;
+              ctx.lineWidth = 1.5;
+              ctx.setLineDash([4, 2]);
+              ctx.beginPath();
+              if (hasNorthLand) {
+                ctx.moveTo(txCoord, tyCoord);
+                ctx.lineTo(txCoord + TZ, tyCoord);
+              }
+              if (hasSouthLand) {
+                ctx.moveTo(txCoord, tyCoord + TZ);
+                ctx.lineTo(txCoord + TZ, tyCoord + TZ);
+              }
+              if (hasWestLand) {
+                ctx.moveTo(txCoord, tyCoord);
+                ctx.lineTo(txCoord, tyCoord + TZ);
+              }
+              if (hasEastLand) {
+                ctx.moveTo(txCoord + TZ, tyCoord);
+                ctx.lineTo(txCoord + TZ, tyCoord + TZ);
+              }
+              ctx.stroke();
+              ctx.setLineDash([]);
+            }
+          } else if (t === TSA) {
+            // --- SAND BIOME OVERHAUL ---
+            // Dune ripples
+            ctx.strokeStyle = 'rgba(217, 119, 6, 0.22)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(txCoord, tyCoord + 4);
+            ctx.quadraticCurveTo(txCoord + TZ/2, tyCoord + TZ/2, txCoord + TZ, tyCoord + TZ - 4);
+            ctx.stroke();
+
+            // Tiny sand sparkles
+            if (pSeed < 15) {
+              const glint = 0.1 + Math.abs(Math.sin(s.ticks * 0.05 + pSeed)) * 0.7;
+              ctx.fillStyle = `rgba(254, 240, 138, ${glint})`;
+              ctx.fillRect(txCoord + (pSeed * 3) % TZ, tyCoord + (pSeed * 5) % TZ, 1, 1);
+            }
+          } else if (t === TSN) {
+            // --- SNOW BIOME OVERHAUL ---
+            // Frost contour shapes
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            if (pSeed < 20) {
+              ctx.beginPath();
+              ctx.arc(txCoord + TZ/2, tyCoord + TZ/2, 3, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            // Tiny sparkling snow stars
+            if (pSeed < 12) {
+              const spark = 0.2 + Math.abs(Math.sin(s.ticks * 0.04 + pSeed)) * 0.6;
+              ctx.fillStyle = `rgba(255, 255, 255, ${spark})`;
+              const sx = txCoord + (pSeed * 2) % (TZ - 4) + 2;
+              const sy = tyCoord + (pSeed * 3) % (TZ - 4) + 2;
+              ctx.fillRect(sx, sy, 1.2, 1.2);
+            }
           } else if (t === TLV) {
-            // Draw heated lava heatwaves
-            ctx.strokeStyle = 'rgba(255, 100, 0, 0.15)';
+            // --- MOLTEN LAVA BIOME OVERHAUL ---
+            // Dark cooling rock crust clusters over bright orange lava
+            ctx.fillStyle = '#1c1917';
+            ctx.fillRect(txCoord + 2, tyCoord + 2, TZ - 4, TZ - 4);
+
+            // Lava veins drawing pulsing energy
+            const pulse = 0.5 + Math.sin(s.ticks * 0.05 + x + y) * 0.4;
+            ctx.fillStyle = `rgba(249, 115, 22, ${0.6 + pulse * 0.4})`;
+            ctx.beginPath();
+            ctx.arc(txCoord + TZ/2, tyCoord + TZ/2, 4 + pulse * 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Glowing hot red highlights
+            ctx.strokeStyle = `rgba(239, 68, 68, ${0.4 + pulse * 0.4})`;
             ctx.lineWidth = 1.5;
             ctx.beginPath();
-            const lx0 = x * TZ - s.cam.x;
-            const ly0 = y * TZ - s.cam.y;
-            const heatX = lx0 + TZ/2 + Math.cos(s.ticks * 0.05 + x + y) * 4;
-            ctx.moveTo(heatX, ly0 + 4);
-            ctx.lineTo(heatX, ly0 + TZ - 4);
+            ctx.moveTo(txCoord, tyCoord + TZ/2);
+            ctx.lineTo(txCoord + TZ, tyCoord + TZ/2);
+            ctx.moveTo(txCoord + TZ/2, tyCoord);
+            ctx.lineTo(txCoord + TZ/2, tyCoord + TZ);
             ctx.stroke();
+
+            // Tiny heat ember sparks rising
+            if (pSeed < 5) {
+              const sy = tyCoord + TZ - ((s.ticks + pSeed * 4) % TZ);
+              ctx.fillStyle = '#facc15';
+              ctx.fillRect(txCoord + 4 + (pSeed % 12), sy, 1.5, 1.5);
+            }
+          } else if (t === TSW) {
+            // --- MURKY SWAMP OVERHAUL ---
+            // Swamp lily pads
+            if (pSeed < 15) {
+              const lx = txCoord + 6 + (pSeed % 10);
+              const ly = tyCoord + 6 + (pSeed % 10);
+              ctx.fillStyle = '#166534'; // rich dark green
+              ctx.beginPath();
+              ctx.arc(lx, ly, 3.5, 0, Math.PI * 1.75); // slight cut-out for leaf look
+              ctx.fill();
+              
+              // Lily pad tiny pink flower bud
+              if (pSeed % 3 === 0) {
+                ctx.fillStyle = '#f472b6'; // pink
+                ctx.beginPath();
+                ctx.arc(lx, ly, 1, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+            // Bubbling swamp gas bubbles
+            if (pSeed < 10) {
+              const bPulse = Math.abs(Math.sin(s.ticks * 0.04 + pSeed));
+              const bx = txCoord + 4 + (pSeed * 3) % 14;
+              const by = tyCoord + 4 + (pSeed * 2) % 14;
+              ctx.strokeStyle = `rgba(74, 222, 128, ${bPulse * 0.5})`;
+              ctx.lineWidth = 0.5;
+              ctx.beginPath();
+              ctx.arc(bx, by, bPulse * 3, 0, Math.PI * 2);
+              ctx.stroke();
+            }
+          } else if (t === TCR) {
+            // --- CELESTIAL REALM OVERHAUL ---
+            // Nebulous cosmic glow background
+            const cosGlow = 0.12 + Math.sin(s.ticks * 0.03 + x + y) * 0.06;
+            ctx.fillStyle = `rgba(147, 51, 234, ${cosGlow})`; // violet nebula
+            ctx.fillRect(txCoord, tyCoord, TZ, TZ);
+
+            // Floating white-blue stars
+            if (pSeed < 12) {
+              const stPulse = 0.2 + Math.abs(Math.sin(s.ticks * 0.06 + pSeed)) * 0.8;
+              ctx.fillStyle = `rgba(56, 189, 248, ${stPulse})`; // sky blue sparkle
+              const sx = txCoord + (pSeed * 3) % TZ;
+              const sy = tyCoord + (pSeed * 2) % TZ;
+              ctx.fillRect(sx, sy, 1.2, 1.2);
+            }
           }
+
+          ctx.restore();
         }
       }
 
       // Objects
-      ctx.font = `${TZ - 6}px serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       for (const o of s.objs) {
@@ -5136,118 +5560,530 @@ export default function SurvivalGame() {
         const oy = o.ty * TZ + TZ / 2 - s.cam.y;
         if (ox < -TZ || ox > (ctx.canvas.width / zoom) + TZ || oy < -TZ || oy > (ctx.canvas.height / zoom) + TZ) continue;
         
-        let ico = '?';
-        if (o.type === 'lore_node') {
-          ico = o.ico || '📓';
-          // Render glowing rotating magical ring
-          const ringRad = TZ * 0.5 + Math.sin(s.ticks * 0.08) * 4;
-          ctx.save();
-          ctx.strokeStyle = o.subtype === 'echo' ? 'rgba(56, 189, 248, 0.7)' : o.subtype === 'carving' ? 'rgba(234, 179, 8, 0.7)' : 'rgba(168, 85, 247, 0.7)';
-          ctx.lineWidth = 1.5;
-          ctx.setLineDash([4, 2]);
+        ctx.save();
+        
+        // General shadow beneath all physical objects
+        if (o.type !== 'drop' && o.type !== 'fishing_hotspot' && o.type !== 'animal_track') {
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
           ctx.beginPath();
-          ctx.arc(ox, oy, ringRad, s.ticks * 0.02, s.ticks * 0.02 + Math.PI * 2);
-          ctx.stroke();
-          ctx.restore();
-        } else if (o.type === 'tree') {
-          ico = '🌲';
-          // Tree drop shadow
-          ctx.save();
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-          ctx.beginPath();
-          ctx.ellipse(ox, oy + 10, 8, 4, 0, 0, Math.PI * 2);
+          ctx.ellipse(ox, oy + TZ/2 - 2, TZ * 0.45, TZ * 0.18, 0, 0, Math.PI * 2);
           ctx.fill();
-          ctx.restore();
-        } else if (o.type === 'rock') {
-          ico = '🪨';
-          // Rock drop shadow
-          ctx.save();
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-          ctx.beginPath();
-          ctx.ellipse(ox, oy + 8, 10, 5, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-        } else if (o.type === 'drop') {
-          ico = IT[o.item]?.ico || '•';
-          // Pulsating glow aura for items so they are easily visible
-          const pulse = 4 + Math.sin(s.ticks * 0.12) * 2.5;
-          ctx.save();
-          ctx.shadowColor = '#ffffff';
-          ctx.shadowBlur = pulse;
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-          ctx.beginPath();
-          ctx.arc(ox, oy, 6, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
         }
-        else if (o.type === 'magic_altar') ico = '🕋';
-        else if (o.type === 'fishing_hotspot') {
-          ico = o.ico;
-          // Bubbling ripple effect
-          const rippleRadius = (TZ * 0.5) + Math.abs(Math.sin(s.ticks * 0.05)) * (TZ * 0.4);
+
+        if (o.type === 'tree') {
+          // --- VECTOR TREE RENDERER ---
+          const bob = Math.sin(s.ticks * 0.03 + o.tx * 7) * 0.5; // gentle wind rustle sway
+          ctx.translate(ox, oy + TZ/2 - 3);
+          ctx.rotate(bob * 0.04);
+
+          // Draw trunk
+          ctx.fillStyle = '#78350f'; // Dark brown
+          ctx.fillRect(-2.5, -8, 5, 8);
+
+          if (o.subtype === 'cactus') {
+            // Cactus
+            ctx.fillStyle = '#15803d'; // Rich green
+            // Main stalk
+            ctx.fillRect(-3, -24, 6, 16);
+            // Arms
+            ctx.fillRect(-8, -18, 5, 3);
+            ctx.fillRect(-8, -22, 3, 5);
+            ctx.fillRect(3, -15, 5, 3);
+            ctx.fillRect(5, -19, 3, 5);
+            // Spikes (little lines)
+            ctx.strokeStyle = '#a3e635';
+            ctx.lineWidth = 0.75;
+            ctx.beginPath();
+            ctx.moveTo(-5, -20); ctx.lineTo(-3, -20);
+            ctx.moveTo(3, -22); ctx.lineTo(5, -22);
+            ctx.moveTo(0, -12); ctx.lineTo(2, -12);
+            ctx.stroke();
+            // Flower on top
+            ctx.fillStyle = '#f43f5e';
+            ctx.beginPath();
+            ctx.arc(0, -25, 2, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (o.subtype === 'snowpine') {
+            // Snowpine
+            // Trunk roots
+            ctx.fillStyle = '#451a03';
+            ctx.fillRect(-3, -8, 6, 8);
+            // Staggered branches
+            const levels = [
+              { w: 22, h: 8, y: -8, col: '#0f766e', snow: '#f8fafc' },
+              { w: 16, h: 7, y: -14, col: '#115e59', snow: '#f1f5f9' },
+              { w: 10, h: 6, y: -19, col: '#134e4a', snow: '#e2e8f0' }
+            ];
+            for (const l of levels) {
+              ctx.fillStyle = l.col;
+              ctx.beginPath();
+              ctx.moveTo(0, l.y - l.h);
+              ctx.lineTo(-l.w / 2, l.y);
+              ctx.lineTo(l.w / 2, l.y);
+              ctx.closePath();
+              ctx.fill();
+
+              // Snow Cap highlight
+              ctx.fillStyle = l.snow;
+              ctx.beginPath();
+              ctx.moveTo(0, l.y - l.h);
+              ctx.lineTo(-l.w / 4, l.y - l.h / 2);
+              ctx.lineTo(l.w / 4, l.y - l.h / 2);
+              ctx.closePath();
+              ctx.fill();
+            }
+          } else if (o.subtype === 'blossom') {
+            // Cherry Blossom
+            ctx.fillStyle = '#5c2d17';
+            ctx.fillRect(-2, -9, 4, 9);
+            // Curved pink canopy clouds
+            const clouds = [
+              { x: 0, y: -14, r: 8, col: '#f472b6' },
+              { x: -5, y: -10, r: 6, col: '#f472b6' },
+              { x: 5, y: -11, r: 6, col: '#ec4899' },
+              { x: -2, y: -18, r: 6, col: '#fbcfe8' }
+            ];
+            for (const c of clouds) {
+              ctx.fillStyle = c.col;
+              ctx.beginPath();
+              ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            // Tiny falling petal particle effect
+            if (s.ticks % 60 < 20) {
+              ctx.fillStyle = '#fbcfe8';
+              ctx.beginPath();
+              ctx.arc(Math.sin(s.ticks * 0.05) * 5, -5 + (s.ticks % 20) * 0.5, 1, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          } else if (o.subtype === 'cosmic') {
+            // Cosmic purple tree
+            ctx.fillStyle = '#2e1065';
+            ctx.fillRect(-2.5, -9, 5, 9);
+            // Nebula foliage clouds
+            const clouds = [
+              { x: 0, y: -15, r: 9, col: '#a855f7' },
+              { x: -6, y: -11, r: 7, col: '#8b5cf6' },
+              { x: 6, y: -12, r: 7, col: '#c084fc' },
+              { x: 0, y: -19, r: 6, col: '#ddd6fe' }
+            ];
+            for (const c of clouds) {
+              ctx.fillStyle = c.col;
+              ctx.beginPath();
+              ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+              ctx.fill();
+              
+              // Sparkle stars
+              if (s.ticks % 40 < 10) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(c.x + (s.ticks % 5) - 2, c.y + (s.ticks % 4) - 2, 1, 1);
+              }
+            }
+          } else {
+            // Standard leafy/pine evergreen tree
+            // Roots trunk details
+            ctx.fillStyle = '#451a03';
+            ctx.fillRect(-3, -8, 6, 8);
+            // Multi-layered verdant forest leaves
+            const branches = [
+              { w: 24, h: 9, y: -8, col: '#15803d' },
+              { w: 18, h: 8, y: -15, col: '#16a34a' },
+              { w: 12, h: 7, y: -21, col: '#22c55e' }
+            ];
+            for (const b of branches) {
+              ctx.fillStyle = b.col;
+              ctx.beginPath();
+              ctx.moveTo(0, b.y - b.h);
+              ctx.lineTo(-b.w / 2, b.y);
+              ctx.lineTo(b.w / 2, b.y);
+              ctx.closePath();
+              ctx.fill();
+              
+              // Dark trim shading
+              ctx.strokeStyle = '#14532d';
+              ctx.lineWidth = 0.5;
+              ctx.strokeRect(-b.w / 2, b.y, b.w, 0.5);
+            }
+          }
+        } else if (o.type === 'rock') {
+          // --- VECTOR ROCK RENDERER ---
+          ctx.translate(ox, oy + TZ/2 - 3);
+          
+          // Draw boulder base
+          ctx.fillStyle = '#475569'; // slate grey
+          ctx.beginPath();
+          ctx.moveTo(-9, 0);
+          ctx.lineTo(-10, -5);
+          ctx.lineTo(-6, -11);
+          ctx.lineTo(0, -13);
+          ctx.lineTo(6, -11);
+          ctx.lineTo(9, -4);
+          ctx.lineTo(8, 0);
+          ctx.closePath();
+          ctx.fill();
+
+          // Highlight bevel edge
+          ctx.strokeStyle = '#64748b';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(-10, -5);
+          ctx.lineTo(-6, -11);
+          ctx.lineTo(0, -13);
+          ctx.lineTo(6, -11);
+          ctx.stroke();
+
+          // Mineral crystals overlays
+          if (o.subtype && o.subtype !== 'none') {
+            let oreCol = '#94a3b8';
+            let isSparkle = false;
+            
+            if (o.subtype === 'copper') oreCol = '#ea580c';
+            else if (o.subtype === 'iron') oreCol = '#818cf8';
+            else if (o.subtype === 'coal') oreCol = '#1e293b';
+            else if (o.subtype === 'gold') { oreCol = '#fbbf24'; isSparkle = true; }
+            else if (o.subtype === 'mithril') { oreCol = '#22d3ee'; isSparkle = true; }
+            else if (o.subtype === 'sulfur') oreCol = '#eab308';
+            else if (o.subtype === 'mana_crystal') { oreCol = '#c084fc'; isSparkle = true; }
+            else if (o.subtype === 'void_crystal' || o.subtype === 'crystal') { oreCol = '#ec4899'; isSparkle = true; }
+            else if (o.subtype === 'celestial') { oreCol = '#38bdf8'; isSparkle = true; }
+
+            ctx.fillStyle = oreCol;
+            // Draw 2-3 jagged crystal nodes sticking out of the boulder
+            ctx.beginPath();
+            ctx.moveTo(-4, -6);
+            ctx.lineTo(-6, -11);
+            ctx.lineTo(-2, -9);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(2, -4);
+            ctx.lineTo(5, -10);
+            ctx.lineTo(5, -5);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(-1, -11);
+            ctx.lineTo(1, -15);
+            ctx.lineTo(3, -11);
+            ctx.closePath();
+            ctx.fill();
+
+            // Tiny star sparkles for rare gems
+            if (isSparkle && (s.ticks % 30 < 8)) {
+              ctx.fillStyle = '#ffffff';
+              ctx.fillRect(Math.sin(s.ticks) * 6, -11 + Math.cos(s.ticks) * 3, 1.5, 1.5);
+            }
+          }
+        } else if (o.type === 'drop') {
+          // --- FLOATING ITEM RENDERER ---
+          const hoverY = Math.sin(s.ticks * 0.08 + o.tx * 5) * 2.5;
+          ctx.translate(ox, oy + hoverY);
+
+          // Glowing floor shadow pedestal
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+          ctx.beginPath();
+          ctx.arc(0, 10 - hoverY, 5, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Pulsating magic halo
+          const pulse = 5 + Math.sin(s.ticks * 0.15) * 3;
           ctx.save();
+          ctx.shadowColor = '#38bdf8';
+          ctx.shadowBlur = pulse;
+          ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
+          ctx.beginPath();
+          ctx.arc(0, 0, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+
+          // Render item emoji on top of pedestal
+          const ico = IT[o.item]?.ico || '•';
+          ctx.font = '10px serif';
+          ctx.fillText(ico, 0, 0);
+        } else if (o.type === 'campfire') {
+          // --- DYNAMIC FLAME VECTOR RENDERER ---
+          ctx.translate(ox, oy);
+
+          // Draw Firewood base logs
+          ctx.fillStyle = '#5c2d17';
+          ctx.fillRect(-7, 2, 14, 3);
+          ctx.fillRect(-5, -1, 10, 3);
+
+          // Custom procedural overlapping flame shapes
+          const pulseA = Math.sin(s.ticks * 0.2) * 2;
+          const pulseB = Math.cos(s.ticks * 0.15) * 1.5;
+
+          // 1. Outer Fire Ring (Warm orange-red)
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.85)';
+          ctx.beginPath();
+          ctx.moveTo(-6, 2);
+          ctx.quadraticCurveTo(-4, -4 + pulseA, -1, -12 + pulseB);
+          ctx.quadraticCurveTo(0, -6, 2, -10 + pulseA);
+          ctx.quadraticCurveTo(4, -4, 6, 2);
+          ctx.closePath();
+          ctx.fill();
+
+          // 2. Middle Fire Ring (Orange)
+          ctx.fillStyle = 'rgba(249, 115, 22, 0.9)';
+          ctx.beginPath();
+          ctx.moveTo(-4, 2);
+          ctx.quadraticCurveTo(-2, -2 + pulseB, -0.5, -9 + pulseA);
+          ctx.quadraticCurveTo(0, -4, 1.5, -7 + pulseB);
+          ctx.quadraticCurveTo(3, -2, 4, 2);
+          ctx.closePath();
+          ctx.fill();
+
+          // 3. Inner Fire Ring (Hot yellow)
+          ctx.fillStyle = 'rgba(253, 224, 71, 0.95)';
+          ctx.beginPath();
+          ctx.moveTo(-2, 2);
+          ctx.quadraticCurveTo(0, -2 + pulseA, 0, -6 + pulseB);
+          ctx.quadraticCurveTo(1, -2, 2, 2);
+          ctx.closePath();
+          ctx.fill();
+
+          // Add ambient glow
+          const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, TZ * 2);
+          grad.addColorStop(0, 'rgba(251, 146, 60, 0.18)');
+          grad.addColorStop(1, 'rgba(251, 146, 60, 0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(0, 0, TZ * 2, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (o.type === 'magic_altar') {
+          // --- MAGICAL floating ALTER RENDERER ---
+          ctx.translate(ox, oy);
+
+          const hover = Math.sin(s.ticks * 0.05) * 3;
+
+          // Draw pedestal base
+          ctx.fillStyle = '#1e1b4b'; // deep indigo stone
+          ctx.beginPath();
+          ctx.moveTo(-10, 8);
+          ctx.lineTo(-8, 3);
+          ctx.lineTo(8, 3);
+          ctx.lineTo(10, 8);
+          ctx.closePath();
+          ctx.fill();
+
+          // Floating triangular monolith
+          ctx.fillStyle = '#0f172a'; // obsidian dark slate
+          ctx.beginPath();
+          ctx.moveTo(0, -14 + hover);
+          ctx.lineTo(-5, -3 + hover);
+          ctx.lineTo(5, -3 + hover);
+          ctx.closePath();
+          ctx.fill();
+
+          // Monolith neon magenta glowing rune lines
+          ctx.strokeStyle = `rgba(232, 121, 249, ${0.4 + Math.sin(s.ticks * 0.08) * 0.4})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(0, -11 + hover);
+          ctx.lineTo(0, -4 + hover);
+          ctx.stroke();
+
+          // Orbiting rings
+          ctx.strokeStyle = 'rgba(168, 85, 247, 0.45)';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.ellipse(0, -8 + hover, 9, 3, s.ticks * 0.03, 0, Math.PI * 2);
+          ctx.stroke();
+
+          // Vertical glowing stardust particles rising
+          if (s.ticks % 25 < 12) {
+            ctx.fillStyle = '#d946ef';
+            ctx.fillRect(-3 + (s.ticks % 7), 2 - (s.ticks % 18), 1.5, 1.5);
+          }
+        } else if (o.type === 'fishing_hotspot') {
+          // --- FISHING WHIRLPOOL RENDERER ---
+          ctx.translate(ox, oy);
+
+          const rippleRadius = (TZ * 0.4) + Math.abs(Math.sin(s.ticks * 0.05)) * (TZ * 0.4);
           ctx.strokeStyle = o.subtype === 'lava' ? 'rgba(239, 68, 68, 0.6)' : 'rgba(56, 189, 248, 0.6)';
           ctx.lineWidth = 1.5;
           ctx.beginPath();
-          ctx.arc(ox, oy, rippleRadius, 0, Math.PI * 2);
+          ctx.arc(0, 0, rippleRadius, 0, Math.PI * 2);
           ctx.stroke();
-          ctx.restore();
-        } else if (o.type === 'animal_track') {
-          ico = o.ico;
-          // Soft tracking sense indicator glow
-          const glowRad = (TZ * 0.4) + Math.abs(Math.sin(s.ticks * 0.07)) * (TZ * 0.2);
-          ctx.save();
-          ctx.strokeStyle = 'rgba(236, 72, 153, 0.5)';
+
+          // Swirling blue-white circles
+          ctx.strokeStyle = o.subtype === 'lava' ? 'rgba(249, 115, 22, 0.3)' : 'rgba(14, 165, 233, 0.3)';
           ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.arc(ox, oy, glowRad, 0, Math.PI * 2);
+          ctx.ellipse(0, 0, TZ * 0.3, TZ * 0.15, s.ticks * 0.04, 0, Math.PI * 2);
           ctx.stroke();
-          ctx.restore();
+
+          // Swimming fish silhouette helper inside bubble
+          ctx.font = '8px serif';
+          ctx.fillText(o.ico || '🐟', 0, Math.sin(s.ticks * 0.06) * 1.5);
+        } else if (o.type === 'shelter' || o.type === 'settler_shelter') {
+          // --- COZY LOG CABIN RENDERER ---
+          ctx.translate(ox, oy);
+
+          // Cabin wooden log walls
+          ctx.fillStyle = '#b45309'; // warm amber brown
+          ctx.fillRect(-12, -4, 24, 12);
+          ctx.strokeStyle = '#78350f';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(-12, -4, 24, 12);
+
+          // Cute small logs joints lines
+          ctx.fillStyle = '#78350f';
+          ctx.fillRect(-12, -1, 3, 2);
+          ctx.fillRect(9, -1, 3, 2);
+
+          // Cozy glowing windows
+          ctx.fillStyle = '#fef08a'; // Bright yellow soft light
+          ctx.fillRect(-7, -1, 5, 5);
+          ctx.strokeStyle = '#d97706';
+          ctx.strokeRect(-7, -1, 5, 5);
+          
+          // Window cross divider
+          ctx.beginPath();
+          ctx.moveTo(-4.5, -1); ctx.lineTo(-4.5, 4);
+          ctx.moveTo(-7, 1.5); ctx.lineTo(-2, 1.5);
+          ctx.stroke();
+
+          // Warm cabin door
+          ctx.fillStyle = '#78350f';
+          ctx.fillRect(2, 0, 6, 8);
+          // Tiny brass doorknob
+          ctx.fillStyle = '#fbbf24';
+          ctx.beginPath();
+          ctx.arc(3.5, 4, 1, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Slanted straw/clay roof
+          ctx.fillStyle = '#ea580c'; // Red clay roof tile
+          ctx.beginPath();
+          ctx.moveTo(0, -11);
+          ctx.lineTo(-14, -4);
+          ctx.lineTo(14, -4);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = '#9a3412';
+          ctx.stroke();
+
+          // Stone chimney emitting smoking rings!
+          ctx.fillStyle = '#475569';
+          ctx.fillRect(6, -11, 4, 5);
+          
+          if (s.ticks % 40 < 15) {
+            ctx.strokeStyle = `rgba(148, 163, 184, ${0.6 - (s.ticks % 15) * 0.04})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(8, -13 - (s.ticks % 15) * 0.8, 1.5 + (s.ticks % 15) * 0.4, 0, Math.PI * 2);
+            ctx.stroke();
+          }
         } else if (o.type === 'watch_tower' || o.type === 'sentry_turret') {
-          ctx.save();
+          // --- WATCH TOWER DEFENSE STRUCTURE ---
+          ctx.translate(ox, oy);
+
+          // Range indicator preview
           ctx.strokeStyle = o.type === 'watch_tower' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)';
-          ctx.fillStyle = o.type === 'watch_tower' ? 'rgba(245, 158, 11, 0.04)' : 'rgba(16, 185, 129, 0.04)';
+          ctx.fillStyle = o.type === 'watch_tower' ? 'rgba(245, 158, 11, 0.03)' : 'rgba(16, 185, 129, 0.03)';
           ctx.lineWidth = 1;
           ctx.setLineDash([4, 4]);
           ctx.beginPath();
-          ctx.arc(ox, oy, o.type === 'watch_tower' ? 350 : 220, 0, Math.PI * 2);
+          ctx.arc(0, 0, o.type === 'watch_tower' ? 350 : 220, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
-          ctx.restore();
-          ico = IT[o.type]?.ico || '🗼';
-        } else if (o.type === 'water_pump' || o.type === 'water_reservoir' || o.type === 'water_pipe') {
-          ctx.save();
-          ctx.fillStyle = 'rgba(56, 189, 248, 0.1)';
+          ctx.setLineDash([]);
+
+          // Base stone support pillars
+          ctx.fillStyle = '#64748b';
+          ctx.fillRect(-8, 3, 4, 5);
+          ctx.fillRect(4, 3, 4, 5);
+
+          // Tower platform cabin wood
+          ctx.fillStyle = '#b45309';
+          ctx.fillRect(-10, -7, 20, 10);
+          ctx.strokeStyle = '#78350f';
+          ctx.strokeRect(-10, -7, 20, 10);
+
+          // Wooden spiked railing
+          ctx.fillStyle = '#d97706';
+          ctx.fillRect(-10, -10, 20, 3);
+
+          // Small lookout roof
+          ctx.fillStyle = '#1e293b';
           ctx.beginPath();
-          ctx.arc(ox, oy, TZ * 0.4 + Math.sin(s.ticks * 0.05) * 2, 0, Math.PI * 2);
+          ctx.moveTo(0, -16);
+          ctx.lineTo(-12, -10);
+          ctx.lineTo(12, -10);
+          ctx.closePath();
+          ctx.fill();
+
+          // Sentry defense gem / lens
+          ctx.fillStyle = o.type === 'watch_tower' ? '#f59e0b' : '#10b981';
+          ctx.beginPath();
+          ctx.arc(0, -4, 3, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (o.type === 'lore_node') {
+          // --- ANCIENT LORE BOOK BOOKSHELF ---
+          ctx.translate(ox, oy);
+
+          const hover = Math.sin(s.ticks * 0.08) * 2;
+          const ringRad = TZ * 0.5 + Math.sin(s.ticks * 0.08) * 3;
+
+          // Glowing energy sphere back aura
+          ctx.save();
+          ctx.shadowColor = o.subtype === 'echo' ? '#06b6d4' : o.subtype === 'carving' ? '#eab308' : '#a855f7';
+          ctx.shadowBlur = 10;
+          ctx.fillStyle = o.subtype === 'echo' ? 'rgba(6, 182, 212, 0.15)' : o.subtype === 'carving' ? 'rgba(234, 179, 8, 0.15)' : 'rgba(168, 85, 247, 0.15)';
+          ctx.beginPath();
+          ctx.arc(0, hover, 8, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
-          
-          // Draw a small clean blue water droplet above them
-          ctx.save();
+
+          // Runic orbit energy rings
+          ctx.strokeStyle = o.subtype === 'echo' ? 'rgba(56, 189, 248, 0.65)' : o.subtype === 'carving' ? 'rgba(234, 179, 8, 0.65)' : 'rgba(168, 85, 247, 0.65)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 2]);
+          ctx.beginPath();
+          ctx.ellipse(0, hover, ringRad, ringRad / 2, s.ticks * 0.03, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Small leather tome icon
+          ctx.font = '9px serif';
+          ctx.fillText(o.ico || '📓', 0, hover);
+        } else if (o.type === 'water_pump' || o.type === 'water_reservoir' || o.type === 'water_pipe') {
+          // --- PUMP SYSTEM ---
+          ctx.translate(ox, oy);
+
+          // Glowing water system container
+          ctx.fillStyle = 'rgba(56, 189, 248, 0.12)';
+          ctx.beginPath();
+          ctx.arc(0, 0, TZ * 0.45 + Math.sin(s.ticks * 0.05) * 2, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Metallic pipelines brass lines
+          ctx.fillStyle = '#d97706';
+          ctx.fillRect(-3, -5, 6, 12);
+          ctx.fillStyle = '#b45309';
+          ctx.fillRect(-6, 3, 12, 3);
+
+          // Glowing blue water indicator tube
+          ctx.fillStyle = '#0284c7';
+          ctx.fillRect(-1.5, -2, 3, 6);
+          ctx.fillStyle = '#38bdf8';
+          ctx.fillRect(-1.5, 1, 3, 3); // moving level
+
+          // Water drop emitter
           ctx.fillStyle = '#38bdf8';
           ctx.font = '8px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText('💧', ox, oy - 14 + Math.sin(s.ticks * 0.08) * 2);
-          ctx.restore();
-          
-          ico = IT[o.type]?.ico || '🚰';
-        } else if (o.type === 'campfire') {
-          ico = s.ticks % 20 < 10 ? '🔥' : '🕯️';
-          // Fire glow
-          const grad = ctx.createRadialGradient(ox, oy, 0, ox, oy, TZ * 2);
-          grad.addColorStop(0, 'rgba(255, 165, 0, 0.2)');
-          grad.addColorStop(1, 'rgba(255, 165, 0, 0)');
-          ctx.fillStyle = grad;
-          ctx.beginPath();
-          ctx.arc(ox, oy, TZ * 2, 0, Math.PI * 2);
-          ctx.fill();
-        } else if (IT[o.type]) {
-          ico = IT[o.type].ico || '?';
+          ctx.fillText('💧', 0, -11 + Math.sin(s.ticks * 0.08) * 2);
+        } else {
+          // Fallback simple emoji drawing with shadow
+          const ico = o.ico || IT[o.type]?.ico || '?';
+          ctx.font = `${TZ - 2}px serif`;
+          ctx.fillText(ico, ox, oy);
         }
-        
-        ctx.fillStyle = 'white';
-        ctx.fillText(ico, ox, oy);
+
+        ctx.restore();
       }
 
       // Draw hover reticle
@@ -5376,11 +6212,14 @@ export default function SurvivalGame() {
       // Player
       if (s.pl.ifr > 0 && s.ticks % 10 < 5) ctx.globalAlpha = 0.5;
       
-      // Draw a sleek soft circle shadow beneath the player
+      const pxDraw = s.pl.x - s.cam.x;
+      const pyDraw = s.pl.y - s.cam.y;
+
+      // Draw shadow beneath player
       ctx.save();
       ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
       ctx.beginPath();
-      ctx.ellipse(s.pl.x - s.cam.x, s.pl.y - s.cam.y + 11, 10, 4.5, 0, 0, Math.PI * 2);
+      ctx.ellipse(pxDraw, pyDraw + 11, 10, 4.5, 0, 0, Math.PI * 2);
       ctx.fill();
       
       // Subtle magic shield if healing sanctuary is active
@@ -5390,14 +6229,224 @@ export default function SurvivalGame() {
         ctx.shadowColor = '#10b981';
         ctx.shadowBlur = 12;
         ctx.beginPath();
-        ctx.arc(s.pl.x - s.cam.x, s.pl.y - s.cam.y, 20 + Math.sin(s.ticks * 0.1) * 3, 0, Math.PI * 2);
+        ctx.arc(pxDraw, pyDraw, 20 + Math.sin(s.ticks * 0.1) * 3, 0, Math.PI * 2);
         ctx.stroke();
         ctx.shadowBlur = 0;
       }
       ctx.restore();
 
-      ctx.font = `${TZ + 4}px serif`;
-      ctx.fillText(s.pl.ico || '🧍', s.pl.x - s.cam.x, s.pl.y - s.cam.y);
+      // --- VECTOR PLAYER CHARACTER OVERHAUL ---
+      ctx.save();
+      ctx.translate(pxDraw, pyDraw);
+
+      // Walk cycle bounce/wiggle
+      const plMoving = Math.abs(s.pl.vx) > 0.1 || Math.abs(s.pl.vy) > 0.1;
+      const walkCycle = plMoving ? Math.sin(s.ticks * 0.2) * 2 : 0;
+      const walkSway = plMoving ? Math.cos(s.ticks * 0.2) * 0.05 : 0;
+      
+      ctx.translate(0, walkCycle * 0.5);
+      ctx.rotate(walkSway);
+
+      // 1. Draw Backpack (Behind body)
+      ctx.fillStyle = '#78350f'; // Leather brown backpack
+      ctx.fillRect(-6, -6, 12, 10);
+      ctx.fillStyle = '#451a03'; // straps
+      ctx.fillRect(-5, -6, 2, 10);
+      ctx.fillRect(3, -6, 2, 10);
+
+      // 2. Draw Body / Armor Clothing (Chestpiece)
+      let bodyCol = '#ef4444'; // default red tunic
+      let trimCol = '#ffffff';
+      
+      if (s.pl.equip?.chest) {
+        if (s.pl.equip.chest.includes('mithril')) { bodyCol = '#22d3ee'; trimCol = '#ffffff'; }
+        else if (s.pl.equip.chest.includes('iron')) { bodyCol = '#94a3b8'; trimCol = '#475569'; }
+        else if (s.pl.equip.chest.includes('beastmaster')) { bodyCol = '#ea580c'; trimCol = '#fbbf24'; }
+        else if (s.pl.equip.chest.includes('leather')) { bodyCol = '#b45309'; trimCol = '#d97706'; }
+      }
+      ctx.fillStyle = bodyCol;
+      ctx.fillRect(-5, -3, 10, 11);
+      
+      // Trim belt detail
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(-5.5, 4, 11, 2.5);
+      ctx.fillStyle = trimCol;
+      ctx.fillRect(-1.5, 4, 3, 2.5); // belt buckle
+
+      // 3. Draw Legs (Wiggling walk cycle!)
+      let legCol = '#1d4ed8'; // default blue pants
+      if (s.pl.equip?.legs) {
+        if (s.pl.equip.legs.includes('mithril')) legCol = '#06b6d4';
+        else if (s.pl.equip.legs.includes('iron')) legCol = '#64748b';
+        else if (s.pl.equip.legs.includes('leather')) legCol = '#78350f';
+      }
+      ctx.fillStyle = legCol;
+      // Left Leg
+      ctx.fillRect(-4, 8, 3.5, 4 + (plMoving ? Math.sin(s.ticks * 0.2) * 1.5 : 0));
+      // Right Leg
+      ctx.fillRect(0.5, 8, 3.5, 4 + (plMoving ? -Math.sin(s.ticks * 0.2) * 1.5 : 0));
+
+      // 4. Draw Head / Helmet
+      let headCol = '#fbcfe8'; // default skin tone
+      let hasHelmet = false;
+      let helmCol = '#94a3b8';
+      let plumeCol = '#f43f5e';
+
+      if (s.pl.equip?.head) {
+        hasHelmet = true;
+        if (s.pl.equip.head.includes('mithril')) { helmCol = '#22d3ee'; plumeCol = '#c084fc'; }
+        else if (s.pl.equip.head.includes('iron')) { helmCol = '#94a3b8'; plumeCol = '#ef4444'; }
+        else if (s.pl.equip.head.includes('leather')) { helmCol = '#78350f'; plumeCol = '#fbbf24'; }
+      }
+
+      if (hasHelmet) {
+        // Draw Helmet helmet vector
+        ctx.fillStyle = helmCol;
+        ctx.beginPath();
+        ctx.arc(0, -9, 5.5, Math.PI, 0, false);
+        ctx.fill();
+        ctx.fillRect(-5.5, -9, 11, 3.5); // visor plate
+        
+        // Plume / Crest on helmet
+        ctx.fillStyle = plumeCol;
+        ctx.beginPath();
+        ctx.moveTo(0, -14.5);
+        ctx.lineTo(-4, -11.5);
+        ctx.lineTo(2, -11.5);
+        ctx.closePath();
+        ctx.fill();
+
+        // Eye slit glow
+        ctx.fillStyle = '#fef08a';
+        ctx.fillRect(-3, -7.5, 6, 1);
+      } else {
+        // Draw simple round head
+        ctx.fillStyle = headCol;
+        ctx.beginPath();
+        ctx.arc(0, -7, 5, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw cute little eyes
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(-2.5, -8, 1.2, 1.2);
+        ctx.fillRect(1.3, -8, 1.2, 1.2);
+        
+        // Hair
+        ctx.fillStyle = '#d97706'; // orange/brown hair
+        ctx.fillRect(-4.5, -11, 9, 3);
+      }
+
+      // 5. Draw Active Tool/Weapon in Hand (Rotating/swinging)
+      ctx.save();
+      ctx.translate(6, 1);
+      const activeW = s.pl.weapon || 'fists';
+      if (activeW !== 'fists') {
+        const swing = Math.sin(s.ticks * 0.15) * 0.3; // idle sway
+        ctx.rotate(0.3 + swing);
+
+        // Render Tool vector graphic based on type
+        if (activeW.includes('pickaxe')) {
+          // Curved pickaxe
+          let pickCol = '#94a3b8';
+          if (activeW.includes('mithril')) pickCol = '#22d3ee';
+          else if (activeW.includes('copper')) pickCol = '#ea580c';
+
+          ctx.fillStyle = '#78350f'; // wood staff
+          ctx.fillRect(-1, -12, 2, 14);
+          ctx.fillStyle = pickCol; // metal double spike
+          ctx.beginPath();
+          ctx.moveTo(-6, -11);
+          ctx.quadraticCurveTo(0, -13, 6, -11);
+          ctx.lineTo(1, -9);
+          ctx.lineTo(-1, -9);
+          ctx.closePath();
+          ctx.fill();
+        } else if (activeW.includes('axe')) {
+          // Felling Axe
+          let metalCol = '#94a3b8';
+          if (activeW.includes('mithril')) metalCol = '#22d3ee';
+          else if (activeW.includes('stone')) metalCol = '#475569';
+
+          ctx.fillStyle = '#78350f'; // shaft
+          ctx.fillRect(-1, -12, 2, 14);
+          ctx.fillStyle = metalCol; // axe blade
+          ctx.beginPath();
+          ctx.moveTo(0, -11);
+          ctx.lineTo(5, -14);
+          ctx.lineTo(5, -7);
+          ctx.lineTo(0, -9);
+          ctx.closePath();
+          ctx.fill();
+        } else if (activeW.includes('sword')) {
+          // Sharp glittering sword
+          let metalCol = '#cbd5e1';
+          let hiltCol = '#fbbf24';
+          if (activeW.includes('mithril')) metalCol = '#22d3ee';
+          else if (activeW.includes('copper')) metalCol = '#f97316';
+
+          ctx.fillStyle = hiltCol; // guard
+          ctx.fillRect(-3, -2, 6, 1.5);
+          ctx.fillStyle = '#78350f'; // handle
+          ctx.fillRect(-0.75, -1, 1.5, 3);
+          
+          ctx.fillStyle = metalCol; // double-edged blade
+          ctx.beginPath();
+          ctx.moveTo(-1.2, -2);
+          ctx.lineTo(-1.2, -14);
+          ctx.lineTo(0, -17); // sharp point
+          ctx.lineTo(1.2, -14);
+          ctx.lineTo(1.2, -2);
+          ctx.closePath();
+          ctx.fill();
+
+          // Shining reflection line
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(-0.5, -13, 0.6, 10);
+        } else if (activeW === 'fishing_rod') {
+          // Bent Fishing rod
+          ctx.strokeStyle = '#d97706';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(0, 2);
+          ctx.quadraticCurveTo(3, -5, 8, -10);
+          ctx.stroke();
+
+          // Hanging wire line
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+          ctx.beginPath();
+          ctx.moveTo(8, -10);
+          ctx.lineTo(8, -2);
+          ctx.stroke();
+        } else if (activeW.includes('bow')) {
+          // Bow
+          ctx.strokeStyle = '#d97706';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.arc(0, -5, 6, -Math.PI / 2, Math.PI / 2);
+          ctx.stroke();
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'; // bowstring
+          ctx.beginPath();
+          ctx.moveTo(0, -11);
+          ctx.lineTo(0, 1);
+          ctx.stroke();
+        }
+      } else {
+        // Draw fists
+        ctx.fillStyle = headCol;
+        ctx.beginPath();
+        ctx.arc(-1, 0, 1.5, 0, Math.PI * 2);
+        ctx.arc(1, 1, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+
+      // Overlap original emoji face inside a small float badge if they chose an interesting emoji custom shape
+      if (s.pl.ico && s.pl.ico !== '🧍') {
+        ctx.font = '7px sans-serif';
+        ctx.fillText(s.pl.ico, 0, -16 + Math.sin(s.ticks * 0.08) * 1.5);
+      }
+
+      ctx.restore();
       ctx.globalAlpha = 1;
 
       // Enemies
@@ -5419,40 +6468,134 @@ export default function SurvivalGame() {
         ctx.fill();
         ctx.restore();
 
+        // --- PREMIUM 3D BATTLE TOKEN WRAPPER ---
         ctx.save();
         ctx.translate(ex, ey + bob);
         ctx.scale(squishX, squishY);
 
-        // Flash red glow when hit!
+        const isBoss = ET[e.eid]?.boss || e.boss;
+
+        // Draw glowing token aura background
+        let glowCol = 'rgba(56, 189, 248, 0.15)'; // friendly cyan
+        let borderCol = '#64748b'; // default slate steel
+        
+        if (isBoss) {
+          glowCol = 'rgba(245, 158, 11, 0.35)'; // gold lava glow
+          borderCol = '#fbbf24'; // shiny gold border
+        } else if (e.isAggro) {
+          glowCol = 'rgba(239, 68, 68, 0.25)'; // angry red
+          borderCol = '#ef4444'; // crimson red border
+        } else if (e.slowTicks > 0) {
+          glowCol = 'rgba(56, 189, 248, 0.25)'; // frozen sky blue
+          borderCol = '#38bdf8';
+        }
+
+        // Draw polished 3D base token disk
+        const baseRad = TZ * 0.52;
+        ctx.shadowColor = borderCol;
+        ctx.shadowBlur = isBoss ? 12 : 3;
+        
+        // Inner base fill
+        const radGrad = ctx.createRadialGradient(0, -TZ/6, 0, 0, -TZ/6, baseRad);
+        radGrad.addColorStop(0, '#1e293b'); // dark core
+        radGrad.addColorStop(1, '#0f172a');
+        ctx.fillStyle = radGrad;
+        ctx.beginPath();
+        ctx.arc(0, -TZ/6, baseRad, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Outlined metallic bezel rim
+        ctx.strokeStyle = borderCol;
+        ctx.lineWidth = isBoss ? 2 : 1.2;
+        ctx.beginPath();
+        ctx.arc(0, -TZ/6, baseRad, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0; // reset
+
+        // Red hit flash glow effect
         if (e.flashTicks && e.flashTicks > 0) {
-          ctx.shadowColor = '#ff3333';
-          ctx.shadowBlur = 18;
-          ctx.fillStyle = 'rgba(255, 51, 51, 0.4)';
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.55)';
           ctx.beginPath();
-          ctx.arc(0, -TZ/3, TZ/2, 0, Math.PI * 2);
+          ctx.arc(0, -TZ/6, baseRad - 0.5, 0, Math.PI * 2);
           ctx.fill();
         }
 
-        ctx.font = `${TZ}px serif`;
+        // Bobbing floating emoji monster avatar
+        ctx.font = `${TZ - 4}px serif`;
         ctx.textAlign = 'center';
-        ctx.fillText(ET[e.eid].ico, 0, 0);
+        ctx.textBaseline = 'middle';
+        ctx.fillText(ET[e.eid].ico, 0, -TZ/6);
+        
+        // Draw boss gold crown on top of token if applicable
+        if (isBoss) {
+          ctx.fillStyle = '#fbbf24';
+          ctx.strokeStyle = '#d97706';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(-6, -TZ * 0.72);
+          ctx.lineTo(-7, -TZ * 0.88);
+          ctx.lineTo(-3, -TZ * 0.80);
+          ctx.lineTo(0, -TZ * 0.94); // center spire
+          ctx.lineTo(3, -TZ * 0.80);
+          ctx.lineTo(7, -TZ * 0.88);
+          ctx.lineTo(6, -TZ * 0.72);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          
+          // Tiny diamond dot
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(0, -TZ * 0.94, 0.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
         ctx.restore();
 
-        // Health bar
-        ctx.fillStyle = '#1e1e24';
-        ctx.fillRect(ex - 15, ey - 25 + bob, 30, 4);
-        ctx.fillStyle = '#ff4757';
-        ctx.fillRect(ex - 15, ey - 25 + bob, 30 * (e.hp / e.mhp), 4);
+        // --- GLASSMORPHIC CAPSULE HEALTH BAR ---
+        const barWidth = 32;
+        const barHeight = 4.5;
+        const barY = ey - 27 + bob;
+        
+        // Translucent background track
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.roundRect(ex - barWidth/2, barY, barWidth, barHeight, 2);
+        ctx.fill();
+        ctx.stroke();
 
-        // Render Active Status Effects and Aggro Indicator above head
+        // Filling health bar with high contrast gradient
+        const hpPct = Math.max(0, e.hp / e.mhp);
+        if (hpPct > 0) {
+          const barGrad = ctx.createLinearGradient(ex - barWidth/2, barY, ex + barWidth/2, barY);
+          if (isBoss) {
+            barGrad.addColorStop(0, '#f59e0b'); // amber gold for bosses
+            barGrad.addColorStop(1, '#ef4444');
+          } else {
+            barGrad.addColorStop(0, '#ef4444'); // healthy red-to-pink
+            barGrad.addColorStop(1, '#f472b6');
+          }
+          ctx.fillStyle = barGrad;
+          ctx.beginPath();
+          ctx.roundRect(ex - barWidth/2 + 0.5, barY + 0.5, (barWidth - 1) * hpPct, barHeight - 1, 1.5);
+          ctx.fill();
+
+          // Shiny white glaze sheen reflection on top of health bar
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+          ctx.fillRect(ex - barWidth/2 + 0.5, barY + 0.5, (barWidth - 1) * hpPct, (barHeight - 1) / 2);
+        }
+
+        // Render Active Status Effects above head
         let statusStr = '';
-        if (e.isAggro) statusStr += '😡';
+        if (e.isAggro && !isBoss) statusStr += '😡';
         if (e.slowTicks > 0) statusStr += '🧊';
         if (e.burnTicks > 0) statusStr += '🔥';
         if (statusStr) {
-          ctx.font = '11px serif';
+          ctx.font = '10px serif';
           ctx.textAlign = 'center';
-          ctx.fillText(statusStr, ex, ey - 32 + bob);
+          ctx.fillText(statusStr, ex, ey - 33 + bob);
         }
       }
 
@@ -5487,18 +6630,86 @@ export default function SurvivalGame() {
           ctx.fillText("DASH!", cx, cy - 45);
         }
 
-        ctx.font = `${TZ}px serif`;
+        // --- PREMIUM 3D FRIENDLY TOKEN ---
+        ctx.save();
+        const bob = Math.sin(s.ticks * 0.12 + (c.id || 0) * 1.5) * 4;
+        const squishX = 1 + Math.sin(s.ticks * 0.16 + (c.id || 0)) * 0.06;
+        const squishY = 1 - Math.sin(s.ticks * 0.16 + (c.id || 0)) * 0.06;
+
+        // Shadow beneath companion
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy + 11, 10 * squishX, 4 * squishY, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.translate(cx, cy + bob);
+        ctx.scale(squishX, squishY);
+
+        // Friendly green-teal token plate
+        const baseRad = TZ * 0.52;
+        ctx.shadowColor = '#00ffaa';
+        ctx.shadowBlur = 6;
+        
+        // Inner base fill
+        const radGrad = ctx.createRadialGradient(0, -TZ/6, 0, 0, -TZ/6, baseRad);
+        radGrad.addColorStop(0, '#064e3b'); // dark emerald core
+        radGrad.addColorStop(1, '#022c22');
+        ctx.fillStyle = radGrad;
+        ctx.beginPath();
+        ctx.arc(0, -TZ/6, baseRad, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Outlined metallic bezel rim
+        ctx.strokeStyle = '#00ffaa';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(0, -TZ/6, baseRad, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0; // reset
+
+        // Bobbing floating emoji companion avatar
+        ctx.font = `${TZ - 4}px serif`;
         ctx.textAlign = 'center';
-        ctx.fillText(c.ico, cx, cy);
+        ctx.textBaseline = 'middle';
+        ctx.fillText(c.ico || '🤝', 0, -TZ/6);
+        ctx.restore();
+
+        // --- NAME PLATE AND HP BAR ---
         // Name
-        ctx.font = '10px monospace';
+        ctx.font = '10px sans-serif';
         ctx.fillStyle = '#00ffaa';
-        ctx.fillText(c.n, cx, cy - 35);
-        // HP
-        ctx.fillStyle = '#111';
-        ctx.fillRect(cx - 15, cy - 25, 30, 4);
-        ctx.fillStyle = '#00ffaa';
-        ctx.fillRect(cx - 15, cy - 25, 30 * (c.hp / c.mhp), 4);
+        ctx.textAlign = 'center';
+        ctx.fillText(c.n, cx, cy - 35 + bob);
+
+        // Glassmorphic health bar
+        const barWidth = 30;
+        const barHeight = 4.5;
+        const barY = cy - 25 + bob;
+        
+        // Background track
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.roundRect(cx - barWidth/2, barY, barWidth, barHeight, 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Filling health bar with friendly emerald gradient
+        const hpPct = Math.max(0, c.hp / c.mhp);
+        if (hpPct > 0) {
+          const barGrad = ctx.createLinearGradient(cx - barWidth/2, barY, cx + barWidth/2, barY);
+          barGrad.addColorStop(0, '#059669'); // emerald green
+          barGrad.addColorStop(1, '#34d399'); // mint green
+          ctx.fillStyle = barGrad;
+          ctx.beginPath();
+          ctx.roundRect(cx - barWidth/2 + 0.5, barY + 0.5, (barWidth - 1) * hpPct, barHeight - 1, 1.5);
+          ctx.fill();
+
+          // Reflection sheen
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+          ctx.fillRect(cx - barWidth/2 + 0.5, barY + 0.5, (barWidth - 1) * hpPct, (barHeight - 1) / 2);
+        }
         ctx.textAlign = 'start';
       }
 
@@ -5940,6 +7151,48 @@ export default function SurvivalGame() {
     return () => {
       delete (window as any).addGameLog;
     };
+  }, [addLog]);
+
+  const handleMinimapClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = minimapCanvasRef.current;
+    if (!canvas || !stateRef.current) return;
+    const rect = canvas.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+
+    const isWorldMode = minimapModeRef.current === 'world';
+    const zoom = minimapZoomRef.current;
+
+    const s = stateRef.current;
+    const ptx = Math.floor(s.pl.x / TZ);
+    const pty = Math.floor(s.pl.y / TZ);
+
+    let tx = 0;
+    let ty = 0;
+
+    if (isWorldMode) {
+      const pctX = clickX / canvas.width;
+      const pctY = clickY / canvas.height;
+      tx = Math.max(0, Math.min(WW - 1, Math.floor(pctX * WW)));
+      ty = Math.max(0, Math.min(WH - 1, Math.floor(pctY * WH)));
+    } else {
+      const range = Math.round(18 / zoom);
+      const size = range * 2 + 1;
+      const tileSize = canvas.width / size;
+      const dx = Math.floor(clickX / tileSize) - range;
+      const dy = Math.floor(clickY / tileSize) - range;
+      tx = Math.max(0, Math.min(WW - 1, ptx + dx));
+      ty = Math.max(0, Math.min(WH - 1, pty + dy));
+    }
+
+    // Set waypoint
+    setMinimapWaypoint({ tx, ty });
+    addLog(`📍 Waypoint set at [X: ${tx}, Y: ${ty}]`, '#22d3ee');
+
+    // Smooth auto-travel
+    s.pl.targetX = tx * TZ + TZ / 2;
+    s.pl.targetY = ty * TZ + TZ / 2;
+    addLog(`🏃 Auto-traveling to Waypoint...`, '#34d399');
   }, [addLog]);
 
   const recruitVillager = (role: string, cost: { [key: string]: number }, name: string, ico: string, spd: number, dmg: number, hp: number) => {
@@ -9716,7 +10969,9 @@ export default function SurvivalGame() {
               ref={minimapCanvasRef} 
               width={174} 
               height={174} 
-              className="w-[174px] h-[174px]"
+              onClick={handleMinimapClick}
+              className="w-[174px] h-[174px] cursor-crosshair active:scale-95 transition-transform"
+              title="Click to place waypoint and auto-travel"
             />
             
             {/* Scope crosshair decorative rings overlay */}
