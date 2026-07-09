@@ -1022,6 +1022,13 @@ const baseIT: Record<string, any> = {
   water_pump: { ico: '⛽', n: 'Water Pump', t: 'struct', desc: 'Extracts deep water. Place on land. Click adjacent to quench thirst.' },
   water_pipe: { ico: '🚰', n: 'Water Pipe', t: 'struct', desc: 'Distributes water from pump. Click adjacent to drink.' },
   watch_tower: { ico: '🗼', n: 'Watch Tower', t: 'struct', desc: 'A high sentry guard tower. Automatically snipes nearby hostiles.' },
+  settler_shelter: { ico: '🛖', n: 'Settler Shelter', t: 'struct', desc: 'A rustic cabin. Attracts village settlers and earns +2 gold coins every 10s.' },
+  town_house: { ico: '🏡', n: 'Town House', t: 'struct', desc: 'A comfortable family residence. Attracts workers and residents. Earns +6 Gold Coins passively.' },
+  town_workshop: { ico: '🏭', n: 'Town Workshop', t: 'struct', desc: 'An advanced industrial workshop. Automatically crafts and yields +1 Iron Bar passively.' },
+  storage_depot: { ico: '🏬', n: 'Storage Depot', t: 'struct', desc: 'A massive logistics depot. Automatically gathers +2 Wood, +2 Stone, and +2 Fiber passively.' },
+  merchant_stall: { ico: '🏪', n: 'Merchant Stall', t: 'struct', desc: 'A market stall. Attracts a merchant companion who earns +5 gold coins every 10s.' },
+  guard_post: { ico: '🛡️', n: 'Guard Post', t: 'struct', desc: 'A fortified command post. Spawns a resilient village Guard companion.' },
+  farm_plot: { ico: '🌾', n: 'Farm Plot', t: 'struct', desc: 'An irrigated garden patch. Automatically harvests +1 Berry every 10s.' },
 
   stone_pickaxe: { id: 'stone_pickaxe', n: 'Stone Pickaxe', ico: '⛏️', dmg: 12, spd: 30, rng: 44, type: 'melee', mp: 0 },
   copper_pickaxe: { id: 'copper_pickaxe', n: 'Copper Pickaxe', ico: '⛏️', dmg: 16, spd: 28, rng: 44, type: 'melee', mp: 0 },
@@ -1178,6 +1185,13 @@ const RC = [
   { n: 'Water Pump', out: 'water_pump', cnt: 1, cat: 'Structures', c: { iron_bar: 6, stone: 10, wood: 4 }, req: 'workbench' },
   { n: 'Water Pipe', out: 'water_pipe', cnt: 1, cat: 'Structures', c: { iron_bar: 2 }, req: 'workbench' },
   { n: 'Watch Tower', out: 'watch_tower', cnt: 1, cat: 'Structures', c: { wood: 12, iron_bar: 6, fiber: 8 }, req: 'workbench' },
+  { n: 'Settler Shelter', out: 'settler_shelter', cnt: 1, cat: 'Structures', c: { wood: 15, stone: 10, fiber: 10 }, req: 'workbench' },
+  { n: 'Town House', out: 'town_house', cnt: 1, cat: 'Structures', c: { wood: 30, stone: 20, fiber: 15, gold_coins: 100 }, req: 'workbench' },
+  { n: 'Town Workshop', out: 'town_workshop', cnt: 1, cat: 'Structures', c: { stone: 35, iron_bar: 8, wood: 20 }, req: 'workbench' },
+  { n: 'Storage Depot', out: 'storage_depot', cnt: 1, cat: 'Structures', c: { wood: 40, stone: 30, iron_bar: 4 }, req: 'workbench' },
+  { n: 'Merchant Stall', out: 'merchant_stall', cnt: 1, cat: 'Structures', c: { wood: 20, fiber: 15, gold_coins: 150 }, req: 'workbench' },
+  { n: 'Guard Post', out: 'guard_post', cnt: 1, cat: 'Structures', c: { stone: 20, iron_bar: 5, wood: 10 }, req: 'workbench' },
+  { n: 'Farm Plot', out: 'farm_plot', cnt: 1, cat: 'Structures', c: { wood: 8, fiber: 12, berry: 5 }, req: 'workbench' },
 
   { n: 'Stone Pickaxe', out: 'stone_pickaxe', cnt: 1, cat: 'Weapons', c: { stone: 3, stick: 2 } },
   { n: 'Wooden Club', out: 'wood_club', cnt: 1, cat: 'Weapons', c: { wood: 3 } },
@@ -1444,6 +1458,9 @@ export default function SurvivalGame() {
   const [recipeSearch, setRecipeSearch] = useState('');
   const [recipeFilter, setRecipeFilter] = useState('All');
   const [showSkills, setShowSkills] = useState(false);
+  const [showTownHub, setShowTownHub] = useState(false);
+  const [showCharCustomizer, setShowCharCustomizer] = useState(false);
+  const [customTownName, setCustomTownName] = useState('Camp Horizon');
   const [showQuests, setShowQuests] = useState(false);
   const [showMasteries, setShowMasteries] = useState(false);
   const [guildTab, setGuildTab] = useState<'quests' | 'store'>('quests');
@@ -1956,6 +1973,11 @@ export default function SurvivalGame() {
       s.pl.guildTokens = data.pl.guildTokens ?? 0;
       s.pl.activeQuests = data.pl.activeQuests || {};
       s.pl.activeQuestsProgress = data.pl.activeQuestsProgress || {};
+      s.pl.ico = data.pl.ico || '🧍';
+      s.pl.class = data.pl.class || 'Survivor';
+      s.pl.charName = data.pl.charName || 'Hero';
+      s.pl.townName = data.pl.townName || 'Camp Horizon';
+      s.pl.townLvl = data.pl.townLvl || 1;
       s.pl.masteries = data.pl.masteries || {
         adrenaline: 0,
         double_harvest: 0,
@@ -2622,6 +2644,7 @@ export default function SurvivalGame() {
       targetY: Math.floor(ZH / 2) * TZ + TZ / 2,
       isGridMoving: false,
       hp: 100, mhp: 100, hu: 100, th: 100, sta: 100, mp: 100, mmp: 100,
+      ico: '🧍', class: 'Survivor', charName: 'Hero', townName: 'Camp Horizon', townLvl: 1,
       inv: {
         wood: 25, stone: 15, fiber: 15, herb: 8, berry: 10, torch: 2,
         stone_axe: 1, shortbow: 1, raw_meat: 5, cooked_meat: 3, gold_coins: 1000
@@ -3225,6 +3248,33 @@ export default function SurvivalGame() {
         mctx.lineWidth = 0.75;
         mctx.stroke();
 
+        // Draw Cave Entrances on World Minimap Scan
+        const caveZones = [
+          { zc: 0, zr: 1 },
+          { zc: 3, zr: 3 },
+          { zc: 5, zr: 4 },
+          { zc: 1, zr: 5 },
+          { zc: 6, zr: 2 },
+          { zc: 4, zr: 7 },
+        ];
+        for (const cz of caveZones) {
+          const etx = cz.zc * ZW + 30;
+          const ety = cz.zr * ZH + 30;
+          const cx = (etx / WW) * canvas.width;
+          const cy = (ety / WH) * canvas.height;
+          
+          const cpulse = 1 + Math.sin(s.ticks * 0.15 + cz.zc) * 0.4;
+          mctx.fillStyle = 'rgba(236, 72, 153, 0.4)';
+          mctx.beginPath();
+          mctx.arc(cx, cy, 3 * cpulse, 0, Math.PI * 2);
+          mctx.fill();
+          
+          mctx.fillStyle = '#ec4899';
+          mctx.beginPath();
+          mctx.arc(cx, cy, 1.5, 0, Math.PI * 2);
+          mctx.fill();
+        }
+
       } else {
         const range = Math.round(18 / zoom);
         const size = range * 2 + 1;
@@ -3338,6 +3388,21 @@ export default function SurvivalGame() {
               mctx.fillStyle = '#a855f7';
               mctx.beginPath();
               mctx.arc(canvasX, canvasY, 2, 0, Math.PI * 2);
+              mctx.fill();
+            } else if (o.type === 'cave_entrance') {
+              const p = 1 + Math.sin(s.ticks * 0.1) * 0.4;
+              mctx.fillStyle = 'rgba(236, 72, 153, 0.4)';
+              mctx.beginPath();
+              mctx.arc(canvasX, canvasY, 5 * p, 0, Math.PI * 2);
+              mctx.fill();
+              mctx.fillStyle = '#ec4899';
+              mctx.beginPath();
+              mctx.arc(canvasX, canvasY, 3, 0, Math.PI * 2);
+              mctx.fill();
+            } else if (o.type === 'cave_exit') {
+              mctx.fillStyle = '#10b981';
+              mctx.beginPath();
+              mctx.arc(canvasX, canvasY, 3, 0, Math.PI * 2);
               mctx.fill();
             }
           }
@@ -4383,6 +4448,36 @@ export default function SurvivalGame() {
           }
         }
 
+        // Special Companion Roles
+        if (c.role === 'hunter' && bestTarget && c.cd <= 0) {
+          const ox = c.x;
+          const oy = c.y;
+          const ang = Math.atan2(bestTarget.y - oy, bestTarget.x - ox);
+          s.projs.push({
+            x: ox, y: oy,
+            vx: Math.cos(ang) * 12, vy: Math.sin(ang) * 12,
+            dmg: c.dmg, rng: 300, dist: 0,
+            col: '#f59e0b', fx: 'slow', isArrow: true, sz: 5
+          });
+          c.cd = 50; // attack cooldown
+          s.parts.push({ x: ox, y: oy, vx: 0, vy: 0, life: 10, col: '#f59e0b', sz: 6 });
+        }
+        
+        if (c.role === 'gatherer' && s.ticks % 250 === 0) {
+          const items = ['wood', 'stone', 'fiber', 'flint'];
+          const gathered = items[Math.floor(Math.random() * items.length)];
+          s.pl.inv[gathered] = (s.pl.inv[gathered] || 0) + 1;
+          addLog(`🧑‍🌾 ${c.n} gathered 1x ${IT[gathered]?.n || gathered}!`, '#34d399');
+          s.parts.push({ x: c.x, y: c.y, vx: 0, vy: -1, life: 15, col: '#34d399', sz: 6 });
+        }
+
+        if (c.role === 'alchemist' && s.pl.hp < s.pl.mhp * 0.6 && c.scd <= 0) {
+          s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + 20);
+          c.scd = 300; // 10 second heal cooldown
+          addLog(`🧙‍♀️ ${c.n} healed you for +20 HP!`, '#f43f5e');
+          s.parts.push({ x: s.pl.x, y: s.pl.y, vx: 0, vy: 0, life: 20, col: '#f43f5e', sz: 8 });
+        }
+
         if (c.cd > 0) c.cd--;
         if (c.scd > 0) c.scd--;
       }
@@ -4434,6 +4529,36 @@ export default function SurvivalGame() {
               });
               s.parts.push({ x: ox, y: oy, vx: 0, vy: 0, life: 8, col: '#f59e0b', sz: 8 });
             }
+          }
+        }
+      }
+
+      // --- Town Structures Income and Production Updates ---
+      if (s.ticks % 200 === 0) { // Every 200 ticks (~6-7 seconds)
+        for (const o of s.objs) {
+          const ox = o.tx * TZ + TZ / 2;
+          const oy = o.ty * TZ + TZ / 2;
+          
+          if (o.type === 'settler_shelter') {
+            s.pl.inv.gold_coins = (s.pl.inv.gold_coins || 0) + 2;
+            s.parts.push({ x: ox, y: oy, vx: 0, vy: -1.2, life: 25, col: '#fbbf24', sz: 4 });
+          } else if (o.type === 'town_house') {
+            s.pl.inv.gold_coins = (s.pl.inv.gold_coins || 0) + 6;
+            s.parts.push({ x: ox, y: oy, vx: 0, vy: -1.2, life: 25, col: '#fbbf24', sz: 5 });
+          } else if (o.type === 'town_workshop') {
+            s.pl.inv.iron_bar = (s.pl.inv.iron_bar || 0) + 1;
+            s.parts.push({ x: ox, y: oy, vx: 0, vy: -1.2, life: 25, col: '#a1a1aa', sz: 5 });
+          } else if (o.type === 'storage_depot') {
+            s.pl.inv.wood = (s.pl.inv.wood || 0) + 2;
+            s.pl.inv.stone = (s.pl.inv.stone || 0) + 2;
+            s.pl.inv.fiber = (s.pl.inv.fiber || 0) + 2;
+            s.parts.push({ x: ox, y: oy, vx: 0, vy: -1.2, life: 25, col: '#fb7185', sz: 5 });
+          } else if (o.type === 'merchant_stall') {
+            s.pl.inv.gold_coins = (s.pl.inv.gold_coins || 0) + 5;
+            s.parts.push({ x: ox, y: oy, vx: 0, vy: -1.2, life: 30, col: '#f59e0b', sz: 5 });
+          } else if (o.type === 'farm_plot') {
+            s.pl.inv.berry = (s.pl.inv.berry || 0) + 1;
+            s.parts.push({ x: ox, y: oy, vx: 0, vy: -1.2, life: 25, col: '#10b981', sz: 4 });
           }
         }
       }
@@ -5109,7 +5234,7 @@ export default function SurvivalGame() {
       ctx.restore();
 
       ctx.font = `${TZ + 4}px serif`;
-      ctx.fillText('🧍', s.pl.x - s.cam.x, s.pl.y - s.cam.y);
+      ctx.fillText(s.pl.ico || '🧍', s.pl.x - s.cam.x, s.pl.y - s.cam.y);
       ctx.globalAlpha = 1;
 
       // Enemies
@@ -5565,6 +5690,50 @@ export default function SurvivalGame() {
   const addLog = (msg: string, col: string = '#a8ff78') => {
     const id = `${Date.now()}-${Math.random()}`;
     setLogs(prev => [{ id, msg, col }, ...prev].slice(0, 5));
+  };
+
+  useEffect(() => {
+    (window as any).addGameLog = addLog;
+    return () => {
+      delete (window as any).addGameLog;
+    };
+  }, [addLog]);
+
+  const recruitVillager = (role: string, cost: { [key: string]: number }, name: string, ico: string, spd: number, dmg: number, hp: number) => {
+    const s = stateRef.current;
+    if (!s) return;
+    
+    // Check resources
+    const hasMats = Object.entries(cost).every(([k, v]) => (s.pl.inv[k] || 0) >= v);
+    if (!hasMats) {
+      addLog("⚠️ Insufficient resources to recruit this villager!", "#ef4444");
+      return;
+    }
+
+    // Deduct
+    Object.entries(cost).forEach(([k, v]) => {
+      s.pl.inv[k] -= v;
+    });
+
+    // Spawn companion
+    s.companions.push({
+      n: name,
+      ico: ico,
+      hp: hp,
+      mhp: hp,
+      spd: spd,
+      dmg: dmg,
+      cd: 0,
+      scd: 0,
+      target: null,
+      x: s.pl.x,
+      y: s.pl.y,
+      role: role
+    });
+
+    addLog(`✨ Recruited ${name}! They have joined your survival party.`, '#10b981');
+    spawnExplosion(s, s.pl.x, s.pl.y, '#10b981', 15, 'spell');
+    setGameState({ ...s });
   };
 
   // --- Adventurers Guild & Masteries Expansion Logic ---
@@ -6312,6 +6481,13 @@ export default function SurvivalGame() {
       else if (k === 'water_pipe') baseHp = 15;
       else if (k === 'supply_crate') baseHp = 30;
       else if (k === 'sentry_turret') baseHp = 35;
+      else if (k === 'settler_shelter') baseHp = 50;
+      else if (k === 'town_house') baseHp = 70;
+      else if (k === 'town_workshop') baseHp = 90;
+      else if (k === 'storage_depot') baseHp = 100;
+      else if (k === 'merchant_stall') baseHp = 60;
+      else if (k === 'guard_post') baseHp = 80;
+      else if (k === 'farm_plot') baseHp = 30;
       const finalHp = Math.round(baseHp * (1 + 0.25 * (bldLvl - 1)));
       
       // Place structure
@@ -7180,7 +7356,7 @@ export default function SurvivalGame() {
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     // 1. Don't gather if a menu/modal is open
-    if (showSkills || showQuests || showMasteries || showCraft || showRecipeBook || showOracle || showSaveMenu || showWorldMenu || showSpellbook || showNFTMarket || showShop || showDeathScreen || showInv || showMusicMenu || isFishing || activeNPC) {
+    if (showTownHub || showCharCustomizer || showSkills || showQuests || showMasteries || showCraft || showRecipeBook || showOracle || showSaveMenu || showWorldMenu || showSpellbook || showNFTMarket || showShop || showDeathScreen || showInv || showMusicMenu || isFishing || activeNPC) {
       return;
     }
 
@@ -8650,11 +8826,17 @@ export default function SurvivalGame() {
             <div className="flex flex-col gap-2 p-3.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto min-w-[250px] select-none">
               {/* Avatar / Level Indicator */}
               <div className="flex items-center gap-2 border-b border-white/10 pb-2 mb-0.5">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-yellow-500 to-amber-300 flex items-center justify-center text-xs font-black text-black shadow-inner shadow-black/20 animate-pulse">
-                  👑
-                </div>
+                <button 
+                  onClick={() => setShowCharCustomizer(true)}
+                  className="w-8 h-8 rounded-full bg-gradient-to-tr from-yellow-500 to-amber-300 flex items-center justify-center text-sm font-black text-black shadow-inner shadow-black/20 animate-pulse hover:scale-110 active:scale-95 transition-all cursor-pointer"
+                  title="Click to Edit Character"
+                >
+                  {gameState?.pl.ico || '🧍'}
+                </button>
                 <div className="flex flex-col">
-                  <span className="text-[10px] font-bold tracking-wider text-yellow-400 uppercase font-sans">Survival Core</span>
+                  <span className="text-[10px] font-bold tracking-wider text-yellow-400 uppercase font-sans">
+                    {gameState?.pl.charName || 'Hero'} the {gameState?.pl.class || 'Survivor'}
+                  </span>
                   <span className="text-xs font-extrabold text-white font-mono">LVL {gameState?.pl.lvl || 1}</span>
                 </div>
                 <div className="ml-auto text-[9px] text-zinc-400 font-mono">
@@ -9095,6 +9277,26 @@ export default function SurvivalGame() {
                 <span>CRAFT</span>
               </button>
               <button 
+                onClick={() => {
+                  const s = stateRef.current;
+                  if (s && s.pl) {
+                    setCustomTownName(s.pl.townName || 'Camp Horizon');
+                  }
+                  setShowTownHub(true);
+                }}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-green-500/20 hover:border-green-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-green-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <span className="text-green-400 text-[11px] sm:text-xs">🏘️</span>
+                <span>TOWN HUB</span>
+              </button>
+              <button 
+                onClick={() => setShowCharCustomizer(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-purple-500/20 hover:border-purple-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-purple-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <span className="text-purple-400 text-[11px] sm:text-xs">👤</span>
+                <span>PLAYER</span>
+              </button>
+              <button 
                 onClick={() => setShowResearch(true)}
                 className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-cyan-500/20 hover:border-cyan-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-cyan-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
               >
@@ -9256,6 +9458,69 @@ export default function SurvivalGame() {
                 })()}
               </span>
             </div>
+
+            {/* Cave Compass */}
+            {gameState && (
+              <div className="mt-1.5 border-t border-white/5 pt-1.5 flex flex-col gap-0.5 text-center bg-pink-950/20 border border-pink-500/20 rounded-lg p-1 animate-pulse">
+                <span className="text-[7px] text-pink-400 font-extrabold tracking-widest uppercase flex items-center justify-center gap-1">
+                  <Compass size={8} className="text-pink-400" /> CAVE COMPASS
+                </span>
+                {(() => {
+                  if (gameState.inCave) {
+                    return (
+                      <div className="text-[9px] font-black text-green-400">
+                        🪜 Cave Exit nearby!
+                      </div>
+                    );
+                  }
+                  const ptx = Math.floor(gameState.pl.x / TZ);
+                  const pty = Math.floor(gameState.pl.y / TZ);
+                  let nearest = null;
+                  let minDist = Infinity;
+                  const caveZones = [
+                    { zc: 0, r: 1 },
+                    { zc: 3, r: 3 },
+                    { zc: 5, r: 4 },
+                    { zc: 1, r: 5 },
+                    { zc: 6, r: 2 },
+                    { zc: 4, r: 7 },
+                  ];
+                  for (const cz of caveZones) {
+                    const etx = cz.zc * ZW + 30;
+                    const ety = cz.r * ZH + 30;
+                    const dx = etx - ptx;
+                    const dy = ety - pty;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < minDist) {
+                      minDist = dist;
+                      nearest = { cz, dx, dy, dist };
+                    }
+                  }
+                  if (!nearest) return null;
+                  const dx = nearest.dx;
+                  const dy = nearest.dy;
+                  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+                  let dirStr = "";
+                  if (nearest.dist < 8) dirStr = "🕳️ RIGHT HERE!";
+                  else {
+                    if (angle >= -22.5 && angle < 22.5) dirStr = "➡️ East";
+                    else if (angle >= 22.5 && angle < 67.5) dirStr = "➡️⬇️ SE";
+                    else if (angle >= 67.5 && angle < 112.5) dirStr = "⬇️ South";
+                    else if (angle >= 112.5 && angle < 157.5) dirStr = "⬅️⬇️ SW";
+                    else if (angle >= 157.5 || angle < -157.5) dirStr = "⬅️ West";
+                    else if (angle >= -157.5 && angle < -112.5) dirStr = "⬅️⬆️ NW";
+                    else if (angle >= -112.5 && angle < -67.5) dirStr = "⬆️ North";
+                    else if (angle >= -67.5 && angle < -22.5) dirStr = "➡️⬆️ NE";
+                  }
+                  return (
+                    <div className="text-[9px] font-bold text-pink-300">
+                      <div>{dirStr} ({Math.round(nearest.dist)}m)</div>
+                      <div className="text-[7px] text-pink-400/80">Zone ({nearest.cz.zc}, {nearest.cz.r})</div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </div>
 
           {/* Local zoom controls */}
@@ -9305,6 +9570,10 @@ export default function SurvivalGame() {
                 <div className="flex items-center gap-1">
                   <div className="w-1.5 h-1.5 rounded-full bg-[#a855f7]" />
                   <span>Portal</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#ec4899]" />
+                  <span>Cave 🕳️</span>
                 </div>
 
                 <div className="col-span-2 text-[7px] text-yellow-400 font-bold uppercase tracking-wider mt-1.5 mb-0.5 border-b border-white/5 pb-0.5">Resources / Nodes</div>
@@ -10015,6 +10284,283 @@ export default function SurvivalGame() {
 
       {/* --- Modals --- */}
       <AnimatePresence>
+        {showTownHub && (
+          <motion.div 
+            key="town-hub-modal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/95 flex flex-col font-mono"
+          >
+            {/* Header */}
+            <div className="p-4 sm:p-6 flex justify-between items-center border-b border-white/10 shrink-0">
+              <h2 className="text-xl font-bold tracking-widest text-green-400 flex items-center gap-2">
+                🏘️ {gameState?.pl.townName || 'Camp Horizon'} Town Management
+              </h2>
+              <button 
+                onClick={() => setShowTownHub(false)} 
+                className="p-2 hover:bg-white/10 rounded-full cursor-pointer transition-all active:scale-95 text-zinc-400 hover:text-white"
+              >
+                <X />
+              </button>
+            </div>
+
+            {/* Content body */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+              
+              {/* Town Naming and Level Section */}
+              <div className="bg-zinc-900/60 border border-white/10 p-4 sm:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex-1 space-y-2">
+                  <label className="text-[10px] text-green-400 font-extrabold tracking-widest uppercase">Settlement Name</label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text"
+                      value={customTownName}
+                      onChange={(e) => setCustomTownName(e.target.value)}
+                      maxLength={24}
+                      className="bg-black/50 border border-white/10 hover:border-white/20 focus:border-green-400/80 rounded-xl px-3 py-2 text-white font-bold tracking-wide outline-none flex-1 max-w-sm text-sm"
+                    />
+                    <button 
+                      onClick={() => {
+                        const s = stateRef.current;
+                        if (s && s.pl) {
+                          s.pl.townName = customTownName || 'Camp Horizon';
+                          addLog(`🏘️ Settlement successfully renamed to: "${s.pl.townName}"`, '#10b981');
+                          setGameState({ ...s });
+                        }
+                      }}
+                      className="px-4 py-2 bg-green-500 hover:bg-green-400 text-black font-black uppercase text-xs tracking-wider rounded-xl cursor-pointer transition-all active:scale-95 shadow-lg shadow-green-500/10"
+                    >
+                      Save Name
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 bg-black/40 border border-white/5 p-4 rounded-xl">
+                  <div className="text-3xl">🏘️</div>
+                  <div>
+                    <div className="text-[10px] text-zinc-400 uppercase font-extrabold tracking-widest">Town Status</div>
+                    <div className="text-sm font-black text-white">
+                      {(() => {
+                        const s = stateRef.current;
+                        if (!s) return 'Wilderness Camp (LVL 1)';
+                        const count = s.objs.filter((o: any) => ['settler_shelter', 'town_house', 'town_workshop', 'storage_depot', 'merchant_stall', 'guard_post', 'farm_plot'].includes(o.type)).length;
+                        if (count >= 9) return 'Survival Citadel (LVL 4)';
+                        if (count >= 5) return 'Thriving Village (LVL 3)';
+                        if (count >= 2) return 'Budding Hamlet (LVL 2)';
+                        return 'Wilderness Camp (LVL 1)';
+                      })()}
+                    </div>
+                    <div className="text-[10px] text-zinc-500">
+                      Based on placed town structures (Total: {
+                        gameState?.objs.filter((o: any) => ['settler_shelter', 'town_house', 'town_workshop', 'storage_depot', 'merchant_stall', 'guard_post', 'farm_plot'].includes(o.type)).length || 0
+                      })
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Statistics Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-zinc-900/40 border border-white/5 p-4 rounded-2xl flex items-center gap-3">
+                  <span className="text-2xl">🪙</span>
+                  <div>
+                    <div className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider">Treasury Coins</div>
+                    <div className="text-base font-black text-yellow-400">{gameState?.pl.inv.gold_coins || 0}</div>
+                  </div>
+                </div>
+                <div className="bg-zinc-900/40 border border-white/5 p-4 rounded-2xl flex items-center gap-3">
+                  <span className="text-2xl">🛖</span>
+                  <div>
+                    <div className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider">Town Cabins</div>
+                    <div className="text-base font-black text-white">{gameState?.objs.filter((o: any) => o.type === 'settler_shelter').length || 0}</div>
+                  </div>
+                </div>
+                <div className="bg-zinc-900/40 border border-white/5 p-4 rounded-2xl flex items-center gap-3">
+                  <span className="text-2xl">🏪</span>
+                  <div>
+                    <div className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider">Trading Stalls</div>
+                    <div className="text-base font-black text-white">{gameState?.objs.filter((o: any) => o.type === 'merchant_stall').length || 0}</div>
+                  </div>
+                </div>
+                <div className="bg-zinc-900/40 border border-white/5 p-4 rounded-2xl flex items-center gap-3">
+                  <span className="text-2xl">🧑‍🌾</span>
+                  <div>
+                    <div className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider">Villager Companions</div>
+                    <div className="text-base font-black text-green-400">
+                      {gameState?.companions.filter((c: any) => c.role).length || 0}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Town Structures Blueprint Section */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-black uppercase tracking-widest text-zinc-400 border-b border-white/10 pb-1.5 flex items-center gap-1.5">
+                  📐 Settlement Construction Blueprints
+                </h3>
+                <p className="text-[11px] text-zinc-500 leading-relaxed max-w-4xl">
+                  Craft and place these buildings in your active zone to establish a thriving town. Hotbar-equip them and click the ground nearby to construct! Each placed building earns passive income or resources every few seconds.
+                </p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+                  {[
+                    { id: 'settler_shelter', n: 'Settler Shelter', ico: '🛖', desc: 'Rustic survival cabin. Attracts basic settlers. Generates +2 Gold Coins passively.', cost: '🪵15 Wood, 🪨10 Stone, 🌿10 Fiber' },
+                    { id: 'town_house', n: 'Town House', ico: '🏡', desc: 'A comfortable family residence. Attracts workers and residents. Earns +6 Gold Coins passively.', cost: '🪵30 Wood, 🪨20 Stone, 🌿15 Fiber, 🪙100 Coins' },
+                    { id: 'town_workshop', n: 'Town Workshop', ico: '🏭', desc: 'Advanced manufacturing center. Automatically crafts +1 Iron Bar over time.', cost: '🪨35 Stone, 🔩8 Iron Bars, 🪵20 Wood' },
+                    { id: 'storage_depot', n: 'Storage Depot', ico: '🏬', desc: 'Massive resource log depot. Gathers +2 Wood, +2 Stone, and +2 Fiber over time.', cost: '🪵40 Wood, 🪨30 Stone, 🔩4 Iron Bars' },
+                    { id: 'merchant_stall', n: 'Merchant Stall', ico: '🏪', desc: 'Trading post for local travelers. Generates +5 Gold Coins passively.', cost: '🪵20 Wood, 🌿15 Fiber, 🪙150 Coins' },
+                    { id: 'guard_post', n: 'Guard Post', ico: '🛡️', desc: 'Defensive post with lookouts. Boosts zone security. Spawns high health guards.', cost: '🪨20 Stone, 🔩5 Iron Bars, 🪵10 Wood' },
+                    { id: 'farm_plot', n: 'Farm Plot', ico: '🌾', desc: 'Irrigated soil garden. Automatically produces +1 Berry over time.', cost: '🪵8 Wood, 🌿12 Fiber, 🫐5 Berries' },
+                  ].map((b) => {
+                    const count = gameState?.objs.filter((o: any) => o.type === b.id).length || 0;
+                    return (
+                      <div key={b.id} className="bg-zinc-900/50 border border-white/5 hover:border-white/10 p-4 rounded-2xl space-y-2.5 flex flex-col justify-between">
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between items-center">
+                            <span className="text-2xl">{b.ico}</span>
+                            <span className="text-[9px] bg-green-500/10 text-green-400 font-bold px-1.5 py-0.5 rounded-md">
+                              {count} Placed
+                            </span>
+                          </div>
+                          <h4 className="font-extrabold text-sm text-white">{b.n}</h4>
+                          <p className="text-[10px] text-zinc-400 leading-normal">{b.desc}</p>
+                        </div>
+                        <div className="space-y-1 pt-1.5 border-t border-white/5">
+                          <div className="text-[8px] uppercase tracking-wider text-zinc-500 font-bold">Crafting Cost</div>
+                          <div className="text-[9px] text-amber-500 font-bold">{b.cost}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recruitment Section */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-black uppercase tracking-widest text-zinc-400 border-b border-white/10 pb-1.5 flex items-center gap-1.5">
+                  🤝 Recruit Settlement Villager Companions
+                </h3>
+                <p className="text-[11px] text-zinc-500 leading-relaxed max-w-4xl">
+                  Invite specialized survivors to move into your town and join your active survival party. They will follow you on the map, fight monsters, collect raw resources, or heal your wounds depending on their role!
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+                  {[
+                    {
+                      role: 'guard',
+                      name: 'Town Militia',
+                      ico: '🛡️',
+                      desc: 'Defensive melee fighter. Attacks nearby monsters with high health (120 HP) and heavy armor.',
+                      costDisplay: '🪙 100 Gold Coins, 🪨 15 Stone',
+                      cost: { gold_coins: 100, stone: 15 },
+                      hp: 120, dmg: 12, spd: 1.8
+                    },
+                    {
+                      role: 'hunter',
+                      name: 'Ranger Guard',
+                      ico: '🏹',
+                      desc: 'Ranged bow sniper. Attacks targets from a distance with high precision arrow damage (15 DMG).',
+                      costDisplay: '🪙 150 Gold Coins, 🪵 10 Wood',
+                      cost: { gold_coins: 150, wood: 10 },
+                      hp: 80, dmg: 15, spd: 2.1
+                    },
+                    {
+                      role: 'gatherer',
+                      name: 'Scavenger',
+                      ico: '🧑‍🌾',
+                      desc: 'Resource harvester. Follows you and automatically gathers wood, stone, flint, and fiber every 10 seconds.',
+                      costDisplay: '🪙 80 Gold Coins, 🫐 10 Berries',
+                      cost: { gold_coins: 80, berry: 10 },
+                      hp: 60, dmg: 5, spd: 2.0
+                    },
+                    {
+                      role: 'alchemist',
+                      name: 'Hedge Alchemist',
+                      ico: '🧙‍♀️',
+                      desc: 'Healer/Supporter. Casts protective spells to restore +20 HP whenever your health drops below 60%.',
+                      costDisplay: '🪙 200 Gold Coins, 💎 5 Crystal',
+                      cost: { gold_coins: 200, crystal: 5 },
+                      hp: 70, dmg: 8, spd: 1.9
+                    },
+                  ].map((v) => {
+                    const hasGold = (gameState?.pl.inv.gold_coins || 0) >= (v.cost.gold_coins || 0);
+                    const additionalKey = Object.keys(v.cost).find(k => k !== 'gold_coins') || '';
+                    const hasAdditional = !additionalKey || (gameState?.pl.inv[additionalKey] || 0) >= (v.cost[additionalKey] || 0);
+                    const canAfford = hasGold && hasAdditional;
+
+                    return (
+                      <div key={v.name} className="bg-zinc-900/50 border border-white/5 hover:border-white/10 p-4 rounded-2xl flex flex-col justify-between space-y-4">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-2xl">{v.ico}</span>
+                            <div>
+                              <h4 className="font-extrabold text-sm text-white">{v.name}</h4>
+                              <span className="text-[8px] bg-purple-500/10 text-purple-400 px-1 py-0.2 rounded font-bold uppercase tracking-wider">
+                                {v.role}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="text-[10px] text-zinc-400 leading-normal">{v.desc}</p>
+                        </div>
+
+                        <div className="space-y-2.5">
+                          <div className="pt-2 border-t border-white/5 space-y-1">
+                            <div className="text-[8px] uppercase tracking-wider text-zinc-500 font-bold">Recruit Fee</div>
+                            <div className="text-[10px] text-yellow-400 font-bold font-mono">{v.costDisplay}</div>
+                          </div>
+                          <button 
+                            onClick={() => recruitVillager(v.role, v.cost, v.name, v.ico, v.spd, v.dmg, v.hp)}
+                            disabled={!canAfford}
+                            className={`w-full py-2 text-xs font-black uppercase tracking-wider rounded-xl cursor-pointer transition-all active:scale-95 text-center ${
+                              canAfford 
+                                ? 'bg-green-500 hover:bg-green-400 text-black shadow-lg shadow-green-500/15' 
+                                : 'bg-zinc-800 text-zinc-500 border border-white/5 cursor-not-allowed'
+                            }`}
+                          >
+                            {canAfford ? `Hire ${v.name}` : 'Cannot Afford'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+            </div>
+          </motion.div>
+        )}
+
+        {showCharCustomizer && (
+          <motion.div 
+            key="char-customizer-modal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/95 flex flex-col font-mono"
+          >
+            <div className="p-4 sm:p-6 flex justify-between items-center border-b border-white/10 shrink-0">
+              <h2 className="text-xl font-bold tracking-widest text-purple-400 flex items-center gap-2">
+                👤 Customize Character Style & Professional Class
+              </h2>
+              <button 
+                onClick={() => setShowCharCustomizer(false)} 
+                className="p-2 hover:bg-white/10 rounded-full cursor-pointer transition-all active:scale-95 text-zinc-400 hover:text-white"
+              >
+                <X />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+              {(() => {
+                const s = stateRef.current;
+                if (!s) return null;
+                return <CharCustomizerPanel s={s} onClose={() => setShowCharCustomizer(false)} />;
+              })()}
+            </div>
+          </motion.div>
+        )}
+
         {showInv && (
           <motion.div 
             key="inventory-modal"
@@ -13704,3 +14250,174 @@ export default function SurvivalGame() {
     </div>
   );
 }
+
+// --- Character Style and Profession Customizer Sub-Component ---
+interface CharCustomizerPanelProps {
+  s: any;
+  onClose: () => void;
+}
+
+const CharCustomizerPanel: React.FC<CharCustomizerPanelProps> = ({ s, onClose }) => {
+  const [name, setName] = useState(s.pl.charName || 'Hero');
+  const [selectedIco, setSelectedIco] = useState(s.pl.ico || '🧍');
+  const [selectedClass, setSelectedClass] = useState(s.pl.class || 'Survivor');
+
+  const emojis = ['🧍', '🧙‍♂️', '🛡️', '🥷', '🏹', '🧑‍🌾', '🧑‍🚀', '👩', '🧔', '🧝'];
+  const classes = [
+    { name: 'Survivor', desc: 'Balanced baseline survivor. No major disadvantages.', icon: '🧍', bonus: 'None' },
+    { name: 'Warrior', desc: 'A rugged melee brawler. Permanently gains +20 Max HP and +4 flat defense.', icon: '🛡️', bonus: '+20 Max HP, +4 Defense' },
+    { name: 'Wizard', desc: 'Master of spellcraft. Gains +20 Max Mana and generates +1 Mana every 2 seconds.', icon: '🧙‍♂️', bonus: '+20 Max MP, Mana Regen' },
+    { name: 'Ninja', desc: 'Silent agile operative. Permanently gains +15% extra movement speed.', icon: '🥷', bonus: '+15% Speed' },
+    { name: 'Ranger', desc: 'Expert marksman. Ranged bow attacks deal +12% flat bonus damage.', icon: '🏹', bonus: '+12% Ranged DMG' },
+    { name: 'Farmer', desc: 'Tamed companion whisperer. Double berry taming efficacy and gathers +1 extra log/stone from harvest.', icon: '🧑‍🌾', bonus: 'Harvest bonus, Tame rate x2' },
+  ];
+
+  const handleApply = () => {
+    s.pl.charName = name || 'Hero';
+    s.pl.ico = selectedIco;
+    
+    const oldClass = s.pl.class;
+    s.pl.class = selectedClass;
+    
+    if (selectedClass !== oldClass) {
+      // Revert old class bonuses
+      if (oldClass === 'Warrior') {
+        s.pl.mhp = Math.max(100, s.pl.mhp - 20);
+        s.pl.def = Math.max(0, s.pl.def - 4);
+      }
+      if (oldClass === 'Wizard') {
+        s.pl.mmp = Math.max(100, s.pl.mmp - 20);
+      }
+      
+      // Apply new bonuses
+      if (selectedClass === 'Warrior') {
+        s.pl.mhp += 20;
+        s.pl.hp = s.pl.mhp;
+        s.pl.def += 4;
+      }
+      if (selectedClass === 'Wizard') {
+        s.pl.mmp += 20;
+        s.pl.mp = s.pl.mmp;
+      }
+    }
+    
+    // Add nice global log
+    const logStr = `👤 Character Re-styled: Now playing as "${name}" the ${selectedClass}!`;
+    if (typeof window !== 'undefined' && (window as any).addGameLog) {
+      (window as any).addGameLog(logStr, '#c084fc');
+    }
+    
+    // Trigger visual blast particles
+    if (s.parts) {
+      s.parts.push({ x: s.pl.x, y: s.pl.y, vx: 0, vy: 0, life: 25, col: '#c084fc', sz: 8 });
+    }
+    
+    onClose();
+  };
+
+  return (
+    <div className="space-y-6 max-w-4xl mx-auto font-mono text-zinc-300">
+      
+      {/* Visual Avatar Preview */}
+      <div className="bg-zinc-900/60 border border-white/10 p-5 rounded-2xl flex flex-col sm:flex-row items-center gap-6">
+        <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-400 flex items-center justify-center text-4xl shadow-inner shadow-black/40 border border-purple-500/30 animate-pulse shrink-0">
+          {selectedIco}
+        </div>
+        <div className="space-y-1.5 flex-1 w-full text-center sm:text-start">
+          <div className="text-[10px] text-purple-400 uppercase font-extrabold tracking-widest">Character Preview</div>
+          <h3 className="text-xl font-black text-white">{name}</h3>
+          <p className="text-xs text-zinc-400 leading-normal">
+            Profession Role: <span className="text-purple-300 font-extrabold">{selectedClass}</span>
+          </p>
+        </div>
+      </div>
+
+      {/* Editing Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        {/* Left Side: Identity */}
+        <div className="bg-zinc-900/40 border border-white/5 p-5 rounded-2xl space-y-4">
+          <div className="space-y-2">
+            <label className="text-[10px] text-purple-400 font-extrabold tracking-widest uppercase">Character Name</label>
+            <input 
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={16}
+              className="bg-black/50 border border-white/10 hover:border-white/20 focus:border-purple-400/80 rounded-xl px-4 py-3 text-white font-bold tracking-wide outline-none w-full text-sm"
+            />
+          </div>
+
+          <div className="space-y-2.5">
+            <label className="text-[10px] text-purple-400 font-extrabold tracking-widest uppercase block">Select Map Sprite / Avatar</label>
+            <div className="grid grid-cols-5 gap-2">
+              {emojis.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => setSelectedIco(emoji)}
+                  className={`aspect-square text-2xl flex items-center justify-center rounded-xl transition-all cursor-pointer ${
+                    selectedIco === emoji 
+                      ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20 scale-105 border border-purple-400' 
+                      : 'bg-black/40 hover:bg-white/5 border border-white/5'
+                  }`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Side: Professional Class */}
+        <div className="bg-zinc-900/40 border border-white/5 p-5 rounded-2xl space-y-3.5">
+          <label className="text-[10px] text-purple-400 font-extrabold tracking-widest uppercase block">Assign Profession Class</label>
+          
+          <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+            {classes.map((cls) => (
+              <button
+                key={cls.name}
+                onClick={() => setSelectedClass(cls.name)}
+                className={`w-full p-3 rounded-xl border flex items-start gap-3 transition-all text-start cursor-pointer ${
+                  selectedClass === cls.name 
+                    ? 'bg-purple-950/20 border-purple-500 text-white' 
+                    : 'bg-black/20 border-white/5 hover:bg-white/5 text-zinc-400'
+                }`}
+              >
+                <span className="text-xl mt-0.5">{cls.icon}</span>
+                <div className="space-y-0.5">
+                  <div className="text-xs font-black flex items-center gap-2">
+                    <span>{cls.name}</span>
+                    {cls.bonus !== 'None' && (
+                      <span className="text-[8px] bg-purple-500/15 text-purple-300 font-bold px-1.5 py-0.2 rounded uppercase">
+                        {cls.bonus}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[10px] opacity-75 leading-normal">{cls.desc}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+      </div>
+
+      {/* Footer Controls */}
+      <div className="flex justify-end gap-3 pt-4 border-t border-white/10 shrink-0">
+        <button 
+          onClick={onClose}
+          className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-extrabold uppercase text-xs tracking-wider rounded-xl cursor-pointer transition-all active:scale-95"
+        >
+          Cancel
+        </button>
+        <button 
+          onClick={handleApply}
+          className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-black uppercase text-xs tracking-widest rounded-xl cursor-pointer transition-all active:scale-95 shadow-lg shadow-purple-500/20"
+        >
+          Apply & Save
+        </button>
+      </div>
+
+    </div>
+  );
+};
