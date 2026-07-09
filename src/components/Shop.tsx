@@ -62,7 +62,7 @@ export default function Shop({ onClose, playerGold, onAwardNFTs, addLog }: ShopP
   const [walletAddress, setWalletAddress] = useState('');
   const [isUsingRealWeb3, setIsUsingRealWeb3] = useState(false);
 
-  // Check for pre-existing Web3 account on load
+  // Check for pre-existing Web3 account on load and register accountsChanged listener
   useEffect(() => {
     const checkConnectedWallet = async () => {
       if (typeof window !== 'undefined' && (window as any).ethereum) {
@@ -80,6 +80,23 @@ export default function Shop({ onClose, playerGold, onAwardNFTs, addLog }: ShopP
       }
     };
     checkConnectedWallet();
+
+    // Register accountsChanged listener once; clean up on unmount
+    const eth = typeof window !== 'undefined' ? (window as any).ethereum : null;
+    if (!eth) return;
+    const handleAccountsChanged = (newAccounts: string[]) => {
+      if (newAccounts.length > 0) {
+        setWalletAddress(newAccounts[0]);
+      } else {
+        setWalletConnected(false);
+        setWalletAddress('');
+        setIsUsingRealWeb3(false);
+      }
+    };
+    eth.on('accountsChanged', handleAccountsChanged);
+    return () => {
+      eth.removeListener('accountsChanged', handleAccountsChanged);
+    };
   }, []);
 
   const nftBundles = [
@@ -162,17 +179,6 @@ export default function Shop({ onClose, playerGold, onAwardNFTs, addLog }: ShopP
           setWalletAddress(accounts[0]);
           setIsUsingRealWeb3(true);
           addLog(`🔌 Securely connected MetaMask: ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}!`, '#22c55e');
-          
-          // Listen to account changes
-          eth.on('accountsChanged', (newAccounts: string[]) => {
-            if (newAccounts.length > 0) {
-              setWalletAddress(newAccounts[0]);
-            } else {
-              setWalletConnected(false);
-              setWalletAddress('');
-              setIsUsingRealWeb3(false);
-            }
-          });
         }
       } else {
         // Fallback simulated connection
@@ -242,6 +248,7 @@ export default function Shop({ onClose, playerGold, onAwardNFTs, addLog }: ShopP
 
     setIsProcessing(true);
     let successfullySigned = false;
+    let localTxHash = '';
 
     // Web3 Real MetaMask Transaction Trigger
     if (isUsingRealWeb3 && walletAddress) {
@@ -271,6 +278,7 @@ export default function Shop({ onClose, playerGold, onAwardNFTs, addLog }: ShopP
         });
 
         successfullySigned = true;
+        localTxHash = tx;
         setTxHash(tx);
         addLog(`✅ MetaMask Transaction Approved! Hash: ${tx.slice(0, 10)}...`, "#22c55e");
       } catch (err: any) {
@@ -286,8 +294,9 @@ export default function Shop({ onClose, playerGold, onAwardNFTs, addLog }: ShopP
       setPurchasedGold(selectedGoldBundle.amount);
       setMintedNfts([]);
       
-      if (!txHash) {
+      if (!localTxHash) {
         const generatedHash = '0x' + Array.from({length: 64}, () => Math.floor(Math.random()*16).toString(16)).join('');
+        localTxHash = generatedHash;
         setTxHash(generatedHash);
       }
 

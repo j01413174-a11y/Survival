@@ -2090,7 +2090,12 @@ export default function SurvivalGame() {
           activeQuests: s.pl.activeQuests || {},
           activeQuestsProgress: s.pl.activeQuestsProgress || {},
           masteries: s.pl.masteries || { adrenaline: 0, double_harvest: 0, lucky_miner: 0, toughened_hide: 0, vampiric_strikes: 0, sages_wisdom: 0 },
-          unlockedTechs: s.pl.unlockedTechs || []
+          unlockedTechs: s.pl.unlockedTechs || [],
+          ico: s.pl.ico || '🧍',
+          class: s.pl.class || 'Survivor',
+          charName: s.pl.charName || 'Hero',
+          townName: s.pl.townName || 'Camp Horizon',
+          townLvl: s.pl.townLvl || 1
         },
         objs: compressObjs(s.objs),
         companions: s.companions.map((c: any) => ({
@@ -2423,7 +2428,12 @@ export default function SurvivalGame() {
           activeQuests: s.pl.activeQuests || {},
           activeQuestsProgress: s.pl.activeQuestsProgress || {},
           masteries: s.pl.masteries || { adrenaline: 0, double_harvest: 0, lucky_miner: 0, toughened_hide: 0, vampiric_strikes: 0, sages_wisdom: 0 },
-          unlockedTechs: s.pl.unlockedTechs || []
+          unlockedTechs: s.pl.unlockedTechs || [],
+          ico: s.pl.ico || '🧍',
+          class: s.pl.class || 'Survivor',
+          charName: s.pl.charName || 'Hero',
+          townName: s.pl.townName || 'Camp Horizon',
+          townLvl: s.pl.townLvl || 1
         },
         objs: compressObjs(s.objs),
         companions: s.companions.map((c: any) => ({
