@@ -386,7 +386,8 @@ const MAPS = [
   { id: 27, n: 'Void Rift', s: 90707, m: TCR, f: TCR, r: TS, w: TLV, wf: .05, rf: .05, sky: '#050011', ef: ['void_wraith', 'star_golem', 'dragon'], dr: { void_crystal: .04, magic_essence: .04, celestial_shard: .02 } },
   { id: 28, n: 'Atlantis Ruins', s: 10808, m: TW, f: TS, r: TS, w: TW, wf: .30, rf: .10, sky: '#0a2a3a', ef: ['skeleton', 'golem', 'wraith'], dr: { ancient_rune: .015, magic_essence: .02, crystal: .025, stone: .03 } },
   { id: 29, n: 'Sakura Garden', s: 11909, m: TG, f: TG, r: TS, w: TW, wf: .10, rf: .05, sky: '#ffcccc', ef: ['fox', 'deer', 'pheasant', 'dark_mage', 'rabbit'], dr: { astral_flower: .04, herb: .03, wood: .03, fiber: .025 } },
-  { id: 30, n: 'Sky Archipelago', s: 121010, m: TCR, f: TG, r: TS, w: TW, wf: .05, rf: .05, sky: '#88ccff', ef: ['celestial_guardian', 'void_wraith', 'star_golem'], dr: { celestial_shard: .03, magic_essence: .03, gem: .025, crystal: .025 } }
+  { id: 30, n: 'Sky Archipelago', s: 121010, m: TCR, f: TG, r: TS, w: TW, wf: .05, rf: .05, sky: '#88ccff', ef: ['celestial_guardian', 'void_wraith', 'star_golem'], dr: { celestial_shard: .03, magic_essence: .03, gem: .025, crystal: .025 } },
+  { id: 31, n: 'Aether Chrono-Rift', s: 131313, m: TCR, f: TCR, r: TS, w: TW, wf: .06, rf: .05, sky: '#0d001a', ef: ['chrono_guardian', 'rift_specter', 'star_golem', 'chrono_overlord'], dr: { temporal_shard: .06, void_crystal: .04, celestial_shard: .03, ancient_rune: .015 } }
 ];
 
 const ET: Record<string, any> = {
@@ -422,6 +423,9 @@ const ET: Record<string, any> = {
   glowsheep: { n: 'Glow Sheep', ico: '🐑', hp: 40, spd: 1.0, dmg: 0, acd: 100, xp: 15, lo: { fiber: 2, silk: 1 }, ran: false },
   viper: { n: 'Poisonous Viper', ico: '🐍', hp: 25, spd: 1.6, dmg: 12, acd: 45, xp: 18, lo: { venom: 1.0, leather: .4 }, ran: false },
   firedrake: { n: 'Fire Drake', ico: '🦎', hp: 120, spd: 1.3, dmg: 26, acd: 70, xp: 45, lo: { sulfur: .8, crystal: .5, magic_essence: .3 }, ran: true, boss: 1 },
+  chrono_guardian: { n: 'Chrono Guardian', ico: '🤖', hp: 400, spd: 1.4, dmg: 45, acd: 65, xp: 200, lo: { temporal_shard: .6, celestial_shard: .3 }, ran: true },
+  rift_specter: { n: 'Rift Specter', ico: '🌀', hp: 200, spd: 1.9, dmg: 35, acd: 55, xp: 120, lo: { void_crystal: .5, magic_essence: .5 }, ran: false },
+  chrono_overlord: { n: 'Chrono Overlord', ico: '⏳', hp: 900, spd: 1.0, dmg: 70, acd: 90, xp: 600, lo: { temporal_shard: 1.0, celestial_shard: 1.0, ancient_rune: .8 }, ran: true, boss: 1 },
 };
 
 // --- Procedural Theme Definitions based on Biomes ---
@@ -942,6 +946,7 @@ const baseIT: Record<string, any> = {
   magic_essence: { ico: '✨', n: 'M.Essence', t: 'mat' },
   void_crystal: { ico: '🔮', n: 'Void Xtal', t: 'mat' },
   celestial_shard: { ico: '✨', n: 'Celestial Shard', t: 'mat' },
+  temporal_shard: { ico: '⏳', n: 'Temporal Shard', t: 'mat' },
   meat: { ico: '🥩', n: 'Raw Meat', t: 'mat' },
   berry: { ico: '🫐', n: 'Berry', t: 'mat' },
   mushroom: { ico: '🍄', n: 'Mushroom', t: 'mat' },
@@ -999,6 +1004,7 @@ const baseIT: Record<string, any> = {
   storm_staff: { id: 'storm_staff', n: 'Storm Staff', ico: '⚡', dmg: 45, spd: 32, rng: 280, type: 'magic', mp: 20, fx: 'lightning', col: '#00ffff' },
   earth_staff: { id: 'earth_staff', n: 'Earth Staff', ico: '⛰️', dmg: 55, spd: 45, rng: 200, type: 'magic', mp: 25, fx: 'earthquake', col: '#e28743' },
   cosmic_staff: { id: 'cosmic_staff', n: 'Cosmic Staff', ico: '🌠', dmg: 75, spd: 50, rng: 350, type: 'magic', mp: 40, fx: 'starfall', col: '#ff33ff' },
+  chrono_scepter: { id: 'chrono_scepter', n: 'Chrono Scepter', ico: '⏳', dmg: 95, spd: 40, rng: 320, type: 'magic', mp: 32, fx: 'time_slow', col: '#fbbf24' },
   mithril_staff: { id: 'mithril_staff', n: 'Mithril Staff', ico: '🪄', dmg: 75, spd: 40, rng: 310, type: 'magic', mp: 22, fx: 'starfall', col: '#00ffff' },
   
   campfire: { ico: '🔥', n: 'Campfire', t: 'struct' },
@@ -1212,6 +1218,7 @@ const RC = [
   { n: 'Celestial Blade', out: 'celestial_blade', cnt: 1, cat: 'Weapons', c: { celestial_shard: 5, mithril_bar: 4, magic_essence: 10 }, req: 'magic_altar' },
   { n: 'Void Reaver Bow', out: 'void_reaver_bow', cnt: 1, cat: 'Weapons', c: { void_crystal: 5, silk: 6 }, req: 'magic_altar' },
   { n: 'Harbinger Staff', out: 'harbinger_staff', cnt: 1, cat: 'Weapons', c: { void_crystal: 6, celestial_shard: 3, magic_essence: 15 }, req: 'magic_altar' },
+  { n: 'Chrono Scepter', out: 'chrono_scepter', cnt: 1, cat: 'Weapons', c: { temporal_shard: 5, celestial_shard: 3, magic_essence: 12 }, req: 'magic_altar' },
 ];
 
 // --- Adventurers Guild Quests Definition ---
@@ -3045,6 +3052,28 @@ export default function SurvivalGame() {
       }
     }
 
+    // Spawn a basic starting hut for shelter at (40, 37) (above player's spawn at 40,40)
+    const startTx = 40;
+    const startTy = 37;
+    // Clear any existing procedural obstacle on the path/location
+    for (let i = objs.length - 1; i >= 0; i--) {
+      const o = objs[i];
+      if (o.tx >= 38 && o.tx <= 42 && o.ty >= 36 && o.ty <= 41) {
+        objs.splice(i, 1);
+      }
+    }
+    // Push the basic hut
+    objs.push({
+      type: 'settler_shelter',
+      tx: startTx,
+      ty: startTy,
+      hp: 150,
+      mhp: 150,
+      ico: '🛖',
+      n: 'Basic Starting Hut',
+      owner: 'player'
+    });
+
     const newState = {
       pl: initialPl,
       world,
@@ -3512,6 +3541,104 @@ export default function SurvivalGame() {
             };
             addLog(`☁️ Weather shifting to: ${s.weather.label} ${s.weather.icon}`, '#60a5fa');
             spawnExplosion(s, s.pl.x, s.pl.y, '#60a5fa', 10, 'spark');
+          }
+
+          // Update Chrono/Aether Weather Effects in tick cycle
+          if (wt === 'aether_gale') {
+            if (s.weather.windAngle === undefined) {
+              s.weather.windAngle = Math.random() * Math.PI * 2;
+            }
+            // Slowly fluctuate the wind angle
+            s.weather.windAngle += Math.sin(s.ticks * 0.002) * 0.02;
+            
+            // Periodically spawn beautiful wind particles blowing in the direction of the wind
+            if (s.ticks % 3 === 0) {
+              const spawnAngle = s.weather.windAngle + Math.PI; // blow from opposite side
+              const borderDist = 400;
+              s.parts.push({
+                x: s.pl.x + Math.cos(spawnAngle + (Math.random() * 0.8 - 0.4)) * borderDist,
+                y: s.pl.y + Math.sin(spawnAngle + (Math.random() * 0.8 - 0.4)) * borderDist,
+                vx: Math.cos(s.weather.windAngle) * 6.5,
+                vy: Math.sin(s.weather.windAngle) * 6.5,
+                life: 60,
+                col: '#a78bfa',
+                sz: 1.5 + Math.random() * 2
+              });
+            }
+          }
+          
+          if (wt === 'grav_rift') {
+            // Gravity well logic
+            if (!s.weather.gravityWell || s.weather.gravityWellTimer <= 0) {
+              const angle = Math.random() * Math.PI * 2;
+              const dist = 140 + Math.random() * 150;
+              s.weather.gravityWell = {
+                x: s.pl.x + Math.cos(angle) * dist,
+                y: s.pl.y + Math.sin(angle) * dist,
+                radius: 150,
+                pullForce: 1.4,
+                damageRadius: 35,
+                ticks: 0,
+              };
+              s.weather.gravityWellTimer = 360; // 6 seconds duration
+              addLog("🌀 An unstable Gravitational Rift has opened nearby!", "#c084fc");
+            }
+            
+            s.weather.gravityWellTimer--;
+            const well = s.weather.gravityWell;
+            if (well) {
+              well.ticks++;
+              // Draw swirling spiral particles inside the gravity well
+              if (s.ticks % 2 === 0) {
+                const pAng = Math.random() * Math.PI * 2;
+                const pDist = well.radius * (0.2 + Math.random() * 0.8);
+                s.parts.push({
+                  x: well.x + Math.cos(pAng) * pDist,
+                  y: well.y + Math.sin(pAng) * pDist,
+                  vx: -Math.cos(pAng) * 2.2 + Math.sin(pAng) * 1.5, // spiraling velocity
+                  vy: -Math.sin(pAng) * 2.2 - Math.cos(pAng) * 1.5,
+                  life: 35,
+                  col: '#d8b4fe',
+                  sz: 2.5
+                });
+              }
+
+              // Pull player
+              const dPl = Math.hypot(s.pl.x - well.x, s.pl.y - well.y);
+              if (dPl < well.radius) {
+                const pullAng = Math.atan2(well.y - s.pl.y, well.x - s.pl.x);
+                const pullAmount = (1 - dPl / well.radius) * well.pullForce;
+                s.pl.x += Math.cos(pullAng) * pullAmount;
+                s.pl.y += Math.sin(pullAng) * pullAmount;
+                
+                if (dPl < well.damageRadius) {
+                  if (s.ticks % 30 === 0) {
+                    s.pl.hp = Math.max(0, s.pl.hp - 3);
+                    s.pl.mp = Math.max(0, s.pl.mp - 4);
+                    addLog("⚠️ Crushed by High Gravity! -3 HP, -4 Mana", "#a78bfa");
+                    spawnExplosion(s, s.pl.x, s.pl.y, '#c084fc', 8, 'spark');
+                  }
+                }
+              }
+
+              // Pull enemies
+              for (const e of s.enemies) {
+                const dE = Math.hypot(e.x - well.x, e.y - well.y);
+                if (dE < well.radius) {
+                  const pullAng = Math.atan2(well.y - e.y, well.x - e.x);
+                  const pullAmount = (1 - dE / well.radius) * well.pullForce * 1.2;
+                  e.x += Math.cos(pullAng) * pullAmount;
+                  e.y += Math.sin(pullAng) * pullAmount;
+
+                  if (dE < well.damageRadius && s.ticks % 30 === 0) {
+                    e.hp -= 8;
+                    spawnExplosion(s, e.x, e.y, '#c084fc', 6, 'spark');
+                  }
+                }
+              }
+            }
+          } else {
+            s.weather.gravityWell = null;
           }
 
           // Random lightning strike in storms (approx. 0.15% chance per tick = once per ~11 seconds)
@@ -4049,9 +4176,20 @@ export default function SurvivalGame() {
           }
         }
         const slowMult = (s.pl.slowTicks && s.pl.slowTicks > 0) ? 0.45 : 1.0;
-        const speed = s.pl.spd * (isSprinting ? 1.7 : 1) * eventSpeedMult * slowMult * adrenalineMult;
         const diffX = s.pl.targetX - s.pl.x;
         const diffY = s.pl.targetY - s.pl.y;
+        
+        let windMultiplier = 1.0;
+        if (wt === 'aether_gale' && s.weather && s.weather.windAngle !== undefined) {
+          const moveAngle = Math.atan2(diffY, diffX);
+          const dot = Math.cos(moveAngle - s.weather.windAngle);
+          windMultiplier += dot * 0.35; // +35% boost or -35% slow depending on wind alignment!
+        }
+        if (wt === 'chrono_mist') {
+          windMultiplier *= 0.80; // 20% slow in stasis mist
+        }
+        
+        const speed = s.pl.spd * (isSprinting ? 1.7 : 1) * eventSpeedMult * slowMult * adrenalineMult * windMultiplier;
         const d = Math.hypot(diffX, diffY);
 
         if (d <= speed) {
@@ -4185,7 +4323,14 @@ export default function SurvivalGame() {
           continue;
         }
 
-        const spd = e.slowTicks > 0 ? e.spd * 0.5 : e.spd;
+        let spd = e.slowTicks > 0 ? e.spd * 0.5 : e.spd;
+        if (wt === 'chrono_mist') {
+          spd *= 0.75; // 25% slower
+        } else if (wt === 'aether_gale' && s.weather && s.weather.windAngle !== undefined) {
+          const enemyMoveAng = (e.eid === 'deer' || e.eid === 'pheasant' || (e.eid === 'boar' && e.hp >= e.mhp)) ? Math.atan2(e.y - s.pl.y, e.x - s.pl.x) : Math.atan2(s.pl.y - e.y, s.pl.x - e.x);
+          const dot = Math.cos(enemyMoveAng - s.weather.windAngle);
+          spd *= (1.0 + dot * 0.3); // up to +30% boost or -30% slow
+        }
 
         let shouldChase = true;
         let shouldFlee = false;
@@ -4207,7 +4352,10 @@ export default function SurvivalGame() {
         const isPlayerInSameBiome = e.spawnZc === playerZc && e.spawnZr === playerZr;
 
         // Custom aggro ranges: higher for boss/elite/chief types, standard for standard hostiles
-        const aggroRange = (e.eid === 'dragon' || e.eid === 'celestial_guardian' || e.eid === 'orc_chief' || e.eid === 'goblin_chief' || e.eid === 'bandit_chief') ? 320 : 240;
+        let aggroRange = (e.eid === 'dragon' || e.eid === 'celestial_guardian' || e.eid === 'orc_chief' || e.eid === 'goblin_chief' || e.eid === 'bandit_chief' || e.eid === 'chrono_overlord') ? 320 : 240;
+        if (wt === 'chrono_mist') {
+          aggroRange *= 0.55; // 45% reduction in enemy vision range!
+        }
         const isPlayerWithinRange = d < aggroRange;
         const isProvoked = e.hp < e.mhp;
 
@@ -4609,6 +4757,21 @@ export default function SurvivalGame() {
               e.slowTicks = 180;
               spawnExplosion(s, p.x, p.y, '#00e5ff', 12, 'spark');
               spawnExplosion(s, p.x, p.y, '#ffffff', 6, 'pixel');
+            } else if (p.fx === 'time_slow') {
+              // Chrono-Scepter special: Slows down targets heavily and dilates time
+              e.slowTicks = 360; // 6 seconds slow!
+              e.flashTicks = 20;
+              spawnExplosion(s, p.x, p.y, '#fbbf24', 20, 'ring');
+              spawnExplosion(s, p.x, p.y, '#ffffff', 10, 'spark');
+              // Age surrounding targets (dealing localized area damage)
+              for (const other of s.enemies) {
+                if (dist(e, other) < 110) {
+                  other.hp -= Math.round(p.dmg * 0.6);
+                  other.slowTicks = 240;
+                  spawnExplosion(s, other.x, other.y, '#fcd34d', 6, 'pixel');
+                }
+              }
+              addLog("⏳ Time Dilation: Localized space-time dilated!", '#fbbf24');
             } else if (p.fx === 'burn') {
               e.burnTicks = 300;
               spawnExplosion(s, p.x, p.y, '#ff4500', 14, 'pixel');
@@ -5638,6 +5801,86 @@ export default function SurvivalGame() {
         heatGrad.addColorStop(1, `rgba(239, 68, 68, ${0.12 + Math.sin(s.ticks * 0.06) * 0.04})`);
         ctx.fillStyle = heatGrad;
         ctx.fillRect(0, 0, viewW, viewH);
+      } else if (activeWeatherType === 'chrono_mist') {
+        // Creeping purple stasis mist waves
+        ctx.fillStyle = `rgba(168, 85, 247, ${0.14 + Math.sin(s.ticks * 0.03) * 0.04})`;
+        for (let i = 0; i < 25; i++) {
+          const mx = ((Math.sin(i * 97.4) * 0.5 + 0.5) * viewW + Math.sin(s.ticks * 0.01 + i) * 30) % viewW;
+          const my = ((Math.cos(i * 19.3) * 0.5 + 0.5) * viewH + Math.cos(s.ticks * 0.01 + i) * 30) % viewH;
+          const actualMx = mx < 0 ? mx + viewW : mx;
+          ctx.beginPath();
+          ctx.arc(actualMx, my, 40 + Math.abs(Math.sin(i + s.ticks * 0.02)) * 30, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        
+        // Digital grid glitch particles
+        ctx.fillStyle = 'rgba(6, 182, 212, 0.4)';
+        for (let i = 0; i < 15; i++) {
+          const gx = ((Math.cos(i * 243.11) * 0.5 + 0.5) * viewW) % viewW;
+          const gy = ((Math.sin(i * 87.12) * 0.5 + 0.5) * viewH - s.ticks * 2.0) % viewH;
+          const actualGy = gy < 0 ? gy + viewH : gy;
+          ctx.fillRect(gx, actualGy, 4, 4);
+        }
+      } else if (activeWeatherType === 'aether_gale') {
+        // Swooping wind streaks in purple/magenta
+        ctx.strokeStyle = 'rgba(168, 85, 247, 0.35)';
+        ctx.lineWidth = 1.5;
+        const windAng = s.weather?.windAngle || 0;
+        const cosW = Math.cos(windAng);
+        const sinW = Math.sin(windAng);
+        ctx.beginPath();
+        for (let i = 0; i < 35; i++) {
+          const wx = ((Math.sin(i * 123.4) * 0.5 + 0.5) * viewW + s.ticks * cosW * 8) % viewW;
+          const wy = ((Math.cos(i * 78.9) * 0.5 + 0.5) * viewH + s.ticks * sinW * 8) % viewH;
+          const actualWx = wx < 0 ? wx + viewW : wx;
+          const actualWy = wy < 0 ? wy + viewH : wy;
+          ctx.moveTo(actualWx, actualWy);
+          ctx.lineTo(actualWx + cosW * 45, actualWy + sinW * 45);
+        }
+        ctx.stroke();
+      } else if (activeWeatherType === 'grav_rift') {
+        // Subtle purple vignetting
+        const gravGrad = ctx.createRadialGradient(viewW / 2, viewH / 2, viewW / 4, viewW / 2, viewH / 2, viewW / 1.1);
+        gravGrad.addColorStop(0, 'rgba(124, 58, 237, 0)');
+        gravGrad.addColorStop(1, `rgba(124, 58, 237, ${0.16 + Math.sin(s.ticks * 0.05) * 0.06})`);
+        ctx.fillStyle = gravGrad;
+        ctx.fillRect(0, 0, viewW, viewH);
+        
+        // Render physical vortex center
+        const well = s.weather?.gravityWell;
+        if (well) {
+          const wx = well.x - s.cam.x;
+          const wy = well.y - s.cam.y;
+          
+          ctx.save();
+          // Outer horizon ring
+          ctx.strokeStyle = `rgba(192, 132, 252, ${0.4 + Math.sin(s.ticks * 0.1) * 0.15})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(wx, wy, well.radius, 0, Math.PI * 2);
+          ctx.stroke();
+          
+          // Accretion disk
+          const disks = 3;
+          for (let d = 0; d < disks; d++) {
+            const rot = (s.ticks * 0.03) + (d * Math.PI / disks);
+            ctx.strokeStyle = `rgba(139, 92, 246, ${0.35 - d * 0.08})`;
+            ctx.lineWidth = 4 - d;
+            ctx.beginPath();
+            ctx.ellipse(wx, wy, well.damageRadius + d * 18, (well.damageRadius + d * 18) * 0.4, rot, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+
+          // Singular core
+          ctx.fillStyle = '#000000';
+          ctx.beginPath();
+          ctx.arc(wx, wy, well.damageRadius - 5 + Math.sin(s.ticks * 0.08) * 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#a78bfa';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.restore();
+        }
       }
 
       // 3. Draw Lightning Bolt (rendered in screen space converted coordinates)
@@ -6563,10 +6806,45 @@ export default function SurvivalGame() {
     const isCold = bName.includes('Frozen') || bName.includes('Tundra');
     const isDry = bName.includes('Desert') || bName.includes('Scorched') || bName.includes('Spire') || bName.includes('Oasis');
     const isSwampy = bName.includes('Swamp') || bName.includes('Cavern') || bName.includes('Volcanic') || bName.includes('Waste') || bName.includes('Ruins');
+    const isRift = bName.includes('Chrono') || bName.includes('Rift') || bName.includes('Aether');
 
     const rand = Math.random();
 
-    if (isCold) {
+    if (isRift) {
+      if (rand < 0.35) {
+        return {
+          type: 'clear',
+          label: 'Chrono-Stasis',
+          icon: '🌌',
+          threat: 'None',
+          desc: 'A calm pocket of space-time. Ideal for exploration and gathering.'
+        };
+      } else if (rand < 0.55) {
+        return {
+          type: 'chrono_mist',
+          label: 'Chrono-Mist',
+          icon: '⏳',
+          threat: 'Medium',
+          desc: 'A misty temporal distortion! Reduces player speed by 20% and reduces enemy vision range by 45%.'
+        };
+      } else if (rand < 0.80) {
+        return {
+          type: 'aether_gale',
+          label: 'Aether Gale',
+          icon: '🌀',
+          threat: 'High',
+          desc: 'Violent spatial winds! Aligns speed with the wind direction, speeding you up or slowing you down.'
+        };
+      } else {
+        return {
+          type: 'grav_rift',
+          label: 'Gravitational Storm',
+          icon: '🕳️',
+          threat: 'Extreme',
+          desc: 'Spatial tears create unstable gravity! Periodically drags you and enemies toward a dimensional vortex.'
+        };
+      }
+    } else if (isCold) {
       if (rand < 0.45) {
         return {
           type: 'clear',
@@ -6670,7 +6948,11 @@ export default function SurvivalGame() {
     const isCold = bName.includes('Frozen') || bName.includes('Tundra');
     const isDry = bName.includes('Desert') || bName.includes('Scorched') || bName.includes('Spire') || bName.includes('Oasis');
     const isSwampy = bName.includes('Swamp') || bName.includes('Cavern') || bName.includes('Volcanic') || bName.includes('Waste') || bName.includes('Ruins');
+    const isRift = bName.includes('Chrono') || bName.includes('Rift') || bName.includes('Aether');
     
+    if (isRift) {
+      return ['clear', 'chrono_mist', 'aether_gale', 'grav_rift'].includes(weatherType);
+    }
     if (isCold) {
       return ['clear', 'blizzard'].includes(weatherType);
     }
@@ -7873,9 +8155,14 @@ export default function SurvivalGame() {
     setGameState({ ...s });
   };
 
-  const handleAwardNFTs = (nftIds: number[]) => {
+  const handleAwardNFTs = (nftIds: number[], goldCost: number = 0) => {
     const s = stateRef.current;
     if (!s) return;
+    
+    if (goldCost !== 0) {
+      const currentCoins = s.pl.inv.gold_coins || 0;
+      s.pl.inv.gold_coins = Math.max(0, currentCoins - goldCost);
+    }
     
     if (nftIds.length > 5) {
       nftIds.forEach((tokenId) => {
@@ -13204,7 +13491,7 @@ export default function SurvivalGame() {
                           <div className="text-[10px] text-zinc-500 font-mono">Zone ({zc}, {zr})</div>
                           <div className="text-xs font-extrabold text-white mt-1 flex items-center gap-1.5">
                             <span>{M.n.split(' ').map((word: string) => word[0]).join('')}</span>
-                            <span className="text-lg">{M.n.includes('Desert') ? '🏜️' : M.n.includes('Forest') ? '🌲' : M.n.includes('Frozen') ? '❄️' : M.n.includes('Scorched') ? '🌋' : M.n.includes('Celestial') ? '🌌' : '🌾'}</span>
+                            <span className="text-lg">{M.n.includes('Desert') ? '🏜️' : M.n.includes('Forest') ? '🌲' : M.n.includes('Frozen') ? '❄️' : M.n.includes('Scorched') ? '🌋' : M.n.includes('Celestial') ? '🌌' : M.n.includes('Chrono') || M.n.includes('Rift') ? '⏳' : '🌾'}</span>
                           </div>
                           <div className="text-[9px] text-zinc-400 mt-1 truncate">{M.n}</div>
                         </div>
