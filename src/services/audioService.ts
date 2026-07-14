@@ -7,7 +7,7 @@ class ProceduralMusicEngine {
   private delayNode: DelayNode | null = null;
   private delayFeedback: GainNode | null = null;
   private isPlaying: boolean = false;
-  private schedulerTimer: any = null;
+  private schedulerTimer: number | null = null;
   
   // Track parameters
   private currentTrack: 'ethereal' | 'verdant' | 'cosmic' = 'ethereal';
@@ -54,10 +54,15 @@ class ProceduralMusicEngine {
 
   // Lazily initializes the Web Audio API on first play
   private init() {
-    if (this.ctx) return;
+    if (this.ctx) return true;
     
     // Create audio context
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    const AudioContextClass = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) {
+      console.warn('Web Audio API is not supported in this browser.');
+      return false;
+    }
+
     this.ctx = new AudioContextClass();
     
     // Create master volume node
@@ -78,10 +83,11 @@ class ProceduralMusicEngine {
     
     // Connect master delay to master output
     this.delayNode.connect(this.masterGain);
+    return true;
   }
 
   public play(track: 'ethereal' | 'verdant' | 'cosmic' = 'ethereal') {
-    this.init();
+    if (!this.init()) return;
     if (this.isPlaying) {
       if (this.currentTrack !== track) {
         this.currentTrack = track;
@@ -153,6 +159,10 @@ class ProceduralMusicEngine {
 
   private scheduleBeat(time: number, beatDuration: number) {
     if (!this.ctx || !this.masterGain || !this.delayNode) return;
+
+    const ctx = this.ctx;
+    const masterGain = this.masterGain;
+    const delayNode = this.delayNode;
     
     const trackData = this.scales[this.currentTrack];
     
@@ -163,16 +173,16 @@ class ProceduralMusicEngine {
       this.currentChordIdx = (this.currentChordIdx + 1) % trackData.chords.length;
       
       // Play chord notes (soft pads)
-      chord.forEach((freq, idx) => {
-        const osc = this.ctx!.createOscillator();
-        const oscGain = this.ctx!.createGain();
+      chord.forEach((freq) => {
+        const osc = ctx.createOscillator();
+        const oscGain = ctx.createGain();
         
         // Ethereal and Cosmic use smooth triangle wave, Verdant uses rustic sine
         osc.type = this.currentTrack === 'cosmic' ? 'sawtooth' : this.currentTrack === 'ethereal' ? 'triangle' : 'sine';
         osc.frequency.setValueAtTime(freq, time);
         
         // Lowpass filter for warm sound
-        const filter = this.ctx!.createBiquadFilter();
+        const filter = ctx.createBiquadFilter();
         filter.type = 'lowpass';
         // Make cosmic/ethereal pads warmer, verdant slightly brighter
         filter.frequency.setValueAtTime(this.currentTrack === 'cosmic' ? 380 : 450, time);
@@ -186,10 +196,10 @@ class ProceduralMusicEngine {
         // Connections
         osc.connect(filter);
         filter.connect(oscGain);
-        oscGain.connect(this.masterGain!);
+        oscGain.connect(masterGain);
         
         // Also feed a little bit into the echo delay node
-        oscGain.connect(this.delayNode!);
+        oscGain.connect(delayNode);
         
         osc.start(time);
         osc.stop(time + beatDuration * 8);
@@ -209,15 +219,15 @@ class ProceduralMusicEngine {
       const randomNoteIdx = Math.floor(Math.random() * scale.length);
       const freq = scale[randomNoteIdx];
       
-      const osc = this.ctx.createOscillator();
-      const oscGain = this.ctx.createGain();
+      const osc = ctx.createOscillator();
+      const oscGain = ctx.createGain();
       
       osc.type = this.currentTrack === 'verdant' ? 'sine' : 'triangle'; // pure plucks
       osc.frequency.setValueAtTime(freq, time);
       
       // Add subtle vibrato (LFO)
-      const lfo = this.ctx.createOscillator();
-      const lfoGain = this.ctx.createGain();
+      const lfo = ctx.createOscillator();
+      const lfoGain = ctx.createGain();
       lfo.frequency.value = 4.5; // 4.5 Hz vibrato
       lfoGain.gain.value = 3.5; // depth of frequency modulation in Hz
       lfo.connect(lfoGain);
@@ -231,17 +241,17 @@ class ProceduralMusicEngine {
       oscGain.gain.exponentialRampToValueAtTime(0.0001, time + beatDuration * (0.8 + Math.random() * 0.7)); // smooth decay
       
       // Filter sweep
-      const filter = this.ctx.createBiquadFilter();
+      const filter = ctx.createBiquadFilter();
       filter.type = 'lowpass';
       filter.frequency.setValueAtTime(1200, time);
       filter.frequency.exponentialRampToValueAtTime(400, time + beatDuration);
       
       osc.connect(filter);
       filter.connect(oscGain);
-      oscGain.connect(this.masterGain);
+      oscGain.connect(masterGain);
       
       // Plucks feed moderately into delay echo node
-      oscGain.connect(this.delayNode);
+      oscGain.connect(delayNode);
       
       osc.start(time);
       osc.stop(time + beatDuration * 2);

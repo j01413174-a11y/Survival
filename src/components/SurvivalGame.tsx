@@ -1551,7 +1551,7 @@ export default function SurvivalGame() {
     if (statChanges.length === 0) return;
     const interval = setInterval(() => {
       setStatChanges(prev => prev.filter(item => {
-        const timestamp = parseInt(item.id.split('-')[1]);
+        const timestamp = parseInt(item.id.split('-')[1], 10);
         return Date.now() - timestamp < 1500;
       }));
     }, 500);
@@ -1697,6 +1697,9 @@ export default function SurvivalGame() {
   const [isFishing, setIsFishing] = useState(false);
   const [fishingState, setFishingState] = useState<'idle' | 'waiting' | 'bite' | 'success' | 'fail'>('idle');
   const [fishingMessage, setFishingMessage] = useState('');
+  const fishingBiteTimerRef = useRef<number | null>(null);
+  const fishingFailTimerRef = useRef<number | null>(null);
+  const fishingResetTimerRef = useRef<number | null>(null);
   const [recipes, setRecipes] = useState<any[]>(() => {
     const techOutputs = new Set<string>();
     RESEARCH_TECHS.forEach(t => t.unlocksRecipes.forEach(o => techOutputs.add(o)));
@@ -1916,6 +1919,23 @@ export default function SurvivalGame() {
   const [showSpellbook, setShowSpellbook] = useState(false);
   const [isCasting, setIsCasting] = useState(false);
   const [spellResult, setSpellResult] = useState<any>(null);
+
+  const clearFishingTimers = useCallback(() => {
+    if (fishingBiteTimerRef.current !== null) {
+      window.clearTimeout(fishingBiteTimerRef.current);
+      fishingBiteTimerRef.current = null;
+    }
+    if (fishingFailTimerRef.current !== null) {
+      window.clearTimeout(fishingFailTimerRef.current);
+      fishingFailTimerRef.current = null;
+    }
+    if (fishingResetTimerRef.current !== null) {
+      window.clearTimeout(fishingResetTimerRef.current);
+      fishingResetTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => clearFishingTimers, [clearFishingTimers]);
   const [fishingHotspotTx, setFishingHotspotTx] = useState<number | null>(null);
   const [fishingHotspotTy, setFishingHotspotTy] = useState<number | null>(null);
 
@@ -7416,12 +7436,12 @@ export default function SurvivalGame() {
             if (c.requirement && c.requirement !== "None" && c.requirement !== "none") {
               const match = c.requirement.match(/Level\s*(\d+)/i);
               if (match) {
-                const reqLvl = parseInt(match[1]);
+                const reqLvl = parseInt(match[1], 10);
                 if (s.pl.lvl < reqLvl) isMet = false;
               }
               const resMatch = c.requirement.match(/(\d+)\s*([a-zA-Z_]+)/i);
               if (resMatch) {
-                const reqQty = parseInt(resMatch[1]);
+                const reqQty = parseInt(resMatch[1], 10);
                 const reqItem = resMatch[2].toLowerCase().replace(/s$/, "");
                 let mappedKey = reqItem;
                 if (reqItem === "crystal" || reqItem === "crystals") mappedKey = "crystal";
@@ -7454,7 +7474,7 @@ export default function SurvivalGame() {
     if (choice.requirement && choice.requirement !== "None" && choice.requirement !== "none") {
       const resMatch = choice.requirement.match(/(\d+)\s*([a-zA-Z_]+)/i);
       if (resMatch) {
-        const reqQty = parseInt(resMatch[1]);
+        const reqQty = parseInt(resMatch[1], 10);
         const reqItem = resMatch[2].toLowerCase().replace(/s$/, "");
         let mappedKey = reqItem;
         if (reqItem === "crystal" || reqItem === "crystals") mappedKey = "crystal";
@@ -10071,6 +10091,7 @@ export default function SurvivalGame() {
       }
     }
 
+    clearFishingTimers();
     setIsFishing(true);
     setFishingState('waiting');
 
@@ -10088,7 +10109,8 @@ export default function SurvivalGame() {
       addLog(lavaWater ? "🌋 You cast your line into the boiling magma..." : "🎣 You cast your fishing line into the water...", "#38bdf8");
     }
     
-    const timerId = window.setTimeout(() => {
+    fishingBiteTimerRef.current = window.setTimeout(() => {
+      fishingBiteTimerRef.current = null;
       setFishingState('bite');
       setFishingMessage("❗ A BITE! QUICK, CLICK REEL IN! 🎣");
       addLog("❗ A fish is biting! Reel it in!", "#f59e0b");
@@ -10096,31 +10118,29 @@ export default function SurvivalGame() {
       const level = s.pl.skills?.fishing?.lvl || 1;
       const finalWindow = Math.min(3200, 1600 + level * 100 + (activeHotspot ? 600 : 0)); // hotspot yields a wider, easier catch window!
       
-      const failTimerId = window.setTimeout(() => {
+      fishingFailTimerRef.current = window.setTimeout(() => {
+        fishingFailTimerRef.current = null;
         setFishingState('fail');
         setFishingMessage("The fish swam away... 🌊 Try again!");
         addLog("🌊 The fish got away...", "#94a3b8");
         
         gainSkillXP('fishing', 4);
         
-        setTimeout(() => {
+        fishingResetTimerRef.current = window.setTimeout(() => {
+          fishingResetTimerRef.current = null;
           setIsFishing(false);
           setFishingState('idle');
+          setFishingHotspotTx(null);
+          setFishingHotspotTy(null);
         }, 1800);
       }, finalWindow);
-      
-      (window as any).fishingFailTimer = failTimerId;
     }, delay);
-    
-    (window as any).fishingBiteTimer = timerId;
   };
 
   const handleReelIn = () => {
     if (fishingState !== 'bite') return;
     
-    if ((window as any).fishingFailTimer) {
-      clearTimeout((window as any).fishingFailTimer);
-    }
+    clearFishingTimers();
     
     const s = stateRef.current;
     if (!s) return;
@@ -10205,7 +10225,8 @@ export default function SurvivalGame() {
     gainSkillXP('fishing', xpAward);
     setGameState({ ...s });
     
-    setTimeout(() => {
+    fishingResetTimerRef.current = window.setTimeout(() => {
+      fishingResetTimerRef.current = null;
       setIsFishing(false);
       setFishingState('idle');
       setFishingHotspotTx(null);
@@ -14517,7 +14538,7 @@ export default function SurvivalGame() {
                     <input 
                       type="number"
                       value={worldSeed}
-                      onChange={(e) => setWorldSeed(parseInt(e.target.value) || 0)}
+                      onChange={(e) => setWorldSeed(parseInt(e.target.value, 10) || 0)}
                       className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm text-emerald-300 font-bold focus:border-emerald-500/50 focus:outline-none"
                     />
                     <button

@@ -23,6 +23,13 @@ function sanitizeGameState(gameState: any) {
   };
 }
 
+async function parseErrorResponse(response: Response) {
+  return response.json().catch((error) => {
+    console.warn('Failed to parse Gemini error response JSON:', error);
+    return {};
+  });
+}
+
 // --- Client-side Procedural Fallbacks (for robust offline/glitch-free play) ---
 
 function getProceduralGuidance(gameState: any) {
@@ -419,7 +426,7 @@ export async function getOracleGuidance(gameState: any) {
     });
 
     if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
+      const errData = await parseErrorResponse(response);
       throw new Error(errData.error || `HTTP error! status: ${response.status}`);
     }
 
@@ -447,7 +454,7 @@ export async function generateWorldEvent(gameState: any) {
     });
 
     if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
+      const errData = await parseErrorResponse(response);
       throw new Error(errData.error || `HTTP error! status: ${response.status}`);
     }
 
@@ -470,7 +477,7 @@ export async function castSpell(spellName: string, gameState: any) {
     });
 
     if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
+      const errData = await parseErrorResponse(response);
       throw new Error(errData.error || `HTTP error! status: ${response.status}`);
     }
 
