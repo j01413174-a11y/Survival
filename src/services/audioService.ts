@@ -7,7 +7,7 @@ class ProceduralMusicEngine {
   private delayNode: DelayNode | null = null;
   private delayFeedback: GainNode | null = null;
   private isPlaying: boolean = false;
-  private schedulerTimer: number | null = null;
+  private schedulerTimer: ReturnType<typeof setInterval> | null = null;
   
   // Track parameters
   private currentTrack: 'ethereal' | 'verdant' | 'cosmic' = 'ethereal';
