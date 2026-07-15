@@ -45,6 +45,8 @@ import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import { doc, setDoc, getDoc, getDocs, deleteDoc, collection, query } from 'firebase/firestore';
 import Shop from './Shop';
 import TownShop from './TownShop';
+import NPCDialogue from './NPCDialogue';
+import ResearchTree, { RESEARCH_TECHS } from './ResearchTree';
 import TerrainGenerator from './TerrainGenerator';
 import { musicEngine } from '../services/audioService';
 import { Music, Play, Pause, Volume2, VolumeX } from 'lucide-react';
@@ -265,7 +267,8 @@ function lzw_decode(s: string): string {
 
 function safeSetItem(key: string, value: string): void {
   try {
-    localStorage.setItem(key, value);
+    const compressed = value.startsWith("lz:") ? value : "lz:" + lzw_encode(value);
+    localStorage.setItem(key, compressed);
   } catch (err) {
     console.error("Failed to set item in localStorage", err);
   }
@@ -354,24 +357,24 @@ function decompressObjs(compressed: any[]): any[] {
 
 // --- Game Data ---
 const MAPS = [
-  { id: 0, n: 'Verdant Forest', s: 1337, m: TG, f: TD, r: TS, w: TW, wf: .12, rf: .08, sky: '#87ceeb', ef: ['wolf', 'fox', 'goblin', 'bandit', 'deer', 'pheasant'], dr: { wood: .04, fiber: .02, herb: .015, berry: .012, flint: .008, stone: .02 } },
-  { id: 1, n: 'Deep Forest', s: 2674, m: TG, f: TD, r: TS, w: TW, wf: .10, rf: .07, sky: '#1a3d10', ef: ['wolf', 'spider', 'skeleton', 'goblin', 'boar', 'alpha_wolf'], dr: { wood: .04, mushroom: .016, herb: .012, venom: .008, fiber: .014, bone: .01 } },
-  { id: 2, n: 'Sunlit Plains', s: 3011, m: TG, f: TD, r: TS, w: TW, wf: .05, rf: .04, sky: '#6dbadf', ef: ['fox', 'goblin', 'bandit', 'archer', 'deer', 'pheasant', 'boar'], dr: { fiber: .025, herb: .018, berry: .015, flint: .01, feather: .01, honey: .01, cotton: .015 } },
-  { id: 3, n: 'Sandy Desert', s: 4488, m: TSA, f: TSA, r: TS, w: TW, wf: .03, rf: .08, sky: '#f5d08a', ef: ['bandit', 'bandit_chief', 'goblin', 'orc'], dr: { bone: .02, sulfur: .016, flint: .014, gem: .005, sand: .03, stone: .02 } },
+  { id: 0, n: 'Verdant Forest', s: 1337, m: TG, f: TD, r: TS, w: TW, wf: .12, rf: .08, sky: '#87ceeb', ef: ['wolf', 'fox', 'goblin', 'bandit', 'deer', 'pheasant', 'rabbit'], dr: { wood: .04, fiber: .02, herb: .015, berry: .012, flint: .008, stone: .02 } },
+  { id: 1, n: 'Deep Forest', s: 2674, m: TG, f: TD, r: TS, w: TW, wf: .10, rf: .07, sky: '#1a3d10', ef: ['wolf', 'spider', 'skeleton', 'goblin', 'boar', 'alpha_wolf', 'viper'], dr: { wood: .04, mushroom: .016, herb: .012, venom: .008, fiber: .014, bone: .01 } },
+  { id: 2, n: 'Sunlit Plains', s: 3011, m: TG, f: TD, r: TS, w: TW, wf: .05, rf: .04, sky: '#6dbadf', ef: ['fox', 'goblin', 'bandit', 'archer', 'deer', 'pheasant', 'boar', 'rabbit'], dr: { fiber: .025, herb: .018, berry: .015, flint: .01, feather: .01, honey: .01, cotton: .015 } },
+  { id: 3, n: 'Sandy Desert', s: 4488, m: TSA, f: TSA, r: TS, w: TW, wf: .03, rf: .08, sky: '#f5d08a', ef: ['bandit', 'bandit_chief', 'goblin', 'orc', 'viper'], dr: { bone: .02, sulfur: .016, flint: .014, gem: .005, sand: .03, stone: .02 } },
   { id: 4, n: 'Frozen Tundra', s: 5665, m: TSN, f: TS, r: TS, w: TW, wf: .06, rf: .12, sky: '#b0d4e8', ef: ['wolf', 'bear', 'skeleton', 'orc', 'alpha_wolf'], dr: { ice_crystal: .02, bone: .01, herb: .006, crystal: .006, wood: .012 } },
-  { id: 5, n: 'Misty Swamp', s: 6821, m: TSW, f: TD, r: TS, w: TW, wf: .18, rf: .04, sky: '#4a5a3a', ef: ['zombie', 'spider', 'wraith', 'goblin', 'boar'], dr: { mushroom: .022, venom: .016, fiber: .014, silk: .009, herb: .009 } },
+  { id: 5, n: 'Misty Swamp', s: 6821, m: TSW, f: TD, r: TS, w: TW, wf: .18, rf: .04, sky: '#4a5a3a', ef: ['zombie', 'spider', 'wraith', 'goblin', 'boar', 'viper'], dr: { mushroom: .022, venom: .016, fiber: .014, silk: .009, herb: .009 } },
   { id: 6, n: 'Mountain Pass', s: 7234, m: TS, f: TD, r: TS, w: TW, wf: .04, rf: .26, sky: '#7a8898', ef: ['troll', 'bear', 'orc', 'skeleton', 'deer', 'alpha_wolf'], dr: { iron_ore: .02, crystal: .009, gem: .006, coal: .014, stone: .03, mithril_ore: .005 } },
   { id: 7, n: 'Goblin Territory', s: 8456, m: TD, f: TD, r: TS, w: TW, wf: .06, rf: .09, sky: '#7a9a6a', ef: ['goblin', 'goblin_chief', 'bandit', 'orc', 'boar', 'deer'], dr: { bone: .016, feather: .013, leather: .011, flint: .011, wood: .016 } },
   { id: 8, n: 'Coastal Shore', s: 9732, m: TSA, f: TSA, r: TS, w: TW, wf: .28, rf: .03, sky: '#4a9ad4', ef: ['bandit', 'skeleton', 'goblin', 'archer', 'pheasant', 'deer'], dr: { fish: .022, silk: .011, sand: .035, feather: .016, bone: .009 } },
   { id: 9, n: 'Ancient Ruins', s: 10551, m: TS, f: TS, r: TS, w: TW, wf: .03, rf: .20, sky: '#5a5060', ef: ['skeleton', 'golem', 'dark_mage', 'wraith'], dr: { crystal: .016, magic_essence: .011, bone: .022, gem: .013, stone: .022, ancient_rune: .003 } },
   { id: 10, n: 'Scorched Waste', s: 11889, m: TS, f: TS, r: TS, w: TLV, wf: .06, rf: .11, sky: '#8a4020', ef: ['troll', 'orc', 'orc_chief', 'dark_mage'], dr: { sulfur: .022, coal: .027, iron_ore: .014, ash_crystal: .006 } },
-  { id: 11, n: 'Volcanic Fields', s: 12004, m: TS, f: TLV, r: TS, w: TLV, wf: .14, rf: .07, sky: '#cc4400', ef: ['troll', 'orc', 'golem', 'wraith'], dr: { sulfur: .027, coal: .031, iron_ore: .022, crystal: .006, gem: .004 } },
+  { id: 11, n: 'Volcanic Fields', s: 12004, m: TS, f: TLV, r: TS, w: TLV, wf: .14, rf: .07, sky: '#cc4400', ef: ['troll', 'orc', 'golem', 'wraith', 'firedrake'], dr: { sulfur: .027, coal: .031, iron_ore: .022, crystal: .006, gem: .004 } },
   { id: 12, n: 'Orc Stronghold', s: 13377, m: TD, f: TD, r: TS, w: TW, wf: .04, rf: .09, sky: '#6a5040', ef: ['orc', 'orc_chief', 'troll', 'goblin_chief', 'boar'], dr: { bone: .022, leather: .016, iron_ore: .014, coal: .011, wood: .014 } },
   { id: 13, n: 'Bandit Outpost', s: 14220, m: TD, f: TS, r: TS, w: TW, wf: .04, rf: .13, sky: '#5a5060', ef: ['bandit', 'bandit_chief', 'archer', 'dark_mage'], dr: { iron_ore: .014, leather: .014, gem: .006, flint: .014, coal: .009 } },
   { id: 14, n: 'Crystal Cavern', s: 15641, m: TS, f: TS, r: TS, w: TW, wf: .04, rf: .20, sky: '#1a1a44', ef: ['wraith', 'dark_mage', 'skeleton', 'golem'], dr: { crystal: .036, magic_essence: .020, gem: .016, ice_crystal: .014 } },
   { id: 15, n: 'Haunted Graveyard', s: 16007, m: TD, f: TS, r: TS, w: TW, wf: .04, rf: .08, sky: '#1a1a22', ef: ['skeleton', 'zombie', 'wraith', 'dark_mage'], dr: { bone: .036, crystal: .011, magic_essence: .008, herb: .004, silk: .006 } },
   { id: 16, n: 'Undead Kingdom', s: 17890, m: TD, f: TS, r: TS, w: TW, wf: .06, rf: .11, sky: '#0a0a1a', ef: ['zombie', 'skeleton', 'wraith', 'dark_mage', 'golem'], dr: { bone: .040, magic_essence: .016, crystal: .011, silk: .009 } },
-  { id: 17, n: 'Enchanted Grove', s: 18234, m: TG, f: TG, r: TS, w: TW, wf: .09, rf: .04, sky: '#2a1a4a', ef: ['dark_mage', 'wraith', 'goblin', 'spider', 'deer', 'pheasant'], dr: { magic_essence: .025, crystal: .016, herb: .027, silk: .016, mushroom: .011 } },
+  { id: 17, n: 'Enchanted Grove', s: 18234, m: TG, f: TG, r: TS, w: TW, wf: .09, rf: .04, sky: '#2a1a4a', ef: ['dark_mage', 'wraith', 'goblin', 'spider', 'deer', 'pheasant', 'glowsheep'], dr: { magic_essence: .025, crystal: .016, herb: .027, silk: .016, mushroom: .011 } },
   { id: 18, n: "Dragon's Domain", s: 19555, m: TS, f: TLV, r: TS, w: TLV, wf: .11, rf: .09, sky: '#440000', ef: ['dragon', 'troll', 'orc_chief', 'dark_mage'], dr: { gem: .022, crystal: .016, magic_essence: .016, sulfur: .022, bone: .016 } },
   { id: 19, n: 'Corrupted Lands', s: 20001, m: TD, f: TD, r: TS, w: TLV, wf: .09, rf: .09, sky: '#080810', ef: ['dragon', 'dark_mage', 'wraith', 'orc_chief', 'bandit_chief'], dr: { magic_essence: .027, crystal: .022, sulfur: .016, bone: .027, gem: .011 } },
   { id: 20, n: 'Celestial Realm', s: 99999, m: TCR, f: TCR, r: TS, w: TW, wf: .05, rf: .05, sky: '#1a0a3a', ef: ['celestial_guardian', 'void_wraith', 'star_golem'], dr: { magic_essence: .05, crystal: .04, gem: .03, void_crystal: .02, celestial_shard: .01 } },
@@ -383,8 +386,9 @@ const MAPS = [
   { id: 26, n: 'Obsidian Spire', s: 80606, m: TLV, f: TS, r: TS, w: TLV, wf: .08, rf: .18, sky: '#110500', ef: ['troll', 'golem', 'dragon'], dr: { sulfur: .04, coal: .035, iron_ore: .025, crystal: .02 } },
   { id: 27, n: 'Void Rift', s: 90707, m: TCR, f: TCR, r: TS, w: TLV, wf: .05, rf: .05, sky: '#050011', ef: ['void_wraith', 'star_golem', 'dragon'], dr: { void_crystal: .04, magic_essence: .04, celestial_shard: .02 } },
   { id: 28, n: 'Atlantis Ruins', s: 10808, m: TW, f: TS, r: TS, w: TW, wf: .30, rf: .10, sky: '#0a2a3a', ef: ['skeleton', 'golem', 'wraith'], dr: { ancient_rune: .015, magic_essence: .02, crystal: .025, stone: .03 } },
-  { id: 29, n: 'Sakura Garden', s: 11909, m: TG, f: TG, r: TS, w: TW, wf: .10, rf: .05, sky: '#ffcccc', ef: ['fox', 'deer', 'pheasant', 'dark_mage'], dr: { astral_flower: .04, herb: .03, wood: .03, fiber: .025 } },
-  { id: 30, n: 'Sky Archipelago', s: 121010, m: TCR, f: TG, r: TS, w: TW, wf: .05, rf: .05, sky: '#88ccff', ef: ['celestial_guardian', 'void_wraith', 'star_golem'], dr: { celestial_shard: .03, magic_essence: .03, gem: .025, crystal: .025 } }
+  { id: 29, n: 'Sakura Garden', s: 11909, m: TG, f: TG, r: TS, w: TW, wf: .10, rf: .05, sky: '#ffcccc', ef: ['fox', 'deer', 'pheasant', 'dark_mage', 'rabbit'], dr: { astral_flower: .04, herb: .03, wood: .03, fiber: .025 } },
+  { id: 30, n: 'Sky Archipelago', s: 121010, m: TCR, f: TG, r: TS, w: TW, wf: .05, rf: .05, sky: '#88ccff', ef: ['celestial_guardian', 'void_wraith', 'star_golem'], dr: { celestial_shard: .03, magic_essence: .03, gem: .025, crystal: .025 } },
+  { id: 31, n: 'Aether Chrono-Rift', s: 131313, m: TCR, f: TCR, r: TS, w: TW, wf: .06, rf: .05, sky: '#0d001a', ef: ['chrono_guardian', 'rift_specter', 'star_golem', 'chrono_overlord'], dr: { temporal_shard: .06, void_crystal: .04, celestial_shard: .03, ancient_rune: .015 } }
 ];
 
 const ET: Record<string, any> = {
@@ -416,6 +420,13 @@ const ET: Record<string, any> = {
   boar: { n: 'Wild Boar', ico: '🐗', hp: 45, spd: 1.4, dmg: 14, acd: 70, xp: 18, lo: { meat: 1.0, leather: .8 }, ran: false },
   pheasant: { n: 'Wild Pheasant', ico: '🦃', hp: 12, spd: 1.8, dmg: 0, acd: 100, xp: 8, lo: { meat: .6, feather: 1.0 }, ran: false },
   alpha_wolf: { n: 'Alpha Wolf', ico: '🐺', hp: 130, spd: 2.1, dmg: 24, acd: 50, xp: 55, lo: { meat: 2.0, leather: 1.5, alpha_pelt: 1.0 }, ran: false, boss: 1 },
+  rabbit: { n: 'Wild Rabbit', ico: '🐇', hp: 10, spd: 2.5, dmg: 0, acd: 100, xp: 5, lo: { meat: .8, leather: .2 }, ran: false },
+  glowsheep: { n: 'Glow Sheep', ico: '🐑', hp: 40, spd: 1.0, dmg: 0, acd: 100, xp: 15, lo: { fiber: 2, silk: 1 }, ran: false },
+  viper: { n: 'Poisonous Viper', ico: '🐍', hp: 25, spd: 1.6, dmg: 12, acd: 45, xp: 18, lo: { venom: 1.0, leather: .4 }, ran: false },
+  firedrake: { n: 'Fire Drake', ico: '🦎', hp: 120, spd: 1.3, dmg: 26, acd: 70, xp: 45, lo: { sulfur: .8, crystal: .5, magic_essence: .3 }, ran: true, boss: 1 },
+  chrono_guardian: { n: 'Chrono Guardian', ico: '🤖', hp: 400, spd: 1.4, dmg: 45, acd: 65, xp: 200, lo: { temporal_shard: .6, celestial_shard: .3 }, ran: true },
+  rift_specter: { n: 'Rift Specter', ico: '🌀', hp: 200, spd: 1.9, dmg: 35, acd: 55, xp: 120, lo: { void_crystal: .5, magic_essence: .5 }, ran: false },
+  chrono_overlord: { n: 'Chrono Overlord', ico: '⏳', hp: 900, spd: 1.0, dmg: 70, acd: 90, xp: 600, lo: { temporal_shard: 1.0, celestial_shard: 1.0, ancient_rune: .8 }, ran: true, boss: 1 },
 };
 
 // --- Procedural Theme Definitions based on Biomes ---
@@ -936,6 +947,7 @@ const baseIT: Record<string, any> = {
   magic_essence: { ico: '✨', n: 'M.Essence', t: 'mat' },
   void_crystal: { ico: '🔮', n: 'Void Xtal', t: 'mat' },
   celestial_shard: { ico: '✨', n: 'Celestial Shard', t: 'mat' },
+  temporal_shard: { ico: '⏳', n: 'Temporal Shard', t: 'mat' },
   meat: { ico: '🥩', n: 'Raw Meat', t: 'mat' },
   berry: { ico: '🫐', n: 'Berry', t: 'mat' },
   mushroom: { ico: '🍄', n: 'Mushroom', t: 'mat' },
@@ -966,6 +978,11 @@ const baseIT: Record<string, any> = {
   gold_bar: { ico: '⭐', n: 'Gold Bar', t: 'mat' },
   mithril_bar: { ico: '💠', n: 'Mithril Bar', t: 'mat' },
   gold_coins: { ico: '🪙', n: 'Gold Coins', t: 'currency' },
+  maple_syrup: { ico: '🍁', n: 'Maple Syrup', t: 'food', hu: 15, hp: 10 },
+  apple: { ico: '🍎', n: 'Apple', t: 'food', hu: 15, hp: 5 },
+  amber: { ico: '🟡', n: 'Amber', t: 'mat' },
+  glowing_spore: { ico: '🍄', n: 'Glowing Spore', t: 'mat' },
+  shadow_bark: { ico: '🎋', n: 'Shadow Bark', t: 'mat' },
 
   leather_vest: { ico: '🧥', n: 'Leather Vest', t: 'armor', sl: 'chest', def: 5 },
   iron_chest: { ico: '🛡️', n: 'Iron Chest', t: 'armor', sl: 'chest', def: 14 },
@@ -988,6 +1005,7 @@ const baseIT: Record<string, any> = {
   storm_staff: { id: 'storm_staff', n: 'Storm Staff', ico: '⚡', dmg: 45, spd: 32, rng: 280, type: 'magic', mp: 20, fx: 'lightning', col: '#00ffff' },
   earth_staff: { id: 'earth_staff', n: 'Earth Staff', ico: '⛰️', dmg: 55, spd: 45, rng: 200, type: 'magic', mp: 25, fx: 'earthquake', col: '#e28743' },
   cosmic_staff: { id: 'cosmic_staff', n: 'Cosmic Staff', ico: '🌠', dmg: 75, spd: 50, rng: 350, type: 'magic', mp: 40, fx: 'starfall', col: '#ff33ff' },
+  chrono_scepter: { id: 'chrono_scepter', n: 'Chrono Scepter', ico: '⏳', dmg: 95, spd: 40, rng: 320, type: 'magic', mp: 32, fx: 'time_slow', col: '#fbbf24' },
   mithril_staff: { id: 'mithril_staff', n: 'Mithril Staff', ico: '🪄', dmg: 75, spd: 40, rng: 310, type: 'magic', mp: 22, fx: 'starfall', col: '#00ffff' },
   
   campfire: { ico: '🔥', n: 'Campfire', t: 'struct' },
@@ -995,7 +1013,39 @@ const baseIT: Record<string, any> = {
   forge: { ico: '⚒️', n: 'Forge', t: 'struct' },
   magic_altar: { ico: '🕋', n: 'Magic Altar', t: 'struct' },
   shelter: { ico: '⛺', n: 'Shelter', t: 'struct' },
+  stone_wall: { ico: '🧱', n: 'Stone Wall', t: 'struct' },
+  spike_trap_crafted: { ico: '⚙️', n: 'Spike Trap', t: 'struct' },
+  mana_well: { ico: '🔲', n: 'Mana Well', t: 'struct' },
+  sentry_turret: { ico: '🗼', n: 'Sentry Turret', t: 'struct' },
+  
+  // --- Modern Survival & Water/Food Infrastructure Expansion ---
+  canteen_empty: { id: 'canteen_empty', n: 'Empty Canteen', ico: '🥤', t: 'pot', desc: 'Used to store clean water.' },
+  canteen_full: { id: 'canteen_full', n: 'Full Canteen', ico: '🥤', t: 'pot', hp: 0, mp: 0, desc: 'A canteen filled with refreshing water. Fully hydrates you on use.', th: 100 },
+  leather_backpack: { ico: '🎒', n: 'Leather Backpack', t: 'armor', sl: 'back', def: 1, spdBonus: 0.15, desc: 'Increases moving speed and storage capacity.' },
+  military_backpack: { ico: '🎒', n: 'Military Backpack', t: 'armor', sl: 'back', def: 4, spdBonus: 0.35, desc: 'Heavy duty tactical gear. Boosts defense and speed.' },
+  hunting_rifle: { id: 'hunting_rifle', n: 'Hunting Rifle', ico: '🔫', dmg: 72, spd: 45, rng: 350, type: 'ranged', mp: 0, desc: 'A long range firearms rifle. High precision damage.' },
+  supply_crate: { ico: '📦', n: 'Supply Crate', t: 'struct', desc: 'Placed container. Click adjacent to store your supplies.' },
+  water_reservoir: { ico: '🛢️', n: 'Water Reservoir', t: 'struct', desc: 'Stores pure drinking water. Click adjacent to hydrate and fill canteens.' },
+  water_pump: { ico: '⛽', n: 'Water Pump', t: 'struct', desc: 'Extracts deep water. Place on land. Click adjacent to quench thirst.' },
+  water_pipe: { ico: '🚰', n: 'Water Pipe', t: 'struct', desc: 'Distributes water from pump. Click adjacent to drink.' },
+  watch_tower: { ico: '🗼', n: 'Watch Tower', t: 'struct', desc: 'A high sentry guard tower. Automatically snipes nearby hostiles.' },
+  settler_shelter: { ico: '🛖', n: 'Settler Shelter', t: 'struct', desc: 'A rustic cabin. Attracts village settlers and earns +2 gold coins every 10s.' },
+  town_house: { ico: '🏡', n: 'Town House', t: 'struct', desc: 'A comfortable family residence. Attracts workers and residents. Earns +6 Gold Coins passively.' },
+  town_workshop: { ico: '🏭', n: 'Town Workshop', t: 'struct', desc: 'An advanced industrial workshop. Automatically crafts and yields +1 Iron Bar passively.' },
+  storage_depot: { ico: '🏬', n: 'Storage Depot', t: 'struct', desc: 'A massive logistics depot. Automatically gathers +2 Wood, +2 Stone, and +2 Fiber passively.' },
+  merchant_stall: { ico: '🏪', n: 'Merchant Stall', t: 'struct', desc: 'A market stall. Attracts a merchant companion who earns +5 gold coins every 10s.' },
+  guard_post: { ico: '🛡️', n: 'Guard Post', t: 'struct', desc: 'A fortified command post. Spawns a resilient village Guard companion.' },
+  farm_plot: { ico: '🌾', n: 'Farm Plot', t: 'struct', desc: 'An irrigated garden patch. Automatically harvests +1 Berry every 10s.' },
+
   stone_pickaxe: { id: 'stone_pickaxe', n: 'Stone Pickaxe', ico: '⛏️', dmg: 12, spd: 30, rng: 44, type: 'melee', mp: 0 },
+  copper_pickaxe: { id: 'copper_pickaxe', n: 'Copper Pickaxe', ico: '⛏️', dmg: 16, spd: 28, rng: 44, type: 'melee', mp: 0 },
+  iron_pickaxe: { id: 'iron_pickaxe', n: 'Iron Pickaxe', ico: '⛏️', dmg: 22, spd: 26, rng: 44, type: 'melee', mp: 0 },
+  gold_pickaxe: { id: 'gold_pickaxe', n: 'Gold Pickaxe', ico: '⛏️', dmg: 28, spd: 24, rng: 44, type: 'melee', mp: 0 },
+  mithril_pickaxe: { id: 'mithril_pickaxe', n: 'Mithril Pickaxe', ico: '⛏️', dmg: 38, spd: 20, rng: 44, type: 'melee', mp: 0 },
+  copper_axe: { id: 'copper_axe', n: 'Copper Axe', ico: '🪓', dmg: 16, spd: 26, rng: 44, type: 'melee', mp: 0 },
+  iron_axe: { id: 'iron_axe', n: 'Iron Axe', ico: '🪓', dmg: 22, spd: 24, rng: 44, type: 'melee', mp: 0 },
+  gold_axe: { id: 'gold_axe', n: 'Gold Axe', ico: '🪓', dmg: 28, spd: 22, rng: 44, type: 'melee', mp: 0 },
+  mithril_axe: { id: 'mithril_axe', n: 'Mithril Axe', ico: '🪓', dmg: 38, spd: 18, rng: 44, type: 'melee', mp: 0 },
   wood_club: { id: 'wood_club', n: 'Wooden Club', ico: '🪵', dmg: 10, spd: 32, rng: 42, type: 'melee', mp: 0 },
 
   // --- Hunted/Fishing Hotspot additions ---
@@ -1043,6 +1093,12 @@ const baseIT: Record<string, any> = {
   chrono_watch: { ico: '⏰', n: 'Chrono Watch', t: 'armor', sl: 'ring', def: 2, spdBonus: 0.6, mpBonus: 20 },
   philosophers_stone: { ico: '🧪', n: "Philosopher's Stone", t: 'pot' },
   immortality_elixir: { ico: '🌌', n: 'Immortality Elixir', t: 'pot' },
+
+  // --- Adventurers Guild Expansion items ---
+  guild_token: { ico: '🪙', n: 'Guild Token', t: 'mat' },
+  phoenix_feather: { ico: '🔥', n: 'Phoenix Feather', t: 'pot' },
+  scroll_meteor: { ico: '☄️', n: 'Scroll of Meteor', t: 'pot' },
+  aegis_plate: { ico: '🛡️', n: 'Aegis Plate Armor', t: 'armor', sl: 'chest', def: 40, hpBonus: 80 },
 };
 
 export const IT = new Proxy(baseIT, {
@@ -1121,8 +1177,39 @@ const RC = [
   { n: 'Workbench', out: 'workbench', cnt: 1, cat: 'Structures', c: { wood: 5, stone: 2 } },
   { n: 'Forge', out: 'forge', cnt: 1, cat: 'Structures', c: { stone: 6, iron_bar: 3, coal: 2 } },
   { n: 'Shelter', out: 'shelter', cnt: 1, cat: 'Structures', c: { wood: 10, stone: 5, fiber: 8 } },
+  { n: 'Stone Wall', out: 'stone_wall', cnt: 1, cat: 'Structures', c: { stone: 4 }, reqBld: 1 },
+  { n: 'Spike Trap', out: 'spike_trap_crafted', cnt: 1, cat: 'Structures', c: { wood: 4, stone: 2, iron_bar: 1 }, req: 'workbench', reqBld: 2 },
+  { n: 'Mana Well', out: 'mana_well', cnt: 1, cat: 'Structures', c: { stone: 8, magic_essence: 3 }, req: 'magic_altar', reqBld: 4 },
+  { n: 'Sentry Turret', out: 'sentry_turret', cnt: 1, cat: 'Structures', c: { wood: 10, iron_bar: 5, magic_essence: 2 }, req: 'workbench', reqBld: 6 },
+
+  // --- Modern Survival & Water/Food Infrastructure Recipes ---
+  { n: 'Empty Canteen', out: 'canteen_empty', cnt: 1, cat: 'Potions', c: { leather: 3, wood: 1 }, req: 'workbench' },
+  { n: 'Leather Backpack', out: 'leather_backpack', cnt: 1, cat: 'Armor', c: { leather: 5, fiber: 5 }, req: 'workbench' },
+  { n: 'Military Backpack', out: 'military_backpack', cnt: 1, cat: 'Armor', c: { leather: 8, steel_bar: 3 }, req: 'workbench' },
+  { n: 'Hunting Rifle', out: 'hunting_rifle', cnt: 1, cat: 'Weapons', c: { wood: 5, iron_bar: 8, sulfur: 4, coal: 2 }, req: 'workbench' },
+  { n: 'Supply Crate', out: 'supply_crate', cnt: 1, cat: 'Structures', c: { wood: 8, iron_bar: 1 }, req: 'workbench' },
+  { n: 'Water Reservoir', out: 'water_reservoir', cnt: 1, cat: 'Structures', c: { iron_bar: 4, stone: 8 }, req: 'workbench' },
+  { n: 'Water Pump', out: 'water_pump', cnt: 1, cat: 'Structures', c: { iron_bar: 6, stone: 10, wood: 4 }, req: 'workbench' },
+  { n: 'Water Pipe', out: 'water_pipe', cnt: 1, cat: 'Structures', c: { iron_bar: 2 }, req: 'workbench' },
+  { n: 'Watch Tower', out: 'watch_tower', cnt: 1, cat: 'Structures', c: { wood: 12, iron_bar: 6, fiber: 8 }, req: 'workbench' },
+  { n: 'Settler Shelter', out: 'settler_shelter', cnt: 1, cat: 'Structures', c: { wood: 15, stone: 10, fiber: 10 }, req: 'workbench' },
+  { n: 'Town House', out: 'town_house', cnt: 1, cat: 'Structures', c: { wood: 30, stone: 20, fiber: 15, gold_coins: 100 }, req: 'workbench' },
+  { n: 'Town Workshop', out: 'town_workshop', cnt: 1, cat: 'Structures', c: { stone: 35, iron_bar: 8, wood: 20 }, req: 'workbench' },
+  { n: 'Storage Depot', out: 'storage_depot', cnt: 1, cat: 'Structures', c: { wood: 40, stone: 30, iron_bar: 4 }, req: 'workbench' },
+  { n: 'Merchant Stall', out: 'merchant_stall', cnt: 1, cat: 'Structures', c: { wood: 20, fiber: 15, gold_coins: 150 }, req: 'workbench' },
+  { n: 'Guard Post', out: 'guard_post', cnt: 1, cat: 'Structures', c: { stone: 20, iron_bar: 5, wood: 10 }, req: 'workbench' },
+  { n: 'Farm Plot', out: 'farm_plot', cnt: 1, cat: 'Structures', c: { wood: 8, fiber: 12, berry: 5 }, req: 'workbench' },
+
   { n: 'Stone Pickaxe', out: 'stone_pickaxe', cnt: 1, cat: 'Weapons', c: { stone: 3, stick: 2 } },
   { n: 'Wooden Club', out: 'wood_club', cnt: 1, cat: 'Weapons', c: { wood: 3 } },
+  { n: 'Copper Pickaxe', out: 'copper_pickaxe', cnt: 1, cat: 'Weapons', c: { copper_bar: 3, stick: 2 }, req: 'forge' },
+  { n: 'Iron Pickaxe', out: 'iron_pickaxe', cnt: 1, cat: 'Weapons', c: { iron_bar: 3, stick: 2 }, req: 'forge' },
+  { n: 'Gold Pickaxe', out: 'gold_pickaxe', cnt: 1, cat: 'Weapons', c: { gold_bar: 3, stick: 2 }, req: 'forge' },
+  { n: 'Mithril Pickaxe', out: 'mithril_pickaxe', cnt: 1, cat: 'Weapons', c: { mithril_bar: 3, stick: 2 }, req: 'forge' },
+  { n: 'Copper Axe', out: 'copper_axe', cnt: 1, cat: 'Weapons', c: { copper_bar: 2, stick: 1 }, req: 'forge' },
+  { n: 'Iron Axe', out: 'iron_axe', cnt: 1, cat: 'Weapons', c: { iron_bar: 2, stick: 1 }, req: 'forge' },
+  { n: 'Gold Axe', out: 'gold_axe', cnt: 1, cat: 'Weapons', c: { gold_bar: 2, stick: 1 }, req: 'forge' },
+  { n: 'Mithril Axe', out: 'mithril_axe', cnt: 1, cat: 'Weapons', c: { mithril_bar: 2, stick: 1 }, req: 'forge' },
 
   // --- High-tier Equipment from Dangerous Biomes ---
   { n: 'Dragon Chestplate', out: 'dragon_scale_chest', cnt: 1, cat: 'Armor', c: { dragon_scale: 6, mithril_bar: 3 }, req: 'forge' },
@@ -1132,6 +1219,19 @@ const RC = [
   { n: 'Celestial Blade', out: 'celestial_blade', cnt: 1, cat: 'Weapons', c: { celestial_shard: 5, mithril_bar: 4, magic_essence: 10 }, req: 'magic_altar' },
   { n: 'Void Reaver Bow', out: 'void_reaver_bow', cnt: 1, cat: 'Weapons', c: { void_crystal: 5, silk: 6 }, req: 'magic_altar' },
   { n: 'Harbinger Staff', out: 'harbinger_staff', cnt: 1, cat: 'Weapons', c: { void_crystal: 6, celestial_shard: 3, magic_essence: 15 }, req: 'magic_altar' },
+  { n: 'Chrono Scepter', out: 'chrono_scepter', cnt: 1, cat: 'Weapons', c: { temporal_shard: 5, celestial_shard: 3, magic_essence: 12 }, req: 'magic_altar' },
+];
+
+// --- Adventurers Guild Quests Definition ---
+const GUILD_QUESTS = [
+  { id: 'wood_novice', n: '🪓 Timber Collector', d: 'Deliver 30 wood to help fortify the guild gate.', targetType: 'wood', targetCount: 30, rewardTokens: 15, rewardItems: { gold_coins: 100, cooked_meat: 5 } },
+  { id: 'ore_novice', n: '⛏️ Iron Prospector', d: 'Secure 15 iron ore for crafting new tools.', targetType: 'iron_ore', targetCount: 15, rewardTokens: 20, rewardItems: { gold_coins: 150, coal: 10 } },
+  { id: 'golem_slayer', n: '⚙️ Golem Destroyer', d: 'Eliminate a Cave Golem boss causing earthquakes.', targetType: 'golem', targetCount: 1, isBoss: true, rewardTokens: 40, rewardItems: { gold_coins: 300, crystal: 5 } },
+  { id: 'dragon_hunter', n: '🐉 Dragon Conqueror', d: 'Vanquish the ancient Fire Dragon of the deep.', targetType: 'dragon', targetCount: 1, isBoss: true, rewardTokens: 100, rewardItems: { gold_coins: 1000, gem: 10, magic_essence: 5 } },
+  { id: 'herbs_gatherer', n: '🌿 Alchemist Botanist', d: 'Deliver 15 wild herbs to brew healing elixirs.', targetType: 'herb', targetCount: 15, rewardTokens: 15, rewardItems: { gold_coins: 120, elixir: 2 } },
+  { id: 'monsters_novice', n: '🛡️ Goblin Skirmish', d: 'Cleanse the nearby zones of 5 goblin scouts.', targetType: 'goblin', targetCount: 5, rewardTokens: 25, rewardItems: { gold_coins: 200, fiber: 20 } },
+  { id: 'troll_slayer', n: '👹 Troll Menace', d: 'Defeat 1 Cave Troll in the mountains.', targetType: 'troll', targetCount: 1, isBoss: true, rewardTokens: 45, rewardItems: { gold_coins: 400, gold_ore: 5 } },
+  { id: 'wolves_hunt', n: '🐺 Wolf Den Cleanse', d: 'Defeat the Alpha Wolf and secure its alpha pelt.', targetType: 'alpha_wolf', targetCount: 1, isBoss: true, rewardTokens: 35, rewardItems: { gold_coins: 250, leather: 10 } },
 ];
 
 // --- Helper Functions ---
@@ -1338,6 +1438,14 @@ export default function SurvivalGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mouseTileRef = useRef<{ tx: number; ty: number } | null>(null);
   const [gameState, setGameState] = useState<any>(null);
+  const [gameZoom, setGameZoom] = useState<number>(0.85); // default to a comfortable, spacious zoom level!
+  const gameZoomRef = useRef<number>(0.85);
+  const [isHUDHidden, setIsHUDHidden] = useState(false);
+
+  useEffect(() => {
+    gameZoomRef.current = gameZoom;
+  }, [gameZoom]);
+
   const [showInv, setShowInv] = useState(false);
   const [showNFTMarket, setShowNFTMarket] = useState(false);
   const [showShop, setShowShop] = useState(false);
@@ -1347,13 +1455,23 @@ export default function SurvivalGame() {
   const [nftPage, setNftPage] = useState<number>(0);
   const [invCategory, setInvCategory] = useState<'all' | 'weapon' | 'armor' | 'food' | 'mat' | 'nft'>('all');
   const [selectedInvItem, setSelectedInvItem] = useState<string | null>(null);
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [showCraft, setShowCraft] = useState(false);
   const [showTownShop, setShowTownShop] = useState(false);
+  const [activeCrateIndex, setActiveCrateIndex] = useState<number | null>(null);
+  const [activeNPC, setActiveNPC] = useState<any | null>(null);
   const [townShopType, setTownShopType] = useState<'general' | 'blacksmith' | 'alchemist'>('general');
   const [showRecipeBook, setShowRecipeBook] = useState(false);
+  const [showResearch, setShowResearch] = useState(false);
   const [recipeSearch, setRecipeSearch] = useState('');
   const [recipeFilter, setRecipeFilter] = useState('All');
   const [showSkills, setShowSkills] = useState(false);
+  const [showTownHub, setShowTownHub] = useState(false);
+  const [showCharCustomizer, setShowCharCustomizer] = useState(false);
+  const [customTownName, setCustomTownName] = useState('Camp Horizon');
+  const [showQuests, setShowQuests] = useState(false);
+  const [showMasteries, setShowMasteries] = useState(false);
+  const [guildTab, setGuildTab] = useState<'quests' | 'store'>('quests');
 
   // --- Dynamic Survival Stat Tracking States ---
   const lastStats = useRef({ hp: 100, hu: 100, th: 100, mp: 100 });
@@ -1579,19 +1697,24 @@ export default function SurvivalGame() {
   const [isFishing, setIsFishing] = useState(false);
   const [fishingState, setFishingState] = useState<'idle' | 'waiting' | 'bite' | 'success' | 'fail'>('idle');
   const [fishingMessage, setFishingMessage] = useState('');
-  const [recipes, setRecipes] = useState<any[]>(() => [
-    ...RC.map(r => ({ ...r, discovered: true, craftCount: 0 })),
-    { n: 'Mana Potion', out: 'mana_potion', cnt: 1, cat: 'Potions', c: { herb: 1, magic_essence: 2 }, discovered: false, craftCount: 0 },
-    { n: 'Void Essence', out: 'void_essence', cnt: 1, cat: 'Materials', c: { void_crystal: 2, magic_essence: 4 }, req: 'magic_altar', discovered: false, craftCount: 0 },
-    { n: 'Star Shield', out: 'star_shield', cnt: 1, cat: 'Armor', c: { steel_bar: 3, gem: 1, celestial_shard: 1 }, req: 'workbench', discovered: false, craftCount: 0 },
-    
-    // --- Magical Lab Discoveries (Undiscovered by default) ---
-    { n: 'Aether Pickaxe', out: 'aether_pickaxe', cnt: 1, cat: 'Weapons', c: { stick: 2, celestial_shard: 2, void_crystal: 1 }, req: 'magic_altar', discovered: false, craftCount: 0 },
-    { n: 'Sunfire Aegis', out: 'sunfire_aegis', cnt: 1, cat: 'Armor', c: { dragon_scale: 2, sulfur: 3, gem: 1 }, req: 'magic_altar', discovered: false, craftCount: 0 },
-    { n: 'Chrono Watch', out: 'chrono_watch', cnt: 1, cat: 'Armor', c: { gold_bar: 2, crystal: 2, magic_essence: 5 }, req: 'magic_altar', discovered: false, craftCount: 0 },
-    { n: "Philosopher's Stone", out: 'philosophers_stone', cnt: 1, cat: 'Potions', c: { magic_essence: 8, crystal: 5, void_crystal: 2 }, req: 'magic_altar', discovered: false, craftCount: 0 },
-    { n: 'Immortality Elixir', out: 'immortality_elixir', cnt: 1, cat: 'Potions', c: { herb: 8, magic_essence: 10, celestial_shard: 1 }, req: 'magic_altar', discovered: false, craftCount: 0 },
-  ]);
+  const [recipes, setRecipes] = useState<any[]>(() => {
+    const techOutputs = new Set<string>();
+    RESEARCH_TECHS.forEach(t => t.unlocksRecipes.forEach(o => techOutputs.add(o)));
+
+    return [
+      ...RC.map(r => ({ ...r, discovered: !techOutputs.has(r.out), craftCount: 0 })),
+      { n: 'Mana Potion', out: 'mana_potion', cnt: 1, cat: 'Potions', c: { herb: 1, magic_essence: 2 }, discovered: false, craftCount: 0 },
+      { n: 'Void Essence', out: 'void_essence', cnt: 1, cat: 'Materials', c: { void_crystal: 2, magic_essence: 4 }, req: 'magic_altar', discovered: false, craftCount: 0 },
+      { n: 'Star Shield', out: 'star_shield', cnt: 1, cat: 'Armor', c: { steel_bar: 3, gem: 1, celestial_shard: 1 }, req: 'workbench', discovered: false, craftCount: 0 },
+      
+      // --- Magical Lab Discoveries (Undiscovered by default) ---
+      { n: 'Aether Pickaxe', out: 'aether_pickaxe', cnt: 1, cat: 'Weapons', c: { stick: 2, celestial_shard: 2, void_crystal: 1 }, req: 'magic_altar', discovered: false, craftCount: 0 },
+      { n: 'Sunfire Aegis', out: 'sunfire_aegis', cnt: 1, cat: 'Armor', c: { dragon_scale: 2, sulfur: 3, gem: 1 }, req: 'magic_altar', discovered: false, craftCount: 0 },
+      { n: 'Chrono Watch', out: 'chrono_watch', cnt: 1, cat: 'Armor', c: { gold_bar: 2, crystal: 2, magic_essence: 5 }, req: 'magic_altar', discovered: false, craftCount: 0 },
+      { n: "Philosopher's Stone", out: 'philosophers_stone', cnt: 1, cat: 'Potions', c: { magic_essence: 8, crystal: 5, void_crystal: 2 }, req: 'magic_altar', discovered: false, craftCount: 0 },
+      { n: 'Immortality Elixir', out: 'immortality_elixir', cnt: 1, cat: 'Potions', c: { herb: 8, magic_essence: 10, celestial_shard: 1 }, req: 'magic_altar', discovered: false, craftCount: 0 },
+    ];
+  });
   const [craftSearch, setCraftSearch] = useState('');
   const [craftCategory, setCraftCategory] = useState('All');
   const [craftTab, setCraftTab] = useState<'blueprints' | 'lab'>('blueprints');
@@ -1610,23 +1733,44 @@ export default function SurvivalGame() {
   const [showDeathScreen, setShowDeathScreen] = useState(false);
 
   // Collapse/Hide states for Left Panels to prevent screen clutter
-  const [isStatusCollapsed, setIsStatusCollapsed] = useState(false);
+  const [isStatusCollapsed, setIsStatusCollapsed] = useState(true);
   const [isEquipCollapsed, setIsEquipCollapsed] = useState(true); // default to true to keep screen clean!
-  const [isAutoCollapsed, setIsAutoCollapsed] = useState(false); // default to false so it is immediately visible!
+  const [isAutoCollapsed, setIsAutoCollapsed] = useState(true); // default to true so it is highly hidden by default!
+  const [isMenuBarCollapsed, setIsMenuBarCollapsed] = useState(true); // default to true to make the menu highly hidden!
 
   // --- Minimap States & Refs ---
   const [minimapMode, setMinimapMode] = useState<'local' | 'world'>('local');
   const [minimapZoom, setMinimapZoom] = useState<number>(1.2);
-  const [isMinimapCollapsed, setIsMinimapCollapsed] = useState<boolean>(false);
+  const [isMinimapCollapsed, setIsMinimapCollapsed] = useState<boolean>(true);
+  const [showMinimapLegend, setShowMinimapLegend] = useState<boolean>(false);
   const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Interactive state
+  const [minimapPanX, setMinimapPanX] = useState<number>(0);
+  const [minimapPanY, setMinimapPanY] = useState<number>(0);
+  const [minimapWaypoint, setMinimapWaypoint] = useState<{ tx: number; ty: number } | null>(null);
+  const [minimapHoverPos, setMinimapHoverPos] = useState<{ tx: number; ty: number; canvasX: number; canvasY: number } | null>(null);
 
   const minimapModeRef = useRef<'local' | 'world'>('local');
   const minimapZoomRef = useRef<number>(1.2);
-  const isMinimapCollapsedRef = useRef<boolean>(false);
+  const isMinimapCollapsedRef = useRef<boolean>(true);
+  
+  const minimapPanXRef = useRef<number>(0);
+  const minimapPanYRef = useRef<number>(0);
+  const minimapWaypointRef = useRef<{ tx: number; ty: number } | null>(null);
+  const minimapHoverPosRef = useRef<{ tx: number; ty: number; canvasX: number; canvasY: number } | null>(null);
+
+  const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const isDraggingRef = useRef<boolean>(false);
+  const dragMovedRef = useRef<boolean>(false);
 
   useEffect(() => { minimapModeRef.current = minimapMode; }, [minimapMode]);
   useEffect(() => { minimapZoomRef.current = minimapZoom; }, [minimapZoom]);
   useEffect(() => { isMinimapCollapsedRef.current = isMinimapCollapsed; }, [isMinimapCollapsed]);
+  useEffect(() => { minimapPanXRef.current = minimapPanX; }, [minimapPanX]);
+  useEffect(() => { minimapPanYRef.current = minimapPanY; }, [minimapPanY]);
+  useEffect(() => { minimapWaypointRef.current = minimapWaypoint; }, [minimapWaypoint]);
+  useEffect(() => { minimapHoverPosRef.current = minimapHoverPos; }, [minimapHoverPos]);
 
   // --- Save / Load & Backup System States ---
   const [showSaveMenu, setShowSaveMenu] = useState(false);
@@ -1829,7 +1973,7 @@ export default function SurvivalGame() {
       s.pl.mp = data.pl.mp ?? 100;
       s.pl.mmp = data.pl.mmp || 100;
       s.pl.inv = data.pl.inv;
-      s.pl.equip = { head: null, chest: null, legs: null, feet: null, ring: null, ...(data.pl.equip || {}) };
+      s.pl.equip = { head: null, chest: null, legs: null, feet: null, ring: null, back: null, ...(data.pl.equip || {}) };
       s.pl.weapon = data.pl.weapon || 'fists';
       s.pl.hotbar = data.pl.hotbar || ['torch', 'campfire', 'workbench', 'forge', 'stone_axe'];
       s.pl.spd = data.pl.spd || 3.0;
@@ -1844,9 +1988,44 @@ export default function SurvivalGame() {
         woodcutting: { lvl: 1, xp: 0, xpNext: 100 },
         combat: { lvl: 1, xp: 0, xpNext: 100 },
         alchemy: { lvl: 1, xp: 0, xpNext: 100 },
-        hunting: { lvl: 1, xp: 0, xpNext: 100 }
+        hunting: { lvl: 1, xp: 0, xpNext: 100 },
+        smithing: { lvl: 1, xp: 0, xpNext: 100 },
+        farming: { lvl: 1, xp: 0, xpNext: 100 },
+        building: { lvl: 1, xp: 0, xpNext: 100 }
       };
+      if (!s.pl.skills.building) {
+        s.pl.skills.building = { lvl: 1, xp: 0, xpNext: 100 };
+      }
       s.pl.discoveredChunks = data.pl.discoveredChunks || {};
+      s.pl.guildTokens = data.pl.guildTokens ?? 0;
+      s.pl.activeQuests = data.pl.activeQuests || {};
+      s.pl.activeQuestsProgress = data.pl.activeQuestsProgress || {};
+      s.pl.ico = data.pl.ico || '🧍';
+      s.pl.class = data.pl.class || 'Survivor';
+      s.pl.charName = data.pl.charName || 'Hero';
+      s.pl.townName = data.pl.townName || 'Camp Horizon';
+      s.pl.townLvl = data.pl.townLvl || 1;
+      s.pl.masteries = data.pl.masteries || {
+        adrenaline: 0,
+        double_harvest: 0,
+        lucky_miner: 0,
+        toughened_hide: 0,
+        vampiric_strikes: 0,
+        sages_wisdom: 0
+      };
+      
+      const loadedTechs = data.pl.unlockedTechs || [];
+      s.pl.unlockedTechs = loadedTechs;
+
+      setRecipes(prevRecipes => {
+        return prevRecipes.map(r => {
+          const techThatUnlocksThis = RESEARCH_TECHS.find(t => t.unlocksRecipes.includes(r.out));
+          if (techThatUnlocksThis) {
+            return { ...r, discovered: loadedTechs.includes(techThatUnlocksThis.id) };
+          }
+          return r;
+        });
+      });
 
       // 2. Restore World Objects
       s.objs = decompressObjs(data.objs) || [];
@@ -1866,6 +2045,147 @@ export default function SurvivalGame() {
       s.waveNum = data.waveNum ?? 0;
       s.waveTimer = data.waveTimer ?? 300;
       s.waveActive = data.waveActive ?? false;
+      s.weather = data.weather || {
+        type: 'clear',
+        timer: 4500,
+        label: 'Clear Skies',
+        icon: '☀️',
+        threat: 'None',
+        desc: 'Perfect survival conditions. Standard movement and regeneration.'
+      };
+
+      // Restore seed and config
+      s.worldSeed = data.worldSeed ?? 1337;
+      setWorldSeed(s.worldSeed);
+      if (data.genConfig) {
+        setGenWaterLevel(data.genConfig.waterLevel ?? 0.18);
+        setGenCoastLevel(data.genConfig.coastLevel ?? 0.25);
+        setGenMountainLevel(data.genConfig.mountainLevel ?? 0.78);
+        setGenTreeDensity(data.genConfig.treeDensity ?? 1.0);
+        setGenOreDensity(data.genConfig.oreDensity ?? 1.0);
+        setGenFreqScale(data.genConfig.frequencyScale ?? 1.0);
+        genConfigRef.current = {
+          waterLevel: data.genConfig.waterLevel ?? 0.18,
+          coastLevel: data.genConfig.coastLevel ?? 0.25,
+          mountainLevel: data.genConfig.mountainLevel ?? 0.78,
+          treeDensity: data.genConfig.treeDensity ?? 1.0,
+          oreDensity: data.genConfig.oreDensity ?? 1.0,
+          frequencyScale: data.genConfig.frequencyScale ?? 1.0
+        };
+      }
+
+      // Re-generate zoneMaps
+      const restoredZoneMaps: any[] = [];
+      for (let zr = 0; zr < ZROWS; zr++) {
+        for (let zc = 0; zc < ZCOLS; zc++) {
+          restoredZoneMaps.push(getProceduralBiomeForZone(zc, zr, s.worldSeed));
+        }
+      }
+      s.zoneMaps = restoredZoneMaps;
+
+      // Handle Cave vs Surface Restore
+      s.inCave = data.inCave || false;
+      if (s.inCave && data.surfacePlCoords) {
+        // Build surface zoneMaps and surfaceWorld procedural tiles for safety when exiting the cave
+        const surfaceZoneMaps: any[] = [];
+        for (let zr = 0; zr < ZROWS; zr++) {
+          for (let zc = 0; zc < ZCOLS; zc++) {
+            surfaceZoneMaps.push(getProceduralBiomeForZone(zc, zr, s.worldSeed));
+          }
+        }
+        const surfaceWorld: number[][] = [];
+        for (let zr = 0; zr < ZROWS; zr++) {
+          for (let zc = 0; zc < ZCOLS; zc++) {
+            const mi = zr * ZCOLS + zc;
+            const M = surfaceZoneMaps[mi];
+            const ox = zc * ZW, oy = zr * ZH;
+            const isTownZone = (zc === 1 && zr === 0) || (zc === 4 && zr === 4) || (zc === 2 && zr === 6) || (zc === 7 && zr === 2);
+            const isBanditZone = (zc === 2 && zr === 1) || (zc === 5 && zr === 3) || (zc === 6 && zr === 5);
+
+            for (let ly = 0; ly < ZH; ly++) {
+              if (!surfaceWorld[oy + ly]) surfaceWorld[oy + ly] = [];
+              for (let lx = 0; lx < ZW; lx++) {
+                const wx = ox + lx, wy = oy + ly;
+                const tileM = getDynamicBiomeAt(wx, wy, s.worldSeed, surfaceZoneMaps);
+                if (isTownZone && lx >= 34 && lx <= 46 && ly >= 34 && ly <= 46) {
+                  surfaceWorld[wy][wx] = TS;
+                } else if (isBanditZone && lx >= 37 && lx <= 43 && ly >= 37 && ly <= 43) {
+                  surfaceWorld[wy][wx] = TD;
+                } else {
+                  surfaceWorld[wy][wx] = getProceduralTile(wx, wy, tileM, s.worldSeed, genConfigRef.current);
+                }
+              }
+            }
+          }
+        }
+
+        s.surfacePlCoords = {
+          x: data.surfacePlCoords.x,
+          y: data.surfacePlCoords.y,
+          world: surfaceWorld,
+          objs: decompressObjs(data.surfacePlCoords.objs) || [],
+          enemies: [],
+          zoneMaps: surfaceZoneMaps,
+          lastZc: data.surfacePlCoords.lastZc,
+          lastZr: data.surfacePlCoords.lastZr
+        };
+
+        // Reconstruct the procedurally skinned Cave world tile grid
+        const surfaceBiome = getProceduralBiomeForZone(s.surfacePlCoords.lastZc, s.surfacePlCoords.lastZr, s.worldSeed);
+        const bName = surfaceBiome?.n || 'Verdant Forest';
+        const isIceCave = bName.includes('Frozen') || bName.includes('Tundra');
+        const isFireCave = bName.includes('Volcanic') || bName.includes('Scorched') || bName.includes('Dragon');
+
+        const caveWorld: number[][] = [];
+        const borderWallTile = isFireCave ? TLV : TW;
+        const floorTile = isIceCave ? TSN : TS;
+
+        for (let y = 0; y < WH; y++) {
+          caveWorld[y] = [];
+          for (let x = 0; x < WW; x++) {
+            caveWorld[y][x] = borderWallTile;
+          }
+        }
+        for (let y = 5; y < WH - 5; y++) {
+          for (let x = 5; x < WW - 5; x++) {
+            caveWorld[y][x] = floorTile;
+          }
+        }
+        s.world = caveWorld;
+      } else {
+        s.inCave = false;
+        s.surfacePlCoords = null;
+
+        // Re-generate surface World tile grid
+        const newWorldGrid: number[][] = [];
+        for (let zr = 0; zr < ZROWS; zr++) {
+          for (let zc = 0; zc < ZCOLS; zc++) {
+            const mi = zr * ZCOLS + zc;
+            const M = s.zoneMaps[mi];
+            const ox = zc * ZW, oy = zr * ZH;
+            const isTownZone = (zc === 1 && zr === 0) || (zc === 4 && zr === 4) || (zc === 2 && zr === 6) || (zc === 7 && zr === 2);
+            const isBanditZone = (zc === 2 && zr === 1) || (zc === 5 && zr === 3) || (zc === 6 && zr === 5);
+
+            for (let ly = 0; ly < ZH; ly++) {
+              if (!newWorldGrid[oy + ly]) newWorldGrid[oy + ly] = [];
+              for (let lx = 0; lx < ZW; lx++) {
+                const wx = ox + lx, wy = oy + ly;
+                const tileM = getDynamicBiomeAt(wx, wy, s.worldSeed, s.zoneMaps);
+                
+                // Town plaza paved stone floor
+                if (isTownZone && lx >= 34 && lx <= 46 && ly >= 34 && ly <= 46) {
+                  newWorldGrid[wy][wx] = TS; // Stone
+                } else if (isBanditZone && lx >= 37 && lx <= 43 && ly >= 37 && ly <= 43) {
+                  newWorldGrid[wy][wx] = TD; // Dirt floor
+                } else {
+                  newWorldGrid[wy][wx] = getProceduralTile(wx, wy, tileM, s.worldSeed, genConfigRef.current);
+                }
+              }
+            }
+          }
+        }
+        s.world = newWorldGrid;
+      }
 
       // 5. Purge transient objects
       s.enemies = [];
@@ -1873,8 +2193,9 @@ export default function SurvivalGame() {
       s.parts = [];
 
       // 6. Center camera
-      s.cam.x = s.pl.x - window.innerWidth / 2;
-      s.cam.y = s.pl.y - window.innerHeight / 2;
+      const initZoom = gameZoomRef.current;
+      s.cam.x = s.pl.x - (window.innerWidth / initZoom) / 2;
+      s.cam.y = s.pl.y - (window.innerHeight / initZoom) / 2;
 
       addLog("Successfully loaded saved game progress!", "#38bdf8");
       setGameState({ ...s });
@@ -1917,7 +2238,12 @@ export default function SurvivalGame() {
           xpNext: s.pl.xpNext,
           def: s.pl.def,
           skills: s.pl.skills,
-          discoveredChunks: s.pl.discoveredChunks || {}
+          discoveredChunks: s.pl.discoveredChunks || {},
+          guildTokens: s.pl.guildTokens || 0,
+          activeQuests: s.pl.activeQuests || {},
+          activeQuestsProgress: s.pl.activeQuestsProgress || {},
+          masteries: s.pl.masteries || { adrenaline: 0, double_harvest: 0, lucky_miner: 0, toughened_hide: 0, vampiric_strikes: 0, sages_wisdom: 0 },
+          unlockedTechs: s.pl.unlockedTechs || []
         },
         objs: compressObjs(s.objs),
         companions: s.companions.map((c: any) => ({
@@ -1936,6 +2262,24 @@ export default function SurvivalGame() {
         waveNum: s.waveNum,
         waveTimer: s.waveTimer,
         waveActive: s.waveActive,
+        weather: s.weather || {
+          type: 'clear',
+          timer: 4500,
+          label: 'Clear Skies',
+          icon: '☀️',
+          threat: 'None',
+          desc: 'Perfect survival conditions. Standard movement and regeneration.'
+        },
+        worldSeed: s.worldSeed || 1337,
+        genConfig: genConfigRef.current,
+        inCave: s.inCave || false,
+        surfacePlCoords: s.inCave ? {
+          x: s.surfacePlCoords?.x ?? 0,
+          y: s.surfacePlCoords?.y ?? 0,
+          objs: compressObjs(s.surfacePlCoords?.objs || []),
+          lastZc: s.surfacePlCoords?.lastZc ?? 0,
+          lastZr: s.surfacePlCoords?.lastZr ?? 0
+        } : null,
         timestamp: Date.now()
       };
 
@@ -2237,7 +2581,12 @@ export default function SurvivalGame() {
           xpNext: s.pl.xpNext,
           def: s.pl.def,
           skills: s.pl.skills,
-          discoveredChunks: s.pl.discoveredChunks || {}
+          discoveredChunks: s.pl.discoveredChunks || {},
+          guildTokens: s.pl.guildTokens || 0,
+          activeQuests: s.pl.activeQuests || {},
+          activeQuestsProgress: s.pl.activeQuestsProgress || {},
+          masteries: s.pl.masteries || { adrenaline: 0, double_harvest: 0, lucky_miner: 0, toughened_hide: 0, vampiric_strikes: 0, sages_wisdom: 0 },
+          unlockedTechs: s.pl.unlockedTechs || []
         },
         objs: compressObjs(s.objs),
         companions: s.companions.map((c: any) => ({
@@ -2256,6 +2605,24 @@ export default function SurvivalGame() {
         waveNum: s.waveNum,
         waveTimer: s.waveTimer,
         waveActive: s.waveActive,
+        weather: s.weather || {
+          type: 'clear',
+          timer: 4500,
+          label: 'Clear Skies',
+          icon: '☀️',
+          threat: 'None',
+          desc: 'Perfect survival conditions. Standard movement and regeneration.'
+        },
+        worldSeed: s.worldSeed || 1337,
+        genConfig: genConfigRef.current,
+        inCave: s.inCave || false,
+        surfacePlCoords: s.inCave ? {
+          x: s.surfacePlCoords?.x ?? 0,
+          y: s.surfacePlCoords?.y ?? 0,
+          objs: compressObjs(s.surfacePlCoords?.objs || []),
+          lastZc: s.surfacePlCoords?.lastZc ?? 0,
+          lastZr: s.surfacePlCoords?.lastZr ?? 0
+        } : null,
         timestamp: Date.now()
       };
 
@@ -2283,15 +2650,22 @@ export default function SurvivalGame() {
       lastZr: s.lastZr
     };
     s.inCave = true;
+
+    // Determine surface biome of entry to procedurally skin the cave!
+    const surfaceBiome = getProceduralBiomeForZone(s.lastZc, s.lastZr, s.worldSeed);
+    const bName = surfaceBiome?.n || 'Verdant Forest';
     
-    // 2. Generate a 640x640 boundary cave, but carve a small playable cavern around (300, 300)
-    // This allows us to reuse all WW/WH bounds checks perfectly without any crash risk!
+    let isIceCave = bName.includes('Frozen') || bName.includes('Tundra');
+    let isFireCave = bName.includes('Volcanic') || bName.includes('Scorched') || bName.includes('Dragon');
+
     const caveWorld: number[][] = [];
+    const borderWallTile = isFireCave ? TLV : TW; // lava walls for fire caves, dark water for others
+    const floorTile = isIceCave ? TSN : TS; // snow floors for ice caves, stone for others
+
     for (let y = 0; y < WH; y++) {
       caveWorld[y] = [];
       for (let x = 0; x < WW; x++) {
-        // Solid wall TW (Water acting as walls)
-        caveWorld[y][x] = TW;
+        caveWorld[y][x] = borderWallTile;
       }
     }
     
@@ -2300,8 +2674,7 @@ export default function SurvivalGame() {
     for (let y = startY; y < startY + caveSize; y++) {
       for (let x = startX; x < startX + caveSize; x++) {
         const isWall = x === startX || x === startX + caveSize - 1 || y === startY || y === startY + caveSize - 1 || (x % 5 === 0 && y % 5 === 0);
-        // Floors are TS (Stone)
-        caveWorld[y][x] = isWall ? TW : TS;
+        caveWorld[y][x] = isWall ? borderWallTile : floorTile;
       }
     }
     
@@ -2310,38 +2683,54 @@ export default function SurvivalGame() {
     
     // Place ladder exit right at (startX + 25, startY + 25)
     const lcx = startX + 25, lcy = startY + 25;
-    caveWorld[lcy][lcx] = TS; // clear wall
+    caveWorld[lcy][lcx] = floorTile; // clear wall
     caveObjs.push({ type: 'cave_exit', tx: lcx, ty: lcy, ico: '🪜', hp: 999 });
     
     // Place treasure chests, traps, and crystals randomly inside carved cavern!
     const caveRng = mkRng(Math.random() * 99999);
-    for (let k = 0; k < 25; k++) {
+    for (let k = 0; k < 30; k++) {
       const tx = startX + 2 + Math.floor(caveRng() * (caveSize - 4));
       const ty = startY + 2 + Math.floor(caveRng() * (caveSize - 4));
       if (Math.abs(tx - lcx) < 3 && Math.abs(ty - lcy) < 3) continue;
       
       const randVal = caveRng();
-      if (randVal < 0.35) {
+      if (randVal < 0.4) {
         // Place glowing crystal node
-        const sub = caveRng() < 0.35 ? 'void_crystal' : caveRng() < 0.7 ? 'crystal' : 'mana_crystal';
-        const ico = sub === 'void_crystal' ? '🔮' : sub === 'crystal' ? '💎' : '🧿';
+        let sub = 'crystal';
+        let ico = '💎';
+        if (isFireCave) {
+          sub = caveRng() < 0.5 ? 'sulfur' : 'gold';
+          ico = sub === 'sulfur' ? '🟡' : '💛';
+        } else if (isIceCave) {
+          sub = caveRng() < 0.5 ? 'crystal' : 'mana_crystal';
+          ico = sub === 'crystal' ? '❄️' : '🧿';
+        } else {
+          sub = caveRng() < 0.35 ? 'void_crystal' : caveRng() < 0.7 ? 'crystal' : 'mana_crystal';
+          ico = sub === 'void_crystal' ? '🔮' : sub === 'crystal' ? '💎' : '🧿';
+        }
         caveObjs.push({ type: 'rock', tx, ty, hp: 4, mhp: 4, ico, subtype: sub });
-      } else if (randVal < 0.65) {
+      } else if (randVal < 0.7) {
         // Place Spike Trap!
-        caveObjs.push({ type: 'spike_trap', tx, ty, ico: '⚙️', hp: 999, triggered: false });
-      } else if (randVal < 0.8) {
+        caveObjs.push({ type: 'spike_trap', tx, ty, ico: isFireCave ? '🌋' : isIceCave ? '❄️' : '⚙️', hp: 999, triggered: false });
+      } else if (randVal < 0.85) {
         // Place Cave Treasure Chest!
         caveObjs.push({ type: 'cave_treasure', tx, ty, ico: '👑', hp: 1 });
       }
     }
     
     // Spawn Cave Monsters!
-    for (let k = 0; k < 8; k++) {
+    for (let k = 0; k < 10; k++) {
       const ex = startX + 5 + Math.floor(caveRng() * (caveSize - 10));
       const ey = startY + 5 + Math.floor(caveRng() * (caveSize - 10));
       if (Math.abs(ex - lcx) < 5 && Math.abs(ey - lcy) < 5) continue;
       
-      const monsterTypes = ['spider', 'skeleton', 'wraith'];
+      let monsterTypes = ['spider', 'skeleton', 'wraith'];
+      if (isFireCave) {
+        monsterTypes = ['troll', 'dark_mage', 'firedrake'];
+      } else if (isIceCave) {
+        monsterTypes = ['wolf', 'bear', 'wraith'];
+      }
+
       const eid = monsterTypes[Math.floor(caveRng() * monsterTypes.length)];
       const et = ET[eid];
       if (et) {
@@ -2349,8 +2738,8 @@ export default function SurvivalGame() {
           id: Math.random(),
           x: ex * TZ + TZ/2,
           y: ey * TZ + TZ/2,
-          hp: et.hp * 1.3,
-          mhp: et.hp * 1.3,
+          hp: et.hp * (isFireCave ? 1.5 : 1.2),
+          mhp: et.hp * (isFireCave ? 1.5 : 1.2),
           eid,
           spd: et.spd * 0.95,
           dmg: et.dmg * 1.15,
@@ -2377,10 +2766,23 @@ export default function SurvivalGame() {
     
     s.lastZc = 0;
     s.lastZr = 0;
-    s.zoneMaps = [{ n: 'Forgotten Cave', s: 1234, sky: '#08060a', ef: ['spider', 'skeleton', 'wraith'], dr: {} }];
     
-    addLog("🦇 Entered Forgotten Cave! Look out for spike traps and hidden chests!", "#a855f7");
-    spawnExplosion(s, s.pl.x, s.pl.y, '#a855f7', 15, 'ring');
+    let caveTitle = 'Forgotten Cave';
+    let skyBg = '#08060a';
+    if (isFireCave) {
+      caveTitle = 'Volcanic Fire Core';
+      skyBg = '#270800';
+      addLog("🌋 Entered the Volcanic Fire Core! Watch out for molten lava flows and volcanic beasts!", "#ef4444");
+    } else if (isIceCave) {
+      caveTitle = 'Frozen Glacial Cavern';
+      skyBg = '#05111c';
+      addLog("❄️ Entered the Frozen Glacial Cavern! Watch out for frostbite and icy paths!", "#38bdf8");
+    } else {
+      addLog("🦇 Entered Forgotten Cave! Look out for spike traps and hidden treasures!", "#a855f7");
+    }
+
+    s.zoneMaps = [{ n: caveTitle, s: 1234, sky: skyBg, ef: isFireCave ? ['troll', 'dark_mage'] : isIceCave ? ['wolf', 'bear'] : ['spider', 'skeleton', 'wraith'], dr: {} }];
+    spawnExplosion(s, s.pl.x, s.pl.y, isFireCave ? '#f97316' : isIceCave ? '#38bdf8' : '#a855f7', 15, 'ring');
     setGameState({ ...s });
   };
 
@@ -2422,6 +2824,7 @@ export default function SurvivalGame() {
       targetY: Math.floor(ZH / 2) * TZ + TZ / 2,
       isGridMoving: false,
       hp: 100, mhp: 100, hu: 100, th: 100, sta: 100, mp: 100, mmp: 100,
+      ico: '🧍', class: 'Survivor', charName: 'Hero', townName: 'Camp Horizon', townLvl: 1,
       inv: {
         wood: 25, stone: 15, fiber: 15, herb: 8, berry: 10, torch: 2,
         stone_axe: 1, shortbow: 1, raw_meat: 5, cooked_meat: 3, gold_coins: 1000
@@ -2431,7 +2834,8 @@ export default function SurvivalGame() {
         chest: 'leather_vest',
         legs: 'leather_trousers',
         feet: 'leather_boots',
-        ring: null
+        ring: null,
+        back: null
       },
       weapon: 'fists',
       hotbar: ['torch', 'campfire', 'workbench', 'forge', 'stone_axe', 'iron_sword', 'shortbow', 'fishing_rod'],
@@ -2443,9 +2847,23 @@ export default function SurvivalGame() {
         woodcutting: { lvl: 1, xp: 0, xpNext: 100 },
         combat: { lvl: 1, xp: 0, xpNext: 100 },
         alchemy: { lvl: 1, xp: 0, xpNext: 100 },
-        hunting: { lvl: 1, xp: 0, xpNext: 100 }
+        hunting: { lvl: 1, xp: 0, xpNext: 100 },
+        smithing: { lvl: 1, xp: 0, xpNext: 100 },
+        farming: { lvl: 1, xp: 0, xpNext: 100 },
+        building: { lvl: 1, xp: 0, xpNext: 100 }
       },
-      discoveredChunks: {}
+      discoveredChunks: {},
+      guildTokens: 0,
+      activeQuests: {},
+      activeQuestsProgress: {},
+      masteries: {
+        adrenaline: 0,
+        double_harvest: 0,
+        lucky_miner: 0,
+        toughened_hide: 0,
+        vampiric_strikes: 0,
+        sages_wisdom: 0
+      }
     };
 
     const world: number[][] = [];
@@ -2467,10 +2885,11 @@ export default function SurvivalGame() {
         const M = zoneMaps[mi];
         const rng = mkRng(M.s + mi * 7919 + currentSeed);
         const ox = zc * ZW, oy = zr * ZH;
+        let spawnedNPCInZone = false;
 
-        const isTownZone = (zc === 1 && zr === 0) || (zc === 4 && zr === 4);
+        const isTownZone = (zc === 1 && zr === 0) || (zc === 4 && zr === 4) || (zc === 2 && zr === 6) || (zc === 7 && zr === 2);
         const isBanditZone = (zc === 2 && zr === 1) || (zc === 5 && zr === 3) || (zc === 6 && zr === 5);
-        const isCaveZone = (zc === 0 && zr === 1) || (zc === 3 && zr === 3) || (zc === 5 && zr === 4);
+        const isCaveZone = (zc === 0 && zr === 1) || (zc === 3 && zr === 3) || (zc === 5 && zr === 4) || (zc === 1 && zr === 5) || (zc === 6 && zr === 2) || (zc === 4 && zr === 7);
 
         for (let ly = 0; ly < ZH; ly++) {
           if (!world[oy + ly]) world[oy + ly] = [];
@@ -2495,40 +2914,104 @@ export default function SurvivalGame() {
               const randVal = rng();
               const tileType = world[wy][wx];
               
+              // Procedural friendly NPC Spawning (At most 1 per zone, rare chance on main ground)
+              if (!spawnedNPCInZone && (tileType === tileM.m || tileType === tileM.f) && lx > 6 && lx < ZW - 6 && ly > 6 && ly < ZH - 6) {
+                if (randVal < 0.0003) {
+                  let npcType = 'tame_dog';
+                  let npcIco = '🐕';
+                  
+                  const allowed = ['tame_dog', 'lost_explorer'];
+                  if (tileM.n.includes('Enchanted') || tileM.n.includes('Forest')) {
+                    allowed.push('elven_druid');
+                  }
+                  
+                  const chosenIdx = Math.floor(rng() * allowed.length);
+                  npcType = allowed[chosenIdx];
+                  
+                  if (npcType === 'tame_dog') npcIco = '🐕';
+                  else if (npcType === 'lost_explorer') npcIco = '🧭';
+                  else if (npcType === 'elven_druid') npcIco = '🧝‍♀️';
+                  
+                  objs.push({ type: npcType, tx: wx, ty: wy, hp: 999, mhp: 999, ico: npcIco });
+                  spawnedNPCInZone = true;
+                }
+              }
+              
               if (tileType === tileM.m || tileType === tileM.f) {
                 // Spawn Trees based on Biome (4.5x Spawn Rate)
                 if (randVal < tileM.wf * 4.5 * (genConfigRef.current.treeDensity ?? 1.0)) {
                   let treeIco = '🌲';
                   let treeHp = 3;
                   let treeSubtype = 'oak';
+                  const subRand = rng();
                   
                   if (tileM.n.includes('Desert')) {
                     treeIco = '🌵';
                     treeSubtype = 'cactus';
                     treeHp = 2;
                   } else if (tileM.n.includes('Frozen') || tileM.n.includes('Tundra')) {
-                    treeIco = '❄️';
-                    treeSubtype = 'snowpine';
-                    treeHp = 4;
+                    if (subRand < 0.3) {
+                      treeIco = '🌲';
+                      treeSubtype = 'redwood';
+                      treeHp = 8;
+                    } else {
+                      treeIco = '❄️';
+                      treeSubtype = 'snowpine';
+                      treeHp = 4;
+                    }
                   } else if (tileM.n.includes('Swamp')) {
-                    treeIco = '🌴';
-                    treeSubtype = 'willow';
-                    treeHp = 3;
+                    if (subRand < 0.3) {
+                      treeIco = '🎋';
+                      treeSubtype = 'shadowwood';
+                      treeHp = 4;
+                    } else {
+                      treeIco = '🌴';
+                      treeSubtype = 'willow';
+                      treeHp = 3;
+                    }
                   } else if (tileM.n.includes('Scorched') || tileM.n.includes('Volcanic')) {
                     treeIco = '🪵';
                     treeSubtype = 'dead';
                     treeHp = 2;
                   } else if (tileM.n.includes('Enchanted')) {
-                    treeIco = '🌸';
-                    treeSubtype = 'blossom';
-                    treeHp = 4;
+                    if (subRand < 0.35) {
+                      treeIco = '🍄';
+                      treeSubtype = 'glowshroom';
+                      treeHp = 3;
+                    } else {
+                      treeIco = '🌸';
+                      treeSubtype = 'blossom';
+                      treeHp = 4;
+                    }
                   } else if (tileM.n.includes('Celestial')) {
-                    treeIco = '🌌';
-                    treeSubtype = 'cosmic';
-                    treeHp = 5;
+                    if (subRand < 0.3) {
+                      treeIco = '🎋';
+                      treeSubtype = 'shadowwood';
+                      treeHp = 4;
+                    } else {
+                      treeIco = '🌌';
+                      treeSubtype = 'cosmic';
+                      treeHp = 5;
+                    }
                   } else {
-                    treeIco = '🌳';
-                    treeSubtype = 'birch';
+                    // Forest, Plains, etc.
+                    if (subRand < 0.15) {
+                      treeIco = '🍁';
+                      treeSubtype = 'maple';
+                      treeHp = 4;
+                    } else if (subRand < 0.3) {
+                      treeIco = '🍎';
+                      treeSubtype = 'apple';
+                      treeHp = 3;
+                    } else if (subRand < 0.7) {
+                      treeIco = '🌳';
+                      treeSubtype = 'birch';
+                      treeHp = 3;
+                    } else {
+                      treeIco = '🌲';
+                      treeSubtype = 'oak';
+                      treeHp = 3;
+                    }
                   }
                   
                   objs.push({ type: 'tree', tx: wx, ty: wy, hp: treeHp, mhp: treeHp, ico: treeIco, subtype: treeSubtype });
@@ -2700,6 +3183,8 @@ export default function SurvivalGame() {
           objs.push({ type: 'town_house', tx: cx + 5, ty: cy - 5, ico: '🏠', hp: 999 });
           objs.push({ type: 'town_house', tx: cx - 5, ty: cy + 5, ico: '🏡', hp: 999 });
           objs.push({ type: 'town_house', tx: cx + 5, ty: cy + 5, ico: '🏰', hp: 999 });
+          objs.push({ type: 'tavern_bard', tx: cx, ty: cy + 2, hp: 999, mhp: 999, ico: '🪕' });
+          objs.push({ type: 'resource_trader', tx: cx - 2, ty: cy + 2, hp: 999, mhp: 999, ico: '🤝' });
         }
 
         if (isBanditZone) {
@@ -2740,6 +3225,28 @@ export default function SurvivalGame() {
       }
     }
 
+    // Spawn a basic starting hut for shelter at (40, 37) (above player's spawn at 40,40)
+    const startTx = 40;
+    const startTy = 37;
+    // Clear any existing procedural obstacle on the path/location
+    for (let i = objs.length - 1; i >= 0; i--) {
+      const o = objs[i];
+      if (o.tx >= 38 && o.tx <= 42 && o.ty >= 36 && o.ty <= 41) {
+        objs.splice(i, 1);
+      }
+    }
+    // Push the basic hut
+    objs.push({
+      type: 'settler_shelter',
+      tx: startTx,
+      ty: startTy,
+      hp: 150,
+      mhp: 150,
+      ico: '🛖',
+      n: 'Basic Starting Hut',
+      owner: 'player'
+    });
+
     const newState = {
       pl: initialPl,
       world,
@@ -2754,7 +3261,15 @@ export default function SurvivalGame() {
       waveNum: 0,
       waveTimer: 300,
       waveActive: false,
-      cam: { x: initialPl.x - window.innerWidth / 2, y: initialPl.y - window.innerHeight / 2 },
+      weather: {
+        type: 'clear',
+        timer: 4500,
+        label: 'Clear Skies',
+        icon: '☀️',
+        threat: 'None',
+        desc: 'Perfect survival conditions. Standard movement and regeneration.'
+      },
+      cam: { x: initialPl.x - (window.innerWidth / gameZoomRef.current) / 2, y: initialPl.y - (window.innerHeight / gameZoomRef.current) / 2 },
       camShake: 0,
       zoneMaps,
       worldSeed: currentSeed
@@ -2778,6 +3293,49 @@ export default function SurvivalGame() {
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, [initGame]);
+
+  // Persistent Hotbar Keybindings: 1-8 for swapping and binding items
+  useEffect(() => {
+    const handleHotbarHotkeys = (e: KeyboardEvent) => {
+      // Prevent running hotkeys if typing in inputs or textarea
+      const target = e.target as HTMLElement;
+      if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      // Check if key is 1-8
+      if (e.key >= '1' && e.key <= '8') {
+        const slotIdx = parseInt(e.key, 10) - 1;
+
+        // BINDING MECHANISM:
+        // If inventory modal is open, allow binding the hovered or selected item to this slot
+        if (showInv) {
+          const itemToBind = hoveredItem || selectedInvItem;
+          if (itemToBind && itemToBind !== 'fists') {
+            e.preventDefault();
+            assignToHotbar(itemToBind, slotIdx);
+            return;
+          }
+        }
+
+        // SWAPPING/EQUIPPING MECHANISM:
+        // Select slot or use the item in it
+        e.preventDefault();
+        handleHotbarClick(slotIdx);
+      }
+
+      // Toggle HUD visibility
+      if (e.key === 'h' || e.key === 'H') {
+        e.preventDefault();
+        setIsHUDHidden(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleHotbarHotkeys);
+    return () => {
+      window.removeEventListener('keydown', handleHotbarHotkeys);
+    };
+  }, [showInv, hoveredItem, selectedInvItem, hotSlot, gameState]);
 
   // Handle Resize
   useEffect(() => {
@@ -2848,18 +3406,22 @@ export default function SurvivalGame() {
 
         for (let cy = 0; cy < chunkCount; cy++) {
           for (let cx = 0; cx < chunkCount; cx++) {
-            const isDiscovered = revealAll || (s.pl.discoveredChunks && s.pl.discoveredChunks[`${cx}_${cy}`]);
+            // Check chunk discovery (each chunk is 16x16 tiles)
+            const chunkX = Math.floor((cx / chunkCount) * (WW / 10));
+            const chunkY = Math.floor((cy / chunkCount) * (WH / 10));
+            const isDiscovered = revealAll || (s.pl.discoveredChunks && s.pl.discoveredChunks[`${chunkX}_${chunkY}`]);
             
+            const ty = Math.floor((cy / chunkCount) * WH);
+            const tx = Math.floor((cx / chunkCount) * WW);
+            const tile = s.world[ty]?.[tx] ?? 0;
+            const tc = TC[tile] || TC[0];
+
             if (isDiscovered) {
-              const ty = cy * 10 + 5;
-              const tx = cx * 10 + 5;
-              const tile = s.world[ty]?.[tx] ?? 0;
-              const tc = TC[tile] || TC[0];
               mctx.fillStyle = tc[0];
             } else {
-              mctx.fillStyle = '#0f172a';
+              mctx.fillStyle = tc[2]; // Render beautiful biome dark fog of war!
             }
-            mctx.fillRect(cx * cellSize, cy * cellSize, cellSize, cellSize);
+            mctx.fillRect(cx * cellSize, cy * cellSize, cellSize + 0.5, cellSize + 0.5);
 
             if (cx % 8 === 0 || cy % 8 === 0) {
               mctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
@@ -2869,12 +3431,14 @@ export default function SurvivalGame() {
           }
         }
 
+        // Highlight the player's active zone
         const currentZoneC = Math.floor(ptx / ZW);
         const currentZoneR = Math.floor(pty / ZH);
         mctx.strokeStyle = 'rgba(34, 211, 238, 0.4)';
         mctx.lineWidth = 1.5;
         mctx.strokeRect(currentZoneC * 8 * cellSize, currentZoneR * 8 * cellSize, 8 * cellSize, 8 * cellSize);
 
+        // Player icon on world minimap
         const px = (s.pl.x / (WW * TZ)) * canvas.width;
         const py = (s.pl.y / (WH * TZ)) * canvas.height;
 
@@ -2891,6 +3455,76 @@ export default function SurvivalGame() {
         mctx.strokeStyle = '#ffffff';
         mctx.lineWidth = 0.75;
         mctx.stroke();
+
+        // Draw Waypoint on World minimap if active
+        if (minimapWaypointRef.current) {
+          const wp = minimapWaypointRef.current;
+          const wpx = (wp.tx / WW) * canvas.width;
+          const wpy = (wp.ty / WH) * canvas.height;
+          const wpPulse = 1 + Math.sin(s.ticks * 0.15) * 0.4;
+
+          mctx.fillStyle = 'rgba(34, 211, 238, 0.4)';
+          mctx.beginPath();
+          mctx.arc(wpx, wpy, 6 * wpPulse, 0, Math.PI * 2);
+          mctx.fill();
+
+          mctx.fillStyle = '#22d3ee';
+          mctx.beginPath();
+          mctx.arc(wpx, wpy, 2.5, 0, Math.PI * 2);
+          mctx.fill();
+          mctx.strokeStyle = '#ffffff';
+          mctx.lineWidth = 0.75;
+          mctx.stroke();
+        }
+
+        // Draw Cave Entrances on World Minimap Scan
+        const caveZones = [
+          { zc: 0, zr: 1 },
+          { zc: 3, zr: 3 },
+          { zc: 5, zr: 4 },
+          { zc: 1, zr: 5 },
+          { zc: 6, zr: 2 },
+          { zc: 4, zr: 7 },
+        ];
+        for (const cz of caveZones) {
+          const etx = cz.zc * ZW + 30;
+          const ety = cz.zr * ZH + 30;
+          const cx = (etx / WW) * canvas.width;
+          const cy = (ety / WH) * canvas.height;
+          
+          const cpulse = 1 + Math.sin(s.ticks * 0.15 + cz.zc) * 0.4;
+          mctx.fillStyle = 'rgba(236, 72, 153, 0.4)';
+          mctx.beginPath();
+          mctx.arc(cx, cy, 3 * cpulse, 0, Math.PI * 2);
+          mctx.fill();
+          
+          mctx.fillStyle = '#ec4899';
+          mctx.beginPath();
+          mctx.arc(cx, cy, 1.5, 0, Math.PI * 2);
+          mctx.fill();
+        }
+
+        // Draw Shelters on World Minimap Scan
+        for (const o of s.objs) {
+          if (o.type === 'shelter' || o.type === 'settler_shelter') {
+            const sx = (o.tx / WW) * canvas.width;
+            const sy = (o.ty / WH) * canvas.height;
+
+            const spulse = 1 + Math.sin(s.ticks * 0.1) * 0.3;
+            mctx.fillStyle = 'rgba(234, 179, 8, 0.4)';
+            mctx.beginPath();
+            mctx.arc(sx, sy, 5 * spulse, 0, Math.PI * 2);
+            mctx.fill();
+
+            mctx.fillStyle = '#eab308';
+            mctx.beginPath();
+            mctx.arc(sx, sy, 2.5, 0, Math.PI * 2);
+            mctx.fill();
+            mctx.strokeStyle = '#ffffff';
+            mctx.lineWidth = 0.75;
+            mctx.stroke();
+          }
+        }
 
       } else {
         const range = Math.round(18 / zoom);
@@ -2911,16 +3545,15 @@ export default function SurvivalGame() {
 
             if (tx >= 0 && tx < WW && ty >= 0 && ty < WH) {
               const isDiscovered = revealAll || (s.pl.discoveredChunks && s.pl.discoveredChunks[`${cx}_${cy}`]);
-              
+              const tile = s.world[ty][tx];
+              const tc = TC[tile] || TC[0];
+
               if (isDiscovered) {
-                const tile = s.world[ty][tx];
-                const tc = TC[tile] || TC[0];
                 mctx.fillStyle = tc[0];
-                mctx.fillRect(canvasX, canvasY, tileSize + 0.5, tileSize + 0.5);
               } else {
-                mctx.fillStyle = '#090d16';
-                mctx.fillRect(canvasX, canvasY, tileSize + 0.5, tileSize + 0.5);
+                mctx.fillStyle = tc[2]; // Procedural map layout dark fog of war!
               }
+              mctx.fillRect(canvasX, canvasY, tileSize + 0.5, tileSize + 0.5);
             } else {
               mctx.fillStyle = '#020408';
               mctx.fillRect(canvasX, canvasY, tileSize + 0.5, tileSize + 0.5);
@@ -2928,6 +3561,7 @@ export default function SurvivalGame() {
           }
         }
 
+        // Draw Objects on Local Minimap
         for (const o of s.objs) {
           const dx = o.tx - ptx;
           const dy = o.ty - pty;
@@ -2935,21 +3569,79 @@ export default function SurvivalGame() {
             const canvasX = (dx + range) * tileSize + tileSize / 2;
             const canvasY = (dy + range) * tileSize + tileSize / 2;
 
-            if (o.type === 'campfire' || o.type === 'workbench' || o.type === 'forge' || o.type === 'shelter' || o.type === 'magic_altar') {
+            if (o.type === 'shelter' || o.type === 'settler_shelter') {
+              const spulse = 1 + Math.sin(s.ticks * 0.1) * 0.3;
+              mctx.fillStyle = 'rgba(234, 179, 8, 0.4)';
+              mctx.beginPath();
+              mctx.arc(canvasX, canvasY, 6 * spulse, 0, Math.PI * 2);
+              mctx.fill();
+
+              mctx.fillStyle = '#eab308';
+              mctx.beginPath();
+              mctx.arc(canvasX, canvasY, 3.5, 0, Math.PI * 2);
+              mctx.fill();
+              mctx.strokeStyle = '#ffffff';
+              mctx.lineWidth = 1;
+              mctx.stroke();
+            } else if (o.type === 'campfire' || o.type === 'workbench' || o.type === 'forge' || o.type === 'magic_altar') {
               mctx.fillStyle = '#f97316';
               mctx.beginPath();
               mctx.arc(canvasX, canvasY, 2.5, 0, Math.PI * 2);
               mctx.fill();
             } else if (o.type === 'rock') {
-              mctx.fillStyle = '#94a3b8';
+              let rockCol = '#94a3b8';
+              if (o.subtype === 'copper') rockCol = '#f97316';
+              else if (o.subtype === 'iron') rockCol = '#818cf8';
+              else if (o.subtype === 'coal') rockCol = '#4b5563';
+              else if (o.subtype === 'gold') rockCol = '#facc15';
+              else if (o.subtype === 'mithril') rockCol = '#22d3ee';
+              else if (o.subtype === 'sulfur') rockCol = '#fbbf24';
+              else if (o.subtype === 'mana_crystal') rockCol = '#c084fc';
+              else if (o.subtype === 'void_crystal' || o.subtype === 'crystal') rockCol = '#ec4899';
+              else if (o.subtype === 'celestial') rockCol = '#38bdf8';
+              
+              mctx.fillStyle = rockCol;
               mctx.beginPath();
-              mctx.arc(canvasX, canvasY, 1.5, 0, Math.PI * 2);
+              mctx.arc(canvasX, canvasY, 2, 0, Math.PI * 2);
               mctx.fill();
+              
+              mctx.strokeStyle = '#000000';
+              mctx.lineWidth = 0.35;
+              mctx.stroke();
             } else if (o.type === 'tree') {
-              mctx.fillStyle = '#15803d';
+              let treeCol = '#15803d';
+              if (o.subtype === 'cactus') treeCol = '#a3e635';
+              else if (o.subtype === 'snowpine') treeCol = '#93c5fd';
+              else if (o.subtype === 'blossom') treeCol = '#f472b6';
+              else if (o.subtype === 'cosmic') treeCol = '#a855f7';
+              
+              mctx.fillStyle = treeCol;
               mctx.beginPath();
-              mctx.arc(canvasX, canvasY, 1.5, 0, Math.PI * 2);
+              mctx.arc(canvasX, canvasY, 2, 0, Math.PI * 2);
               mctx.fill();
+              
+              mctx.strokeStyle = '#000000';
+              mctx.lineWidth = 0.35;
+              mctx.stroke();
+            } else if (o.type === 'drop') {
+              let dropCol = '#f1f5f9';
+              if (o.item === 'wood' || o.item === 'stick') dropCol = '#b45309';
+              else if (o.item === 'stone' || o.item === 'flint') dropCol = '#6b7280';
+              else if (o.item === 'fiber' || o.item === 'cotton') dropCol = '#10b981';
+              else if (o.item === 'berry' || o.item === 'snowberry') dropCol = '#c084fc';
+              else if (o.item === 'mushroom') dropCol = '#f472b6';
+              else if (o.item === 'herb') dropCol = '#34d399';
+              else if (o.item === 'coal') dropCol = '#374151';
+              else if (o.item?.includes('ore')) dropCol = '#f97316';
+              
+              mctx.fillStyle = dropCol;
+              mctx.beginPath();
+              mctx.arc(canvasX, canvasY, 1.3, 0, Math.PI * 2);
+              mctx.fill();
+              
+              mctx.strokeStyle = '#000000';
+              mctx.lineWidth = 0.3;
+              mctx.stroke();
             } else if (o.type === 'portal') {
               const p = 1 + Math.sin(s.ticks * 0.15) * 0.4;
               mctx.fillStyle = 'rgba(168, 85, 247, 0.4)';
@@ -2960,10 +3652,26 @@ export default function SurvivalGame() {
               mctx.beginPath();
               mctx.arc(canvasX, canvasY, 2, 0, Math.PI * 2);
               mctx.fill();
+            } else if (o.type === 'cave_entrance') {
+              const p = 1 + Math.sin(s.ticks * 0.1) * 0.4;
+              mctx.fillStyle = 'rgba(236, 72, 153, 0.4)';
+              mctx.beginPath();
+              mctx.arc(canvasX, canvasY, 5 * p, 0, Math.PI * 2);
+              mctx.fill();
+              mctx.fillStyle = '#ec4899';
+              mctx.beginPath();
+              mctx.arc(canvasX, canvasY, 3, 0, Math.PI * 2);
+              mctx.fill();
+            } else if (o.type === 'cave_exit') {
+              mctx.fillStyle = '#10b981';
+              mctx.beginPath();
+              mctx.arc(canvasX, canvasY, 3, 0, Math.PI * 2);
+              mctx.fill();
             }
           }
         }
 
+        // Draw enemies
         if (s.enemies) {
           for (const e of s.enemies) {
             const etx = Math.floor(e.x / TZ);
@@ -2987,6 +3695,7 @@ export default function SurvivalGame() {
           }
         }
 
+        // Center Player Marker
         const centerX = range * tileSize + tileSize / 2;
         const centerY = range * tileSize + tileSize / 2;
 
@@ -3003,8 +3712,34 @@ export default function SurvivalGame() {
         mctx.strokeStyle = '#ffffff';
         mctx.lineWidth = 1;
         mctx.stroke();
+
+        // Draw Waypoint if active in local mode
+        if (minimapWaypointRef.current) {
+          const wp = minimapWaypointRef.current;
+          const dx = wp.tx - ptx;
+          const dy = wp.ty - pty;
+          if (Math.abs(dx) <= range && Math.abs(dy) <= range) {
+            const canvasX = (dx + range) * tileSize + tileSize / 2;
+            const canvasY = (dy + range) * tileSize + tileSize / 2;
+            const wpPulse = 1 + Math.sin(s.ticks * 0.15) * 0.4;
+
+            mctx.fillStyle = 'rgba(34, 211, 238, 0.4)';
+            mctx.beginPath();
+            mctx.arc(canvasX, canvasY, 6 * wpPulse, 0, Math.PI * 2);
+            mctx.fill();
+
+            mctx.fillStyle = '#22d3ee';
+            mctx.beginPath();
+            mctx.arc(canvasX, canvasY, 3, 0, Math.PI * 2);
+            mctx.fill();
+            mctx.strokeStyle = '#ffffff';
+            mctx.lineWidth = 1;
+            mctx.stroke();
+          }
+        }
       }
 
+      // Draw Scope Crosshair Rings
       mctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
       mctx.lineWidth = 0.5;
       mctx.beginPath();
@@ -3030,6 +3765,160 @@ export default function SurvivalGame() {
         for (let tickCycle = 0; tickCycle < 3; tickCycle++) {
           // --- Update ---
           s.ticks++;
+
+          // --- Update Weather ---
+          if (!s.weather) {
+            s.weather = {
+              type: 'clear',
+              timer: 4500,
+              label: 'Clear Skies',
+              icon: '☀️',
+              threat: 'None',
+              desc: 'Perfect survival conditions. Standard movement and regeneration.'
+            };
+          }
+          const wt = s.weather.type || 'clear';
+          s.weather.timer--;
+
+          // Periodically check if the player moved to an incompatible biome
+          if (s.ticks % 120 === 0) {
+            const bName = getBiomeAtPlayer(s);
+            if (!isWeatherCompatible(s.weather.type, bName)) {
+              const nextWeather = getWeatherForBiome(bName);
+              s.weather = {
+                ...nextWeather,
+                timer: 5000 + Math.floor(Math.random() * 3000)
+              };
+              addLog(`☁️ Climate Shift! Weather became: ${s.weather.label} ${s.weather.icon}`, '#60a5fa');
+              spawnExplosion(s, s.pl.x, s.pl.y, '#60a5fa', 10, 'spark');
+            }
+          }
+
+          if (s.weather.timer <= 0) {
+            const bName = getBiomeAtPlayer(s);
+            const nextWeather = getWeatherForBiome(bName);
+            s.weather = {
+              ...nextWeather,
+              timer: 5000 + Math.floor(Math.random() * 3000)
+            };
+            addLog(`☁️ Weather shifting to: ${s.weather.label} ${s.weather.icon}`, '#60a5fa');
+            spawnExplosion(s, s.pl.x, s.pl.y, '#60a5fa', 10, 'spark');
+          }
+
+          // Update Chrono/Aether Weather Effects in tick cycle
+          if (wt === 'aether_gale') {
+            if (s.weather.windAngle === undefined) {
+              s.weather.windAngle = Math.random() * Math.PI * 2;
+            }
+            // Slowly fluctuate the wind angle
+            s.weather.windAngle += Math.sin(s.ticks * 0.002) * 0.02;
+            
+            // Periodically spawn beautiful wind particles blowing in the direction of the wind
+            if (s.ticks % 3 === 0) {
+              const spawnAngle = s.weather.windAngle + Math.PI; // blow from opposite side
+              const borderDist = 400;
+              s.parts.push({
+                x: s.pl.x + Math.cos(spawnAngle + (Math.random() * 0.8 - 0.4)) * borderDist,
+                y: s.pl.y + Math.sin(spawnAngle + (Math.random() * 0.8 - 0.4)) * borderDist,
+                vx: Math.cos(s.weather.windAngle) * 6.5,
+                vy: Math.sin(s.weather.windAngle) * 6.5,
+                life: 60,
+                col: '#a78bfa',
+                sz: 1.5 + Math.random() * 2
+              });
+            }
+          }
+          
+          if (wt === 'grav_rift') {
+            // Gravity well logic
+            if (!s.weather.gravityWell || s.weather.gravityWellTimer <= 0) {
+              const angle = Math.random() * Math.PI * 2;
+              const dist = 140 + Math.random() * 150;
+              s.weather.gravityWell = {
+                x: s.pl.x + Math.cos(angle) * dist,
+                y: s.pl.y + Math.sin(angle) * dist,
+                radius: 150,
+                pullForce: 1.4,
+                damageRadius: 35,
+                ticks: 0,
+              };
+              s.weather.gravityWellTimer = 360; // 6 seconds duration
+              addLog("🌀 An unstable Gravitational Rift has opened nearby!", "#c084fc");
+            }
+            
+            s.weather.gravityWellTimer--;
+            const well = s.weather.gravityWell;
+            if (well) {
+              well.ticks++;
+              // Draw swirling spiral particles inside the gravity well
+              if (s.ticks % 2 === 0) {
+                const pAng = Math.random() * Math.PI * 2;
+                const pDist = well.radius * (0.2 + Math.random() * 0.8);
+                s.parts.push({
+                  x: well.x + Math.cos(pAng) * pDist,
+                  y: well.y + Math.sin(pAng) * pDist,
+                  vx: -Math.cos(pAng) * 2.2 + Math.sin(pAng) * 1.5, // spiraling velocity
+                  vy: -Math.sin(pAng) * 2.2 - Math.cos(pAng) * 1.5,
+                  life: 35,
+                  col: '#d8b4fe',
+                  sz: 2.5
+                });
+              }
+
+              // Pull player
+              const dPl = Math.hypot(s.pl.x - well.x, s.pl.y - well.y);
+              if (dPl < well.radius) {
+                const pullAng = Math.atan2(well.y - s.pl.y, well.x - s.pl.x);
+                const pullAmount = (1 - dPl / well.radius) * well.pullForce;
+                s.pl.x += Math.cos(pullAng) * pullAmount;
+                s.pl.y += Math.sin(pullAng) * pullAmount;
+                
+                if (dPl < well.damageRadius) {
+                  if (s.ticks % 30 === 0) {
+                    s.pl.hp = Math.max(0, s.pl.hp - 3);
+                    s.pl.mp = Math.max(0, s.pl.mp - 4);
+                    addLog("⚠️ Crushed by High Gravity! -3 HP, -4 Mana", "#a78bfa");
+                    spawnExplosion(s, s.pl.x, s.pl.y, '#c084fc', 8, 'spark');
+                  }
+                }
+              }
+
+              // Pull enemies
+              for (const e of s.enemies) {
+                const dE = Math.hypot(e.x - well.x, e.y - well.y);
+                if (dE < well.radius) {
+                  const pullAng = Math.atan2(well.y - e.y, well.x - e.x);
+                  const pullAmount = (1 - dE / well.radius) * well.pullForce * 1.2;
+                  e.x += Math.cos(pullAng) * pullAmount;
+                  e.y += Math.sin(pullAng) * pullAmount;
+
+                  if (dE < well.damageRadius && s.ticks % 30 === 0) {
+                    e.hp -= 8;
+                    spawnExplosion(s, e.x, e.y, '#c084fc', 6, 'spark');
+                  }
+                }
+              }
+            }
+          } else {
+            s.weather.gravityWell = null;
+          }
+
+          // Random lightning strike in storms (approx. 0.15% chance per tick = once per ~11 seconds)
+          if (wt === 'storm' && Math.random() < 0.0015) {
+            triggerLightningStrike(s);
+          }
+
+          // Update lightning flash ticks & strikes
+          if (s.lightningFlash && s.lightningFlash > 0) {
+            s.lightningFlash--;
+          }
+          if (s.lightningStrike) {
+            s.lightningStrike.duration--;
+            if (s.lightningStrike.duration <= 0) {
+              s.lightningStrike = null;
+            }
+          }
+
         s.dayTime = (s.ticks % 18000) / 18000;
         if (s.ticks % 18000 === 0) s.day++;
 
@@ -3142,6 +4031,12 @@ export default function SurvivalGame() {
         autosaveGame();
       }
 
+      const isTileBlocked = (stateObj: any, tx: number, ty: number) => {
+        if (ty < 0 || ty >= WH || tx < 0 || tx >= WW) return true;
+        if (stateObj.world[ty][tx] === TW) return true;
+        return stateObj.objs.some((obj: any) => obj.tx === tx && obj.ty === ty && obj.type === 'stone_wall');
+      };
+
       // Player Grid-Based Movement
       let dx = 0, dy = 0;
       if (keysRef.current['w'] || keysRef.current['ArrowUp'] || keysRef.current['W']) dy -= 1;
@@ -3155,6 +4050,112 @@ export default function SurvivalGame() {
           dx = joyRef.current.x > 0 ? 1 : -1;
         } else {
           dy = joyRef.current.y > 0 ? 1 : -1;
+        }
+      }
+
+      // Reset touch pathing on manual keyboard or joystick input
+      if (dx !== 0 || dy !== 0) {
+        s.pl.touchTarget = null;
+      }
+
+      // Touch navigation auto-walk logic
+      if (dx === 0 && dy === 0 && s.pl.touchTarget) {
+        const currentTx = Math.floor(s.pl.x / TZ);
+        const currentTy = Math.floor(s.pl.y / TZ);
+        const ttx = s.pl.touchTarget.tx;
+        const tty = s.pl.touchTarget.ty;
+
+        // Verify action distance/proximity
+        let reachedActionProximity = false;
+        const act = s.pl.touchTarget.action;
+
+        if (act) {
+          if (act.type === 'attack') {
+            // Find target enemy
+            const targetEnemy = s.enemies.find((e: any) => e.id === act.targetId);
+            if (!targetEnemy || targetEnemy.hp <= 0) {
+              s.pl.touchTarget = null; // target died/vanished
+            } else {
+              // Update target coords to follow enemy
+              s.pl.touchTarget.tx = Math.floor(targetEnemy.x / TZ);
+              s.pl.touchTarget.ty = Math.floor(targetEnemy.y / TZ);
+              const pxDist = dist(s.pl, targetEnemy);
+              const wp = getWeaponStats(s, s.pl.weapon);
+              if (pxDist <= wp.rng) {
+                reachedActionProximity = true;
+              }
+            }
+          } else if (act.type === 'gather_or_interact') {
+            const distTiles = Math.abs(ttx - currentTx) + Math.abs(tty - currentTy);
+            if (distTiles <= 4) {
+              reachedActionProximity = true;
+            }
+          }
+        }
+
+        if (currentTx === ttx && currentTy === tty) {
+          reachedActionProximity = true;
+        }
+
+        if (reachedActionProximity) {
+          s.pl.touchTarget = null;
+          if (act) {
+            if (act.type === 'attack') {
+              handleAttack();
+            } else if (act.type === 'gather_or_interact') {
+              executeInteractAtTile(act.tx, act.ty);
+            }
+          }
+        } else if (s.pl.touchTarget) {
+          // Move towards target tile
+          const diffX = ttx - currentTx;
+          const diffY = tty - currentTy;
+          
+          let stepDx = 0;
+          let stepDy = 0;
+
+          if (Math.abs(diffX) >= Math.abs(diffY)) {
+            stepDx = Math.sign(diffX);
+            // Check if walkable
+            const nextTx = currentTx + stepDx;
+            const nextTy = currentTy;
+            if (nextTx >= 0 && nextTx < WW && nextTy >= 0 && nextTy < WH && !isTileBlocked(s, nextTx, nextTy)) {
+              dx = stepDx;
+              dy = 0;
+            } else {
+              // Try Y
+              stepDy = Math.sign(diffY);
+              const altTx = currentTx;
+              const altTy = currentTy + stepDy;
+              if (altTx >= 0 && altTx < WW && altTy >= 0 && altTy < WH && !isTileBlocked(s, altTx, altTy)) {
+                dx = 0;
+                dy = stepDy;
+              } else {
+                // Blocked entirely
+                s.pl.touchTarget = null;
+              }
+            }
+          } else {
+            stepDy = Math.sign(diffY);
+            const nextTx = currentTx;
+            const nextTy = currentTy + stepDy;
+            if (nextTx >= 0 && nextTx < WW && nextTy >= 0 && nextTy < WH && !isTileBlocked(s, nextTx, nextTy)) {
+              dx = 0;
+              dy = stepDy;
+            } else {
+              // Try X
+              stepDx = Math.sign(diffX);
+              const altTx = currentTx + stepDx;
+              const altTy = currentTy;
+              if (altTx >= 0 && altTx < WW && altTy >= 0 && altTy < WH && !isTileBlocked(s, altTx, altTy)) {
+                dx = stepDx;
+                dy = 0;
+              } else {
+                // Blocked entirely
+                s.pl.touchTarget = null;
+              }
+            }
+          }
         }
       }
 
@@ -3294,7 +4295,7 @@ export default function SurvivalGame() {
           const targetTy = currentTy + dy;
 
           if (targetTx >= 0 && targetTx < WW && targetTy >= 0 && targetTy < WH) {
-            if (s.world[targetTy][targetTx] !== TW) {
+            if (!isTileBlocked(s, targetTx, targetTy)) {
               s.pl.targetX = targetTx * TZ + TZ / 2;
               s.pl.targetY = targetTy * TZ + TZ / 2;
               s.pl.isGridMoving = true;
@@ -3308,24 +4309,77 @@ export default function SurvivalGame() {
         isSprinting = true;
       }
 
+      // Weather influence on depletions and health
+      let weatherHuMod = 0;
+      let weatherThMod = 0;
+      let weatherHpDrain = 0;
+      let weatherStaDrain = 0;
+
+      if (wt === 'rain') {
+        // Rain quenches thirst naturally!
+        weatherThMod = -0.12; 
+      } else if (wt === 'storm') {
+        weatherThMod = -0.05;
+        weatherStaDrain = 0.2; 
+      } else if (wt === 'blizzard') {
+        // Freezing blizzard cold decreases health and stamina faster
+        const nearWarmth = isNearStructure('campfire') || isNearStructure('camp_fire') || isNearStructure('shelter') || isNearStructure('water_reservoir') || isNearStructure('water_pump');
+        if (!nearWarmth) {
+          weatherHpDrain = 1.5; 
+          weatherStaDrain = 0.8; 
+        }
+      } else if (wt === 'sandstorm') {
+        weatherThMod = 0.35; 
+        weatherStaDrain = 0.5;
+        s.pl.slowTicks = Math.max(s.pl.slowTicks || 0, 10); 
+      } else if (wt === 'acid_rain') {
+        const isArmored = s.pl.equip?.head && s.pl.equip?.chest && s.pl.equip?.legs && s.pl.equip?.feet;
+        const isSheltered = isNearStructure('shelter');
+        if (!isSheltered) {
+          weatherHpDrain = isArmored ? 0.3 : 1.0;
+        }
+      } else if (wt === 'heatwave') {
+        weatherThMod = 0.45; 
+      }
+
       // Handle stamina consumption and regeneration
       const nearShelter = isNearStructure('shelter');
       if (isSprinting) {
-        s.pl.sta = Math.max(0, (s.pl.sta || 100) - 0.5);
+        s.pl.sta = Math.max(0, (s.pl.sta || 100) - (0.5 + weatherStaDrain));
       } else {
-        const staRegen = nearShelter ? 1.5 : 0.3; // Much faster stamina regen near a shelter
+        const staRegen = nearShelter ? 1.5 : Math.max(0.05, 0.3 - weatherStaDrain); 
         s.pl.sta = Math.min(100, (s.pl.sta || 100) + staRegen);
       }
 
       // Handle hunger and thirst depletion (once per game second / 60 ticks)
       if (s.ticks % 60 === 0) {
         // Slowly deplete hunger (0.15 per second normally, 0.03 if near shelter)
-        const huDepletion = nearShelter ? 0.03 : 0.15;
+        const huDepletion = nearShelter ? 0.03 : (0.15 + weatherHuMod);
         s.pl.hu = Math.max(0, (s.pl.hu ?? 100) - huDepletion);
         
         // Slowly deplete thirst (0.22 per second normally, 0.05 if near shelter, 0.45 if sprinting)
-        const thDepletion = isSprinting ? 0.45 : (nearShelter ? 0.05 : 0.22);
+        const thDepletion = isSprinting ? (0.45 + weatherThMod) : (nearShelter ? 0.05 : (0.22 + weatherThMod));
         s.pl.th = Math.max(0, (s.pl.th ?? 100) - thDepletion);
+
+        // If rain is falling, player naturally drinks rainwater!
+        if (wt === 'rain' && s.pl.th < 100) {
+          s.pl.th = Math.min(100, s.pl.th + 1.2);
+        }
+
+        // Apply weather health damage
+        if (weatherHpDrain > 0) {
+          s.pl.hp = Math.max(0, s.pl.hp - weatherHpDrain);
+          
+          if (s.ticks % 180 === 0) {
+            if (wt === 'blizzard') {
+              addLog("🥶 Freezing Blizzard! Stand near a Campfire 🔥 or find a Shelter!", "#ef4444");
+              spawnExplosion(s, s.pl.x, s.pl.y, '#38bdf8', 4, 'spark');
+            } else if (wt === 'acid_rain') {
+              addLog("⚠️ Acid rain is corroding your skin! Armor absorbs some of it, but shelter is recommended!", "#f43f5e");
+              spawnExplosion(s, s.pl.x, s.pl.y, '#a3e635', 4, 'spark');
+            }
+          }
+        }
 
         // Shelter healing & resting effects
         if (nearShelter) {
@@ -3375,10 +4429,29 @@ export default function SurvivalGame() {
         if (s.activeSpells?.healingSanctuaryTimer > 0) {
           eventSpeedMult *= 1.25;
         }
+        let adrenalineMult = 1.0;
+        const hpPercent = s.pl.hp / s.pl.mhp;
+        if (hpPercent < 0.40) {
+          const lvl = s.pl.masteries?.adrenaline || 0;
+          if (lvl > 0) {
+            adrenalineMult += lvl * 0.10;
+          }
+        }
         const slowMult = (s.pl.slowTicks && s.pl.slowTicks > 0) ? 0.45 : 1.0;
-        const speed = s.pl.spd * (isSprinting ? 1.7 : 1) * eventSpeedMult * slowMult;
         const diffX = s.pl.targetX - s.pl.x;
         const diffY = s.pl.targetY - s.pl.y;
+        
+        let windMultiplier = 1.0;
+        if (wt === 'aether_gale' && s.weather && s.weather.windAngle !== undefined) {
+          const moveAngle = Math.atan2(diffY, diffX);
+          const dot = Math.cos(moveAngle - s.weather.windAngle);
+          windMultiplier += dot * 0.35; // +35% boost or -35% slow depending on wind alignment!
+        }
+        if (wt === 'chrono_mist') {
+          windMultiplier *= 0.80; // 20% slow in stasis mist
+        }
+        
+        const speed = s.pl.spd * (isSprinting ? 1.7 : 1) * eventSpeedMult * slowMult * adrenalineMult * windMultiplier;
         const d = Math.hypot(diffX, diffY);
 
         if (d <= speed) {
@@ -3437,9 +4510,12 @@ export default function SurvivalGame() {
         }
       }
 
-      // Camera
-      s.cam.x += (s.pl.x - window.innerWidth / 2 - s.cam.x) * 0.1;
-      s.cam.y += (s.pl.y - window.innerHeight / 2 - s.cam.y) * 0.1;
+      // Camera (accounting for game zoom factor)
+      const curZoom = gameZoomRef.current;
+      const targetCamX = s.pl.x - (window.innerWidth / curZoom) / 2;
+      const targetCamY = s.pl.y - (window.innerHeight / curZoom) / 2;
+      s.cam.x += (targetCamX - s.cam.x) * 0.1;
+      s.cam.y += (targetCamY - s.cam.y) * 0.1;
 
       // --- Combat Update ---
       if (s.pl.atkcd > 0) s.pl.atkcd--;
@@ -3509,7 +4585,14 @@ export default function SurvivalGame() {
           continue;
         }
 
-        const spd = e.slowTicks > 0 ? e.spd * 0.5 : e.spd;
+        let spd = e.slowTicks > 0 ? e.spd * 0.5 : e.spd;
+        if (wt === 'chrono_mist') {
+          spd *= 0.75; // 25% slower
+        } else if (wt === 'aether_gale' && s.weather && s.weather.windAngle !== undefined) {
+          const enemyMoveAng = (e.eid === 'deer' || e.eid === 'pheasant' || (e.eid === 'boar' && e.hp >= e.mhp)) ? Math.atan2(e.y - s.pl.y, e.x - s.pl.x) : Math.atan2(s.pl.y - e.y, s.pl.x - e.x);
+          const dot = Math.cos(enemyMoveAng - s.weather.windAngle);
+          spd *= (1.0 + dot * 0.3); // up to +30% boost or -30% slow
+        }
 
         let shouldChase = true;
         let shouldFlee = false;
@@ -3531,7 +4614,10 @@ export default function SurvivalGame() {
         const isPlayerInSameBiome = e.spawnZc === playerZc && e.spawnZr === playerZr;
 
         // Custom aggro ranges: higher for boss/elite/chief types, standard for standard hostiles
-        const aggroRange = (e.eid === 'dragon' || e.eid === 'celestial_guardian' || e.eid === 'orc_chief' || e.eid === 'goblin_chief' || e.eid === 'bandit_chief') ? 320 : 240;
+        let aggroRange = (e.eid === 'dragon' || e.eid === 'celestial_guardian' || e.eid === 'orc_chief' || e.eid === 'goblin_chief' || e.eid === 'bandit_chief' || e.eid === 'chrono_overlord') ? 320 : 240;
+        if (wt === 'chrono_mist') {
+          aggroRange *= 0.55; // 45% reduction in enemy vision range!
+        }
         const isPlayerWithinRange = d < aggroRange;
         const isProvoked = e.hp < e.mhp;
 
@@ -3673,7 +4759,11 @@ export default function SurvivalGame() {
           if (s.activeSpells?.healingSanctuaryTimer > 0) {
             finalDef += 5;
           }
-          const dmg = Math.max(1, e.dmg - finalDef);
+          let dmg = Math.max(1, e.dmg - finalDef);
+          const hideLvl = s.pl.masteries?.toughened_hide || 0;
+          if (hideLvl > 0) {
+            dmg = Math.max(1, dmg - hideLvl);
+          }
           s.pl.hp -= dmg;
           s.camShake = (s.camShake || 0) + 12;
           s.pl.ifr = 40;
@@ -3681,7 +4771,9 @@ export default function SurvivalGame() {
           addLog(`Hit by ${ET[e.eid].n}! -${dmg} HP`, '#f44');
           if (s.pl.hp <= 0) {
             s.pl.hp = 0;
-            setShowDeathScreen(true);
+            if (checkPlayerDeath(s)) {
+              setShowDeathScreen(true);
+            }
           }
         }
         if (e.cd > 0) e.cd--;
@@ -3766,8 +4858,119 @@ export default function SurvivalGame() {
           }
         }
 
+        // Special Companion Roles
+        if (c.role === 'hunter' && bestTarget && c.cd <= 0) {
+          const ox = c.x;
+          const oy = c.y;
+          const ang = Math.atan2(bestTarget.y - oy, bestTarget.x - ox);
+          s.projs.push({
+            x: ox, y: oy,
+            vx: Math.cos(ang) * 12, vy: Math.sin(ang) * 12,
+            dmg: c.dmg, rng: 300, dist: 0,
+            col: '#f59e0b', fx: 'slow', isArrow: true, sz: 5
+          });
+          c.cd = 50; // attack cooldown
+          s.parts.push({ x: ox, y: oy, vx: 0, vy: 0, life: 10, col: '#f59e0b', sz: 6 });
+        }
+        
+        if (c.role === 'gatherer' && s.ticks % 250 === 0) {
+          const items = ['wood', 'stone', 'fiber', 'flint'];
+          const gathered = items[Math.floor(Math.random() * items.length)];
+          s.pl.inv[gathered] = (s.pl.inv[gathered] || 0) + 1;
+          addLog(`🧑‍🌾 ${c.n} gathered 1x ${IT[gathered]?.n || gathered}!`, '#34d399');
+          s.parts.push({ x: c.x, y: c.y, vx: 0, vy: -1, life: 15, col: '#34d399', sz: 6 });
+        }
+
+        if (c.role === 'alchemist' && s.pl.hp < s.pl.mhp * 0.6 && c.scd <= 0) {
+          s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + 20);
+          c.scd = 300; // 10 second heal cooldown
+          addLog(`🧙‍♀️ ${c.n} healed you for +20 HP!`, '#f43f5e');
+          s.parts.push({ x: s.pl.x, y: s.pl.y, vx: 0, vy: 0, life: 20, col: '#f43f5e', sz: 8 });
+        }
+
         if (c.cd > 0) c.cd--;
         if (c.scd > 0) c.scd--;
+      }
+
+      // --- Placed Structure Updates (Sentry Turrets & Watch Towers Sentry Attack) ---
+      if (s.ticks % 35 === 0) {
+        for (const o of s.objs) {
+          if (o.type === 'sentry_turret') {
+            let target = null;
+            let minDist = 220;
+            const ox = o.tx * TZ + TZ / 2;
+            const oy = o.ty * TZ + TZ / 2;
+            for (const e of s.enemies) {
+              const d = Math.hypot(e.x - ox, e.y - oy);
+              if (d < minDist) {
+                minDist = d;
+                target = e;
+              }
+            }
+            if (target) {
+              const ang = Math.atan2(target.y - oy, target.x - ox);
+              s.projs.push({
+                x: ox, y: oy,
+                vx: Math.cos(ang) * 11, vy: Math.sin(ang) * 11,
+                dmg: 35, rng: 220, dist: 0,
+                col: '#10b981', fx: 'slow', isArrow: true, sz: 5
+              });
+              s.parts.push({ x: ox, y: oy, vx: 0, vy: 0, life: 8, col: '#10b981', sz: 6 });
+            }
+          } else if (o.type === 'watch_tower') {
+            let target = null;
+            let minDist = 350;
+            const ox = o.tx * TZ + TZ / 2;
+            const oy = o.ty * TZ + TZ / 2;
+            for (const e of s.enemies) {
+              const d = Math.hypot(e.x - ox, e.y - oy);
+              if (d < minDist) {
+                minDist = d;
+                target = e;
+              }
+            }
+            if (target) {
+              const ang = Math.atan2(target.y - oy, target.x - ox);
+              s.projs.push({
+                x: ox, y: oy,
+                vx: Math.cos(ang) * 16, vy: Math.sin(ang) * 16,
+                dmg: 65, rng: 350, dist: 0,
+                col: '#f59e0b', fx: 'none', isArrow: true, sz: 6
+              });
+              s.parts.push({ x: ox, y: oy, vx: 0, vy: 0, life: 8, col: '#f59e0b', sz: 8 });
+            }
+          }
+        }
+      }
+
+      // --- Town Structures Income and Production Updates ---
+      if (s.ticks % 200 === 0) { // Every 200 ticks (~6-7 seconds)
+        for (const o of s.objs) {
+          const ox = o.tx * TZ + TZ / 2;
+          const oy = o.ty * TZ + TZ / 2;
+          
+          if (o.type === 'settler_shelter') {
+            s.pl.inv.gold_coins = (s.pl.inv.gold_coins || 0) + 2;
+            s.parts.push({ x: ox, y: oy, vx: 0, vy: -1.2, life: 25, col: '#fbbf24', sz: 4 });
+          } else if (o.type === 'town_house') {
+            s.pl.inv.gold_coins = (s.pl.inv.gold_coins || 0) + 6;
+            s.parts.push({ x: ox, y: oy, vx: 0, vy: -1.2, life: 25, col: '#fbbf24', sz: 5 });
+          } else if (o.type === 'town_workshop') {
+            s.pl.inv.iron_bar = (s.pl.inv.iron_bar || 0) + 1;
+            s.parts.push({ x: ox, y: oy, vx: 0, vy: -1.2, life: 25, col: '#a1a1aa', sz: 5 });
+          } else if (o.type === 'storage_depot') {
+            s.pl.inv.wood = (s.pl.inv.wood || 0) + 2;
+            s.pl.inv.stone = (s.pl.inv.stone || 0) + 2;
+            s.pl.inv.fiber = (s.pl.inv.fiber || 0) + 2;
+            s.parts.push({ x: ox, y: oy, vx: 0, vy: -1.2, life: 25, col: '#fb7185', sz: 5 });
+          } else if (o.type === 'merchant_stall') {
+            s.pl.inv.gold_coins = (s.pl.inv.gold_coins || 0) + 5;
+            s.parts.push({ x: ox, y: oy, vx: 0, vy: -1.2, life: 30, col: '#f59e0b', sz: 5 });
+          } else if (o.type === 'farm_plot') {
+            s.pl.inv.berry = (s.pl.inv.berry || 0) + 1;
+            s.parts.push({ x: ox, y: oy, vx: 0, vy: -1.2, life: 25, col: '#10b981', sz: 4 });
+          }
+        }
       }
 
       // Projectiles
@@ -3816,6 +5019,21 @@ export default function SurvivalGame() {
               e.slowTicks = 180;
               spawnExplosion(s, p.x, p.y, '#00e5ff', 12, 'spark');
               spawnExplosion(s, p.x, p.y, '#ffffff', 6, 'pixel');
+            } else if (p.fx === 'time_slow') {
+              // Chrono-Scepter special: Slows down targets heavily and dilates time
+              e.slowTicks = 360; // 6 seconds slow!
+              e.flashTicks = 20;
+              spawnExplosion(s, p.x, p.y, '#fbbf24', 20, 'ring');
+              spawnExplosion(s, p.x, p.y, '#ffffff', 10, 'spark');
+              // Age surrounding targets (dealing localized area damage)
+              for (const other of s.enemies) {
+                if (dist(e, other) < 110) {
+                  other.hp -= Math.round(p.dmg * 0.6);
+                  other.slowTicks = 240;
+                  spawnExplosion(s, other.x, other.y, '#fcd34d', 6, 'pixel');
+                }
+              }
+              addLog("⏳ Time Dilation: Localized space-time dilated!", '#fbbf24');
             } else if (p.fx === 'burn') {
               e.burnTicks = 300;
               spawnExplosion(s, p.x, p.y, '#ff4500', 14, 'pixel');
@@ -3915,7 +5133,9 @@ export default function SurvivalGame() {
               } else {
                 s.pl.hp = Math.max(0, s.pl.hp - hDrain);
                 if (s.pl.hp <= 0 && !showDeathScreen) {
-                  setShowDeathScreen(true);
+                  if (checkPlayerDeath(s)) {
+                    setShowDeathScreen(true);
+                  }
                 }
               }
             } else if (hDrain < 0) {
@@ -4064,6 +5284,11 @@ export default function SurvivalGame() {
       ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
       
       ctx.save();
+      
+      // Apply game zoom
+      const zoom = gameZoomRef.current;
+      ctx.scale(zoom, zoom);
+
       // Apply camera shake if any
       let shakeX = 0;
       let shakeY = 0;
@@ -4078,184 +5303,787 @@ export default function SurvivalGame() {
       // Tiles
       const sx0 = Math.max(0, Math.floor(s.cam.x / TZ) - 1);
       const sy0 = Math.max(0, Math.floor(s.cam.y / TZ) - 1);
-      const ex = Math.min(WW, sx0 + Math.floor(ctx.canvas.width / TZ) + 2);
-      const ey = Math.min(WH, sy0 + Math.floor(ctx.canvas.height / TZ) + 2);
+      const ex = Math.min(WW, sx0 + Math.floor((ctx.canvas.width / zoom) / TZ) + 2);
+      const ey = Math.min(WH, sy0 + Math.floor((ctx.canvas.height / zoom) / TZ) + 2);
 
       for (let y = sy0; y < ey; y++) {
         for (let x = sx0; x < ex; x++) {
           const t = s.world[y][x];
           const tc = TC[t] || TC[0];
-          ctx.fillStyle = (x + y) % 2 === 0 ? tc[0] : tc[1];
-          ctx.fillRect(x * TZ - s.cam.x, y * TZ - s.cam.y, TZ, TZ);
+          const txCoord = x * TZ - s.cam.x;
+          const tyCoord = y * TZ - s.cam.y;
           
-          // Subtle grid lines to elevate styling
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.015)';
+          // Draw base tile checkering
+          ctx.fillStyle = (x + y) % 2 === 0 ? tc[0] : tc[1];
+          ctx.fillRect(txCoord, tyCoord, TZ, TZ);
+          
+          // Subtle grid lines
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.012)';
           ctx.lineWidth = 0.5;
-          ctx.strokeRect(x * TZ - s.cam.x, y * TZ - s.cam.y, TZ, TZ);
+          ctx.strokeRect(txCoord, tyCoord, TZ, TZ);
 
-          // Styled visual accents for ground tiles to upgrade graphics
-          const dx_acc = x * TZ - s.cam.x;
-          const dy_acc = y * TZ - s.cam.y;
-          const hVal = (x * 31 + y * 17) % 100;
-          if (hVal < 15) {
-            ctx.save();
-            if (t === TG) {
-              ctx.strokeStyle = '#22c55e'; // Grass V tuft
-              ctx.lineWidth = 1;
+          // Draw premium micro-textures and shader effects on tiles
+          ctx.save();
+          const pSeed = (x * 37 + y * 13) % 100; // deterministic pseudo-random seed per tile
+
+          if (t === TG) {
+            // --- GRASS BIOME OVERHAUL ---
+            // Draw soft grass blades
+            ctx.strokeStyle = 'rgba(34, 197, 94, 0.35)';
+            ctx.lineWidth = 1;
+            if (pSeed < 30) {
+              const gx = txCoord + 4 + (pSeed % 12);
+              const gy = tyCoord + 6 + (pSeed % 10);
               ctx.beginPath();
-              ctx.moveTo(dx_acc + TZ/2 - 2, dy_acc + TZ/2 + 3);
-              ctx.lineTo(dx_acc + TZ/2, dy_acc + TZ/2 - 2);
-              ctx.lineTo(dx_acc + TZ/2 + 2, dy_acc + TZ/2 + 3);
+              ctx.moveTo(gx, gy + 10);
+              ctx.quadraticCurveTo(gx - 2, gy + 2, gx - 4, gy);
+              ctx.moveTo(gx + 3, gy + 10);
+              ctx.quadraticCurveTo(gx + 4, gy + 3, gx + 6, gy + 1);
               ctx.stroke();
-            } else if (t === TS) {
-              ctx.strokeStyle = '#475569'; // Slate crack
-              ctx.lineWidth = 0.75;
+            }
+            // Tiny wild flowers
+            if (pSeed < 10) {
+              const fx = txCoord + 6 + (pSeed * 2) % 14;
+              const fy = tyCoord + 6 + (pSeed * 3) % 14;
+              ctx.fillStyle = pSeed % 3 === 0 ? '#fbbf24' : pSeed % 3 === 1 ? '#f43f5e' : '#ffffff'; // yellow, rose, white
               ctx.beginPath();
-              ctx.moveTo(dx_acc + 4, dy_acc + TZ/2);
-              ctx.lineTo(dx_acc + TZ - 4, dy_acc + TZ/2);
-              ctx.stroke();
-            } else if (t === TSA) {
-              ctx.strokeStyle = '#d97706'; // Sand wavy ripple
-              ctx.lineWidth = 0.75;
-              ctx.beginPath();
-              ctx.arc(dx_acc + TZ/2, dy_acc + TZ/2 + 2, 4, Math.PI, 0, false);
-              ctx.stroke();
-            } else if (t === TSN) {
-              ctx.fillStyle = '#f8fafc'; // Snowy soft snowflake dot
-              ctx.beginPath();
-              ctx.arc(dx_acc + TZ/2, dy_acc + TZ/2, 1.2, 0, Math.PI * 2);
+              ctx.arc(fx, fy, 1.5, 0, Math.PI * 2);
               ctx.fill();
-            } else if (t === TCR) {
-              ctx.fillStyle = '#c084fc'; // Purple void spec
+              // Tiny flower center
+              ctx.fillStyle = '#fb7185';
               ctx.beginPath();
-              ctx.arc(dx_acc + TZ/2, dy_acc + TZ/2, 1, 0, Math.PI * 2);
+              ctx.arc(fx, fy, 0.5, 0, Math.PI * 2);
               ctx.fill();
             }
-            ctx.restore();
-          }
-
-          // Celestial Realm Glow
-          if (t === TCR) {
-            ctx.fillStyle = `rgba(168, 85, 247, ${0.08 + Math.sin(s.ticks * 0.05 + x + y) * 0.03})`;
-            ctx.fillRect(x * TZ - s.cam.x, y * TZ - s.cam.y, TZ, TZ);
-          } else if (t === TW) {
-            // Draw subtle wave lines
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+          } else if (t === TD) {
+            // --- SOIL BIOME OVERHAUL ---
+            // Small stones
+            if (pSeed < 20) {
+              const sx = txCoord + 5 + (pSeed * 2) % 12;
+              const sy = tyCoord + 5 + (pSeed * 3) % 12;
+              ctx.fillStyle = '#4b5563';
+              ctx.beginPath();
+              ctx.ellipse(sx, sy, 2, 1.2, Math.PI / 4, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            // Dirt crevices / plow-lines
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
             ctx.lineWidth = 1;
             ctx.beginPath();
-            const wx0 = x * TZ - s.cam.x;
-            const wy0 = y * TZ - s.cam.y;
-            const waveY = wy0 + TZ/2 + Math.sin(s.ticks * 0.04 + x + y) * 3;
-            ctx.moveTo(wx0 + 4, waveY);
-            ctx.lineTo(wx0 + TZ - 4, waveY);
+            ctx.moveTo(txCoord + 3, tyCoord + TZ/2 + (pSeed % 6) - 3);
+            ctx.quadraticCurveTo(txCoord + TZ/2, tyCoord + TZ/2 + (pSeed % 4) - 2, txCoord + TZ - 3, tyCoord + TZ/2 + (pSeed % 6) - 3);
             ctx.stroke();
+          } else if (t === TS) {
+            // --- STONE BIOME OVERHAUL ---
+            // Cobble fissures
+            ctx.strokeStyle = 'rgba(15, 23, 42, 0.25)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(txCoord + (pSeed % 8), tyCoord);
+            ctx.lineTo(txCoord + TZ/2 + (pSeed % 4), tyCoord + TZ/2);
+            ctx.lineTo(txCoord + (pSeed % 10), tyCoord + TZ);
+            ctx.stroke();
+
+            // Shaded crevices
+            if (pSeed < 25) {
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.04)'; // Highlights
+              ctx.fillRect(txCoord + 2, tyCoord + 2, TZ - 4, 2);
+              ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'; // Shading
+              ctx.fillRect(txCoord + 2, tyCoord + TZ - 4, TZ - 4, 2);
+            }
+          } else if (t === TW) {
+            // --- WATER BIOME OVERHAUL ---
+            // Dynamic waves
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.22)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            const waveOffset = Math.sin(s.ticks * 0.04 + x + y) * 4;
+            ctx.moveTo(txCoord + 4, tyCoord + TZ/2 + waveOffset);
+            ctx.quadraticCurveTo(txCoord + TZ/2, tyCoord + TZ/2 - 3 + waveOffset, txCoord + TZ - 4, tyCoord + TZ/2 + waveOffset);
+            ctx.stroke();
+
+            // Water glint sparkling dots
+            if (pSeed < 8) {
+              const pulseGlint = 0.2 + Math.abs(Math.sin(s.ticks * 0.03 + pSeed)) * 0.6;
+              ctx.fillStyle = `rgba(255, 255, 255, ${pulseGlint})`;
+              ctx.fillRect(txCoord + 6 + (pSeed % 12), tyCoord + 6 + (pSeed % 12), 1.5, 1.5);
+            }
+
+            // Shoreline / coastal foam! (Check if adjacent is land)
+            const hasNorthLand = y > 0 && s.world[y - 1][x] !== TW && s.world[y - 1][x] !== TSW;
+            const hasSouthLand = y < WH - 1 && s.world[y + 1][x] !== TW && s.world[y + 1][x] !== TSW;
+            const hasWestLand = x > 0 && s.world[y][x - 1] !== TW && s.world[y][x - 1] !== TSW;
+            const hasEastLand = x < WW - 1 && s.world[y][x + 1] !== TW && s.world[y][x + 1] !== TSW;
+
+            if (hasNorthLand || hasSouthLand || hasWestLand || hasEastLand) {
+              ctx.strokeStyle = `rgba(255, 255, 255, ${0.35 + Math.sin(s.ticks * 0.08) * 0.15})`;
+              ctx.lineWidth = 1.5;
+              ctx.setLineDash([4, 2]);
+              ctx.beginPath();
+              if (hasNorthLand) {
+                ctx.moveTo(txCoord, tyCoord);
+                ctx.lineTo(txCoord + TZ, tyCoord);
+              }
+              if (hasSouthLand) {
+                ctx.moveTo(txCoord, tyCoord + TZ);
+                ctx.lineTo(txCoord + TZ, tyCoord + TZ);
+              }
+              if (hasWestLand) {
+                ctx.moveTo(txCoord, tyCoord);
+                ctx.lineTo(txCoord, tyCoord + TZ);
+              }
+              if (hasEastLand) {
+                ctx.moveTo(txCoord + TZ, tyCoord);
+                ctx.lineTo(txCoord + TZ, tyCoord + TZ);
+              }
+              ctx.stroke();
+              ctx.setLineDash([]);
+            }
+          } else if (t === TSA) {
+            // --- SAND BIOME OVERHAUL ---
+            // Dune ripples
+            ctx.strokeStyle = 'rgba(217, 119, 6, 0.22)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(txCoord, tyCoord + 4);
+            ctx.quadraticCurveTo(txCoord + TZ/2, tyCoord + TZ/2, txCoord + TZ, tyCoord + TZ - 4);
+            ctx.stroke();
+
+            // Tiny sand sparkles
+            if (pSeed < 15) {
+              const glint = 0.1 + Math.abs(Math.sin(s.ticks * 0.05 + pSeed)) * 0.7;
+              ctx.fillStyle = `rgba(254, 240, 138, ${glint})`;
+              ctx.fillRect(txCoord + (pSeed * 3) % TZ, tyCoord + (pSeed * 5) % TZ, 1, 1);
+            }
+          } else if (t === TSN) {
+            // --- SNOW BIOME OVERHAUL ---
+            // Frost contour shapes
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            if (pSeed < 20) {
+              ctx.beginPath();
+              ctx.arc(txCoord + TZ/2, tyCoord + TZ/2, 3, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            // Tiny sparkling snow stars
+            if (pSeed < 12) {
+              const spark = 0.2 + Math.abs(Math.sin(s.ticks * 0.04 + pSeed)) * 0.6;
+              ctx.fillStyle = `rgba(255, 255, 255, ${spark})`;
+              const sx = txCoord + (pSeed * 2) % (TZ - 4) + 2;
+              const sy = tyCoord + (pSeed * 3) % (TZ - 4) + 2;
+              ctx.fillRect(sx, sy, 1.2, 1.2);
+            }
           } else if (t === TLV) {
-            // Draw heated lava heatwaves
-            ctx.strokeStyle = 'rgba(255, 100, 0, 0.15)';
+            // --- MOLTEN LAVA BIOME OVERHAUL ---
+            // Dark cooling rock crust clusters over bright orange lava
+            ctx.fillStyle = '#1c1917';
+            ctx.fillRect(txCoord + 2, tyCoord + 2, TZ - 4, TZ - 4);
+
+            // Lava veins drawing pulsing energy
+            const pulse = 0.5 + Math.sin(s.ticks * 0.05 + x + y) * 0.4;
+            ctx.fillStyle = `rgba(249, 115, 22, ${0.6 + pulse * 0.4})`;
+            ctx.beginPath();
+            ctx.arc(txCoord + TZ/2, tyCoord + TZ/2, 4 + pulse * 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Glowing hot red highlights
+            ctx.strokeStyle = `rgba(239, 68, 68, ${0.4 + pulse * 0.4})`;
             ctx.lineWidth = 1.5;
             ctx.beginPath();
-            const lx0 = x * TZ - s.cam.x;
-            const ly0 = y * TZ - s.cam.y;
-            const heatX = lx0 + TZ/2 + Math.cos(s.ticks * 0.05 + x + y) * 4;
-            ctx.moveTo(heatX, ly0 + 4);
-            ctx.lineTo(heatX, ly0 + TZ - 4);
+            ctx.moveTo(txCoord, tyCoord + TZ/2);
+            ctx.lineTo(txCoord + TZ, tyCoord + TZ/2);
+            ctx.moveTo(txCoord + TZ/2, tyCoord);
+            ctx.lineTo(txCoord + TZ/2, tyCoord + TZ);
             ctx.stroke();
+
+            // Tiny heat ember sparks rising
+            if (pSeed < 5) {
+              const sy = tyCoord + TZ - ((s.ticks + pSeed * 4) % TZ);
+              ctx.fillStyle = '#facc15';
+              ctx.fillRect(txCoord + 4 + (pSeed % 12), sy, 1.5, 1.5);
+            }
+          } else if (t === TSW) {
+            // --- MURKY SWAMP OVERHAUL ---
+            // Swamp lily pads
+            if (pSeed < 15) {
+              const lx = txCoord + 6 + (pSeed % 10);
+              const ly = tyCoord + 6 + (pSeed % 10);
+              ctx.fillStyle = '#166534'; // rich dark green
+              ctx.beginPath();
+              ctx.arc(lx, ly, 3.5, 0, Math.PI * 1.75); // slight cut-out for leaf look
+              ctx.fill();
+              
+              // Lily pad tiny pink flower bud
+              if (pSeed % 3 === 0) {
+                ctx.fillStyle = '#f472b6'; // pink
+                ctx.beginPath();
+                ctx.arc(lx, ly, 1, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+            // Bubbling swamp gas bubbles
+            if (pSeed < 10) {
+              const bPulse = Math.abs(Math.sin(s.ticks * 0.04 + pSeed));
+              const bx = txCoord + 4 + (pSeed * 3) % 14;
+              const by = tyCoord + 4 + (pSeed * 2) % 14;
+              ctx.strokeStyle = `rgba(74, 222, 128, ${bPulse * 0.5})`;
+              ctx.lineWidth = 0.5;
+              ctx.beginPath();
+              ctx.arc(bx, by, bPulse * 3, 0, Math.PI * 2);
+              ctx.stroke();
+            }
+          } else if (t === TCR) {
+            // --- CELESTIAL REALM OVERHAUL ---
+            // Nebulous cosmic glow background
+            const cosGlow = 0.12 + Math.sin(s.ticks * 0.03 + x + y) * 0.06;
+            ctx.fillStyle = `rgba(147, 51, 234, ${cosGlow})`; // violet nebula
+            ctx.fillRect(txCoord, tyCoord, TZ, TZ);
+
+            // Floating white-blue stars
+            if (pSeed < 12) {
+              const stPulse = 0.2 + Math.abs(Math.sin(s.ticks * 0.06 + pSeed)) * 0.8;
+              ctx.fillStyle = `rgba(56, 189, 248, ${stPulse})`; // sky blue sparkle
+              const sx = txCoord + (pSeed * 3) % TZ;
+              const sy = tyCoord + (pSeed * 2) % TZ;
+              ctx.fillRect(sx, sy, 1.2, 1.2);
+            }
           }
+
+          ctx.restore();
         }
       }
 
       // Objects
-      ctx.font = `${TZ - 6}px serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       for (const o of s.objs) {
         const ox = o.tx * TZ + TZ / 2 - s.cam.x;
         const oy = o.ty * TZ + TZ / 2 - s.cam.y;
-        if (ox < -TZ || ox > ctx.canvas.width + TZ || oy < -TZ || oy > ctx.canvas.height + TZ) continue;
+        if (ox < -TZ || ox > (ctx.canvas.width / zoom) + TZ || oy < -TZ || oy > (ctx.canvas.height / zoom) + TZ) continue;
         
-        let ico = '?';
-        if (o.type === 'lore_node') {
-          ico = o.ico || '📓';
-          // Render glowing rotating magical ring
-          const ringRad = TZ * 0.5 + Math.sin(s.ticks * 0.08) * 4;
-          ctx.save();
-          ctx.strokeStyle = o.subtype === 'echo' ? 'rgba(56, 189, 248, 0.7)' : o.subtype === 'carving' ? 'rgba(234, 179, 8, 0.7)' : 'rgba(168, 85, 247, 0.7)';
-          ctx.lineWidth = 1.5;
-          ctx.setLineDash([4, 2]);
+        ctx.save();
+        
+        // General shadow beneath all physical objects
+        if (o.type !== 'drop' && o.type !== 'fishing_hotspot' && o.type !== 'animal_track') {
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
           ctx.beginPath();
-          ctx.arc(ox, oy, ringRad, s.ticks * 0.02, s.ticks * 0.02 + Math.PI * 2);
-          ctx.stroke();
-          ctx.restore();
-        } else if (o.type === 'tree') {
-          ico = '🌲';
-          // Tree drop shadow
-          ctx.save();
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-          ctx.beginPath();
-          ctx.ellipse(ox, oy + 10, 8, 4, 0, 0, Math.PI * 2);
+          ctx.ellipse(ox, oy + TZ/2 - 2, TZ * 0.45, TZ * 0.18, 0, 0, Math.PI * 2);
           ctx.fill();
-          ctx.restore();
-        } else if (o.type === 'rock') {
-          ico = '🪨';
-          // Rock drop shadow
-          ctx.save();
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-          ctx.beginPath();
-          ctx.ellipse(ox, oy + 8, 10, 5, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-        } else if (o.type === 'drop') {
-          ico = IT[o.item]?.ico || '•';
-          // Pulsating glow aura for items so they are easily visible
-          const pulse = 4 + Math.sin(s.ticks * 0.12) * 2.5;
-          ctx.save();
-          ctx.shadowColor = '#ffffff';
-          ctx.shadowBlur = pulse;
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-          ctx.beginPath();
-          ctx.arc(ox, oy, 6, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
         }
-        else if (o.type === 'magic_altar') ico = '🕋';
-        else if (o.type === 'fishing_hotspot') {
-          ico = o.ico;
-          // Bubbling ripple effect
-          const rippleRadius = (TZ * 0.5) + Math.abs(Math.sin(s.ticks * 0.05)) * (TZ * 0.4);
+
+        if (o.type === 'tree') {
+          // --- VECTOR TREE RENDERER ---
+          const bob = Math.sin(s.ticks * 0.03 + o.tx * 7) * 0.5; // gentle wind rustle sway
+          ctx.translate(ox, oy + TZ/2 - 3);
+          ctx.rotate(bob * 0.04);
+
+          // Draw trunk
+          ctx.fillStyle = '#78350f'; // Dark brown
+          ctx.fillRect(-2.5, -8, 5, 8);
+
+          if (o.subtype === 'cactus') {
+            // Cactus
+            ctx.fillStyle = '#15803d'; // Rich green
+            // Main stalk
+            ctx.fillRect(-3, -24, 6, 16);
+            // Arms
+            ctx.fillRect(-8, -18, 5, 3);
+            ctx.fillRect(-8, -22, 3, 5);
+            ctx.fillRect(3, -15, 5, 3);
+            ctx.fillRect(5, -19, 3, 5);
+            // Spikes (little lines)
+            ctx.strokeStyle = '#a3e635';
+            ctx.lineWidth = 0.75;
+            ctx.beginPath();
+            ctx.moveTo(-5, -20); ctx.lineTo(-3, -20);
+            ctx.moveTo(3, -22); ctx.lineTo(5, -22);
+            ctx.moveTo(0, -12); ctx.lineTo(2, -12);
+            ctx.stroke();
+            // Flower on top
+            ctx.fillStyle = '#f43f5e';
+            ctx.beginPath();
+            ctx.arc(0, -25, 2, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (o.subtype === 'snowpine') {
+            // Snowpine
+            // Trunk roots
+            ctx.fillStyle = '#451a03';
+            ctx.fillRect(-3, -8, 6, 8);
+            // Staggered branches
+            const levels = [
+              { w: 22, h: 8, y: -8, col: '#0f766e', snow: '#f8fafc' },
+              { w: 16, h: 7, y: -14, col: '#115e59', snow: '#f1f5f9' },
+              { w: 10, h: 6, y: -19, col: '#134e4a', snow: '#e2e8f0' }
+            ];
+            for (const l of levels) {
+              ctx.fillStyle = l.col;
+              ctx.beginPath();
+              ctx.moveTo(0, l.y - l.h);
+              ctx.lineTo(-l.w / 2, l.y);
+              ctx.lineTo(l.w / 2, l.y);
+              ctx.closePath();
+              ctx.fill();
+
+              // Snow Cap highlight
+              ctx.fillStyle = l.snow;
+              ctx.beginPath();
+              ctx.moveTo(0, l.y - l.h);
+              ctx.lineTo(-l.w / 4, l.y - l.h / 2);
+              ctx.lineTo(l.w / 4, l.y - l.h / 2);
+              ctx.closePath();
+              ctx.fill();
+            }
+          } else if (o.subtype === 'blossom') {
+            // Cherry Blossom
+            ctx.fillStyle = '#5c2d17';
+            ctx.fillRect(-2, -9, 4, 9);
+            // Curved pink canopy clouds
+            const clouds = [
+              { x: 0, y: -14, r: 8, col: '#f472b6' },
+              { x: -5, y: -10, r: 6, col: '#f472b6' },
+              { x: 5, y: -11, r: 6, col: '#ec4899' },
+              { x: -2, y: -18, r: 6, col: '#fbcfe8' }
+            ];
+            for (const c of clouds) {
+              ctx.fillStyle = c.col;
+              ctx.beginPath();
+              ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            // Tiny falling petal particle effect
+            if (s.ticks % 60 < 20) {
+              ctx.fillStyle = '#fbcfe8';
+              ctx.beginPath();
+              ctx.arc(Math.sin(s.ticks * 0.05) * 5, -5 + (s.ticks % 20) * 0.5, 1, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          } else if (o.subtype === 'cosmic') {
+            // Cosmic purple tree
+            ctx.fillStyle = '#2e1065';
+            ctx.fillRect(-2.5, -9, 5, 9);
+            // Nebula foliage clouds
+            const clouds = [
+              { x: 0, y: -15, r: 9, col: '#a855f7' },
+              { x: -6, y: -11, r: 7, col: '#8b5cf6' },
+              { x: 6, y: -12, r: 7, col: '#c084fc' },
+              { x: 0, y: -19, r: 6, col: '#ddd6fe' }
+            ];
+            for (const c of clouds) {
+              ctx.fillStyle = c.col;
+              ctx.beginPath();
+              ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+              ctx.fill();
+              
+              // Sparkle stars
+              if (s.ticks % 40 < 10) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(c.x + (s.ticks % 5) - 2, c.y + (s.ticks % 4) - 2, 1, 1);
+              }
+            }
+          } else {
+            // Standard leafy/pine evergreen tree
+            // Roots trunk details
+            ctx.fillStyle = '#451a03';
+            ctx.fillRect(-3, -8, 6, 8);
+            // Multi-layered verdant forest leaves
+            const branches = [
+              { w: 24, h: 9, y: -8, col: '#15803d' },
+              { w: 18, h: 8, y: -15, col: '#16a34a' },
+              { w: 12, h: 7, y: -21, col: '#22c55e' }
+            ];
+            for (const b of branches) {
+              ctx.fillStyle = b.col;
+              ctx.beginPath();
+              ctx.moveTo(0, b.y - b.h);
+              ctx.lineTo(-b.w / 2, b.y);
+              ctx.lineTo(b.w / 2, b.y);
+              ctx.closePath();
+              ctx.fill();
+              
+              // Dark trim shading
+              ctx.strokeStyle = '#14532d';
+              ctx.lineWidth = 0.5;
+              ctx.strokeRect(-b.w / 2, b.y, b.w, 0.5);
+            }
+          }
+        } else if (o.type === 'rock') {
+          // --- VECTOR ROCK RENDERER ---
+          ctx.translate(ox, oy + TZ/2 - 3);
+          
+          // Draw boulder base
+          ctx.fillStyle = '#475569'; // slate grey
+          ctx.beginPath();
+          ctx.moveTo(-9, 0);
+          ctx.lineTo(-10, -5);
+          ctx.lineTo(-6, -11);
+          ctx.lineTo(0, -13);
+          ctx.lineTo(6, -11);
+          ctx.lineTo(9, -4);
+          ctx.lineTo(8, 0);
+          ctx.closePath();
+          ctx.fill();
+
+          // Highlight bevel edge
+          ctx.strokeStyle = '#64748b';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(-10, -5);
+          ctx.lineTo(-6, -11);
+          ctx.lineTo(0, -13);
+          ctx.lineTo(6, -11);
+          ctx.stroke();
+
+          // Mineral crystals overlays
+          if (o.subtype && o.subtype !== 'none') {
+            let oreCol = '#94a3b8';
+            let isSparkle = false;
+            
+            if (o.subtype === 'copper') oreCol = '#ea580c';
+            else if (o.subtype === 'iron') oreCol = '#818cf8';
+            else if (o.subtype === 'coal') oreCol = '#1e293b';
+            else if (o.subtype === 'gold') { oreCol = '#fbbf24'; isSparkle = true; }
+            else if (o.subtype === 'mithril') { oreCol = '#22d3ee'; isSparkle = true; }
+            else if (o.subtype === 'sulfur') oreCol = '#eab308';
+            else if (o.subtype === 'mana_crystal') { oreCol = '#c084fc'; isSparkle = true; }
+            else if (o.subtype === 'void_crystal' || o.subtype === 'crystal') { oreCol = '#ec4899'; isSparkle = true; }
+            else if (o.subtype === 'celestial') { oreCol = '#38bdf8'; isSparkle = true; }
+
+            ctx.fillStyle = oreCol;
+            // Draw 2-3 jagged crystal nodes sticking out of the boulder
+            ctx.beginPath();
+            ctx.moveTo(-4, -6);
+            ctx.lineTo(-6, -11);
+            ctx.lineTo(-2, -9);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(2, -4);
+            ctx.lineTo(5, -10);
+            ctx.lineTo(5, -5);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(-1, -11);
+            ctx.lineTo(1, -15);
+            ctx.lineTo(3, -11);
+            ctx.closePath();
+            ctx.fill();
+
+            // Tiny star sparkles for rare gems
+            if (isSparkle && (s.ticks % 30 < 8)) {
+              ctx.fillStyle = '#ffffff';
+              ctx.fillRect(Math.sin(s.ticks) * 6, -11 + Math.cos(s.ticks) * 3, 1.5, 1.5);
+            }
+          }
+        } else if (o.type === 'drop') {
+          // --- FLOATING ITEM RENDERER ---
+          const hoverY = Math.sin(s.ticks * 0.08 + o.tx * 5) * 2.5;
+          ctx.translate(ox, oy + hoverY);
+
+          // Glowing floor shadow pedestal
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+          ctx.beginPath();
+          ctx.arc(0, 10 - hoverY, 5, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Pulsating magic halo
+          const pulse = 5 + Math.sin(s.ticks * 0.15) * 3;
           ctx.save();
+          ctx.shadowColor = '#38bdf8';
+          ctx.shadowBlur = pulse;
+          ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
+          ctx.beginPath();
+          ctx.arc(0, 0, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+
+          // Render item emoji on top of pedestal
+          const ico = IT[o.item]?.ico || '•';
+          ctx.font = '10px serif';
+          ctx.fillText(ico, 0, 0);
+        } else if (o.type === 'campfire') {
+          // --- DYNAMIC FLAME VECTOR RENDERER ---
+          ctx.translate(ox, oy);
+
+          // Draw Firewood base logs
+          ctx.fillStyle = '#5c2d17';
+          ctx.fillRect(-7, 2, 14, 3);
+          ctx.fillRect(-5, -1, 10, 3);
+
+          // Custom procedural overlapping flame shapes
+          const pulseA = Math.sin(s.ticks * 0.2) * 2;
+          const pulseB = Math.cos(s.ticks * 0.15) * 1.5;
+
+          // 1. Outer Fire Ring (Warm orange-red)
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.85)';
+          ctx.beginPath();
+          ctx.moveTo(-6, 2);
+          ctx.quadraticCurveTo(-4, -4 + pulseA, -1, -12 + pulseB);
+          ctx.quadraticCurveTo(0, -6, 2, -10 + pulseA);
+          ctx.quadraticCurveTo(4, -4, 6, 2);
+          ctx.closePath();
+          ctx.fill();
+
+          // 2. Middle Fire Ring (Orange)
+          ctx.fillStyle = 'rgba(249, 115, 22, 0.9)';
+          ctx.beginPath();
+          ctx.moveTo(-4, 2);
+          ctx.quadraticCurveTo(-2, -2 + pulseB, -0.5, -9 + pulseA);
+          ctx.quadraticCurveTo(0, -4, 1.5, -7 + pulseB);
+          ctx.quadraticCurveTo(3, -2, 4, 2);
+          ctx.closePath();
+          ctx.fill();
+
+          // 3. Inner Fire Ring (Hot yellow)
+          ctx.fillStyle = 'rgba(253, 224, 71, 0.95)';
+          ctx.beginPath();
+          ctx.moveTo(-2, 2);
+          ctx.quadraticCurveTo(0, -2 + pulseA, 0, -6 + pulseB);
+          ctx.quadraticCurveTo(1, -2, 2, 2);
+          ctx.closePath();
+          ctx.fill();
+
+          // Add ambient glow
+          const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, TZ * 2);
+          grad.addColorStop(0, 'rgba(251, 146, 60, 0.18)');
+          grad.addColorStop(1, 'rgba(251, 146, 60, 0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(0, 0, TZ * 2, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (o.type === 'magic_altar') {
+          // --- MAGICAL floating ALTER RENDERER ---
+          ctx.translate(ox, oy);
+
+          const hover = Math.sin(s.ticks * 0.05) * 3;
+
+          // Draw pedestal base
+          ctx.fillStyle = '#1e1b4b'; // deep indigo stone
+          ctx.beginPath();
+          ctx.moveTo(-10, 8);
+          ctx.lineTo(-8, 3);
+          ctx.lineTo(8, 3);
+          ctx.lineTo(10, 8);
+          ctx.closePath();
+          ctx.fill();
+
+          // Floating triangular monolith
+          ctx.fillStyle = '#0f172a'; // obsidian dark slate
+          ctx.beginPath();
+          ctx.moveTo(0, -14 + hover);
+          ctx.lineTo(-5, -3 + hover);
+          ctx.lineTo(5, -3 + hover);
+          ctx.closePath();
+          ctx.fill();
+
+          // Monolith neon magenta glowing rune lines
+          ctx.strokeStyle = `rgba(232, 121, 249, ${0.4 + Math.sin(s.ticks * 0.08) * 0.4})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(0, -11 + hover);
+          ctx.lineTo(0, -4 + hover);
+          ctx.stroke();
+
+          // Orbiting rings
+          ctx.strokeStyle = 'rgba(168, 85, 247, 0.45)';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.ellipse(0, -8 + hover, 9, 3, s.ticks * 0.03, 0, Math.PI * 2);
+          ctx.stroke();
+
+          // Vertical glowing stardust particles rising
+          if (s.ticks % 25 < 12) {
+            ctx.fillStyle = '#d946ef';
+            ctx.fillRect(-3 + (s.ticks % 7), 2 - (s.ticks % 18), 1.5, 1.5);
+          }
+        } else if (o.type === 'fishing_hotspot') {
+          // --- FISHING WHIRLPOOL RENDERER ---
+          ctx.translate(ox, oy);
+
+          const rippleRadius = (TZ * 0.4) + Math.abs(Math.sin(s.ticks * 0.05)) * (TZ * 0.4);
           ctx.strokeStyle = o.subtype === 'lava' ? 'rgba(239, 68, 68, 0.6)' : 'rgba(56, 189, 248, 0.6)';
           ctx.lineWidth = 1.5;
           ctx.beginPath();
-          ctx.arc(ox, oy, rippleRadius, 0, Math.PI * 2);
+          ctx.arc(0, 0, rippleRadius, 0, Math.PI * 2);
           ctx.stroke();
-          ctx.restore();
-        } else if (o.type === 'animal_track') {
-          ico = o.ico;
-          // Soft tracking sense indicator glow
-          const glowRad = (TZ * 0.4) + Math.abs(Math.sin(s.ticks * 0.07)) * (TZ * 0.2);
-          ctx.save();
-          ctx.strokeStyle = 'rgba(236, 72, 153, 0.5)';
+
+          // Swirling blue-white circles
+          ctx.strokeStyle = o.subtype === 'lava' ? 'rgba(249, 115, 22, 0.3)' : 'rgba(14, 165, 233, 0.3)';
           ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.arc(ox, oy, glowRad, 0, Math.PI * 2);
+          ctx.ellipse(0, 0, TZ * 0.3, TZ * 0.15, s.ticks * 0.04, 0, Math.PI * 2);
           ctx.stroke();
-          ctx.restore();
-        } else if (o.type === 'campfire') {
-          ico = s.ticks % 20 < 10 ? '🔥' : '🕯️';
-          // Fire glow
-          const grad = ctx.createRadialGradient(ox, oy, 0, ox, oy, TZ * 2);
-          grad.addColorStop(0, 'rgba(255, 165, 0, 0.2)');
-          grad.addColorStop(1, 'rgba(255, 165, 0, 0)');
-          ctx.fillStyle = grad;
+
+          // Swimming fish silhouette helper inside bubble
+          ctx.font = '8px serif';
+          ctx.fillText(o.ico || '🐟', 0, Math.sin(s.ticks * 0.06) * 1.5);
+        } else if (o.type === 'shelter' || o.type === 'settler_shelter') {
+          // --- COZY LOG CABIN RENDERER ---
+          ctx.translate(ox, oy);
+
+          // Cabin wooden log walls
+          ctx.fillStyle = '#b45309'; // warm amber brown
+          ctx.fillRect(-12, -4, 24, 12);
+          ctx.strokeStyle = '#78350f';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(-12, -4, 24, 12);
+
+          // Cute small logs joints lines
+          ctx.fillStyle = '#78350f';
+          ctx.fillRect(-12, -1, 3, 2);
+          ctx.fillRect(9, -1, 3, 2);
+
+          // Cozy glowing windows
+          ctx.fillStyle = '#fef08a'; // Bright yellow soft light
+          ctx.fillRect(-7, -1, 5, 5);
+          ctx.strokeStyle = '#d97706';
+          ctx.strokeRect(-7, -1, 5, 5);
+          
+          // Window cross divider
           ctx.beginPath();
-          ctx.arc(ox, oy, TZ * 2, 0, Math.PI * 2);
+          ctx.moveTo(-4.5, -1); ctx.lineTo(-4.5, 4);
+          ctx.moveTo(-7, 1.5); ctx.lineTo(-2, 1.5);
+          ctx.stroke();
+
+          // Warm cabin door
+          ctx.fillStyle = '#78350f';
+          ctx.fillRect(2, 0, 6, 8);
+          // Tiny brass doorknob
+          ctx.fillStyle = '#fbbf24';
+          ctx.beginPath();
+          ctx.arc(3.5, 4, 1, 0, Math.PI * 2);
           ctx.fill();
-        } else if (IT[o.type]) {
-          ico = IT[o.type].ico || '?';
+
+          // Slanted straw/clay roof
+          ctx.fillStyle = '#ea580c'; // Red clay roof tile
+          ctx.beginPath();
+          ctx.moveTo(0, -11);
+          ctx.lineTo(-14, -4);
+          ctx.lineTo(14, -4);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = '#9a3412';
+          ctx.stroke();
+
+          // Stone chimney emitting smoking rings!
+          ctx.fillStyle = '#475569';
+          ctx.fillRect(6, -11, 4, 5);
+          
+          if (s.ticks % 40 < 15) {
+            ctx.strokeStyle = `rgba(148, 163, 184, ${0.6 - (s.ticks % 15) * 0.04})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(8, -13 - (s.ticks % 15) * 0.8, 1.5 + (s.ticks % 15) * 0.4, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        } else if (o.type === 'watch_tower' || o.type === 'sentry_turret') {
+          // --- WATCH TOWER DEFENSE STRUCTURE ---
+          ctx.translate(ox, oy);
+
+          // Range indicator preview
+          ctx.strokeStyle = o.type === 'watch_tower' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)';
+          ctx.fillStyle = o.type === 'watch_tower' ? 'rgba(245, 158, 11, 0.03)' : 'rgba(16, 185, 129, 0.03)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.arc(0, 0, o.type === 'watch_tower' ? 350 : 220, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Base stone support pillars
+          ctx.fillStyle = '#64748b';
+          ctx.fillRect(-8, 3, 4, 5);
+          ctx.fillRect(4, 3, 4, 5);
+
+          // Tower platform cabin wood
+          ctx.fillStyle = '#b45309';
+          ctx.fillRect(-10, -7, 20, 10);
+          ctx.strokeStyle = '#78350f';
+          ctx.strokeRect(-10, -7, 20, 10);
+
+          // Wooden spiked railing
+          ctx.fillStyle = '#d97706';
+          ctx.fillRect(-10, -10, 20, 3);
+
+          // Small lookout roof
+          ctx.fillStyle = '#1e293b';
+          ctx.beginPath();
+          ctx.moveTo(0, -16);
+          ctx.lineTo(-12, -10);
+          ctx.lineTo(12, -10);
+          ctx.closePath();
+          ctx.fill();
+
+          // Sentry defense gem / lens
+          ctx.fillStyle = o.type === 'watch_tower' ? '#f59e0b' : '#10b981';
+          ctx.beginPath();
+          ctx.arc(0, -4, 3, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (o.type === 'lore_node') {
+          // --- ANCIENT LORE BOOK BOOKSHELF ---
+          ctx.translate(ox, oy);
+
+          const hover = Math.sin(s.ticks * 0.08) * 2;
+          const ringRad = TZ * 0.5 + Math.sin(s.ticks * 0.08) * 3;
+
+          // Glowing energy sphere back aura
+          ctx.save();
+          ctx.shadowColor = o.subtype === 'echo' ? '#06b6d4' : o.subtype === 'carving' ? '#eab308' : '#a855f7';
+          ctx.shadowBlur = 10;
+          ctx.fillStyle = o.subtype === 'echo' ? 'rgba(6, 182, 212, 0.15)' : o.subtype === 'carving' ? 'rgba(234, 179, 8, 0.15)' : 'rgba(168, 85, 247, 0.15)';
+          ctx.beginPath();
+          ctx.arc(0, hover, 8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+
+          // Runic orbit energy rings
+          ctx.strokeStyle = o.subtype === 'echo' ? 'rgba(56, 189, 248, 0.65)' : o.subtype === 'carving' ? 'rgba(234, 179, 8, 0.65)' : 'rgba(168, 85, 247, 0.65)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 2]);
+          ctx.beginPath();
+          ctx.ellipse(0, hover, ringRad, ringRad / 2, s.ticks * 0.03, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Small leather tome icon
+          ctx.font = '9px serif';
+          ctx.fillText(o.ico || '📓', 0, hover);
+        } else if (o.type === 'water_pump' || o.type === 'water_reservoir' || o.type === 'water_pipe') {
+          // --- PUMP SYSTEM ---
+          ctx.translate(ox, oy);
+
+          // Glowing water system container
+          ctx.fillStyle = 'rgba(56, 189, 248, 0.12)';
+          ctx.beginPath();
+          ctx.arc(0, 0, TZ * 0.45 + Math.sin(s.ticks * 0.05) * 2, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Metallic pipelines brass lines
+          ctx.fillStyle = '#d97706';
+          ctx.fillRect(-3, -5, 6, 12);
+          ctx.fillStyle = '#b45309';
+          ctx.fillRect(-6, 3, 12, 3);
+
+          // Glowing blue water indicator tube
+          ctx.fillStyle = '#0284c7';
+          ctx.fillRect(-1.5, -2, 3, 6);
+          ctx.fillStyle = '#38bdf8';
+          ctx.fillRect(-1.5, 1, 3, 3); // moving level
+
+          // Water drop emitter
+          ctx.fillStyle = '#38bdf8';
+          ctx.font = '8px sans-serif';
+          ctx.fillText('💧', 0, -11 + Math.sin(s.ticks * 0.08) * 2);
+        } else {
+          // Fallback simple emoji drawing with shadow
+          const ico = o.ico || IT[o.type]?.ico || '?';
+          ctx.font = `${TZ - 2}px serif`;
+          ctx.fillText(ico, ox, oy);
         }
-        
-        ctx.fillStyle = 'white';
-        ctx.fillText(ico, ox, oy);
+
+        ctx.restore();
       }
 
       // Draw hover reticle
@@ -4347,7 +6175,7 @@ export default function SurvivalGame() {
           const sx = sn.tx * TZ + TZ / 2 - s.cam.x;
           const sy = sn.ty * TZ + TZ / 2 - s.cam.y;
           
-          if (sx < -TZ || sx > ctx.canvas.width + TZ || sy < -TZ || sy > ctx.canvas.height + TZ) continue;
+          if (sx < -TZ || sx > (ctx.canvas.width / zoom) + TZ || sy < -TZ || sy > (ctx.canvas.height / zoom) + TZ) continue;
 
           // Drawing pulse wave
           const size = TZ * 0.75 + Math.sin(s.ticks * 0.12) * 6;
@@ -4384,11 +6212,14 @@ export default function SurvivalGame() {
       // Player
       if (s.pl.ifr > 0 && s.ticks % 10 < 5) ctx.globalAlpha = 0.5;
       
-      // Draw a sleek soft circle shadow beneath the player
+      const pxDraw = s.pl.x - s.cam.x;
+      const pyDraw = s.pl.y - s.cam.y;
+
+      // Draw shadow beneath player
       ctx.save();
       ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
       ctx.beginPath();
-      ctx.ellipse(s.pl.x - s.cam.x, s.pl.y - s.cam.y + 11, 10, 4.5, 0, 0, Math.PI * 2);
+      ctx.ellipse(pxDraw, pyDraw + 11, 10, 4.5, 0, 0, Math.PI * 2);
       ctx.fill();
       
       // Subtle magic shield if healing sanctuary is active
@@ -4398,21 +6229,231 @@ export default function SurvivalGame() {
         ctx.shadowColor = '#10b981';
         ctx.shadowBlur = 12;
         ctx.beginPath();
-        ctx.arc(s.pl.x - s.cam.x, s.pl.y - s.cam.y, 20 + Math.sin(s.ticks * 0.1) * 3, 0, Math.PI * 2);
+        ctx.arc(pxDraw, pyDraw, 20 + Math.sin(s.ticks * 0.1) * 3, 0, Math.PI * 2);
         ctx.stroke();
         ctx.shadowBlur = 0;
       }
       ctx.restore();
 
-      ctx.font = `${TZ + 4}px serif`;
-      ctx.fillText('🧍', s.pl.x - s.cam.x, s.pl.y - s.cam.y);
+      // --- VECTOR PLAYER CHARACTER OVERHAUL ---
+      ctx.save();
+      ctx.translate(pxDraw, pyDraw);
+
+      // Walk cycle bounce/wiggle
+      const plMoving = Math.abs(s.pl.vx) > 0.1 || Math.abs(s.pl.vy) > 0.1;
+      const walkCycle = plMoving ? Math.sin(s.ticks * 0.2) * 2 : 0;
+      const walkSway = plMoving ? Math.cos(s.ticks * 0.2) * 0.05 : 0;
+      
+      ctx.translate(0, walkCycle * 0.5);
+      ctx.rotate(walkSway);
+
+      // 1. Draw Backpack (Behind body)
+      ctx.fillStyle = '#78350f'; // Leather brown backpack
+      ctx.fillRect(-6, -6, 12, 10);
+      ctx.fillStyle = '#451a03'; // straps
+      ctx.fillRect(-5, -6, 2, 10);
+      ctx.fillRect(3, -6, 2, 10);
+
+      // 2. Draw Body / Armor Clothing (Chestpiece)
+      let bodyCol = '#ef4444'; // default red tunic
+      let trimCol = '#ffffff';
+      
+      if (s.pl.equip?.chest) {
+        if (s.pl.equip.chest.includes('mithril')) { bodyCol = '#22d3ee'; trimCol = '#ffffff'; }
+        else if (s.pl.equip.chest.includes('iron')) { bodyCol = '#94a3b8'; trimCol = '#475569'; }
+        else if (s.pl.equip.chest.includes('beastmaster')) { bodyCol = '#ea580c'; trimCol = '#fbbf24'; }
+        else if (s.pl.equip.chest.includes('leather')) { bodyCol = '#b45309'; trimCol = '#d97706'; }
+      }
+      ctx.fillStyle = bodyCol;
+      ctx.fillRect(-5, -3, 10, 11);
+      
+      // Trim belt detail
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(-5.5, 4, 11, 2.5);
+      ctx.fillStyle = trimCol;
+      ctx.fillRect(-1.5, 4, 3, 2.5); // belt buckle
+
+      // 3. Draw Legs (Wiggling walk cycle!)
+      let legCol = '#1d4ed8'; // default blue pants
+      if (s.pl.equip?.legs) {
+        if (s.pl.equip.legs.includes('mithril')) legCol = '#06b6d4';
+        else if (s.pl.equip.legs.includes('iron')) legCol = '#64748b';
+        else if (s.pl.equip.legs.includes('leather')) legCol = '#78350f';
+      }
+      ctx.fillStyle = legCol;
+      // Left Leg
+      ctx.fillRect(-4, 8, 3.5, 4 + (plMoving ? Math.sin(s.ticks * 0.2) * 1.5 : 0));
+      // Right Leg
+      ctx.fillRect(0.5, 8, 3.5, 4 + (plMoving ? -Math.sin(s.ticks * 0.2) * 1.5 : 0));
+
+      // 4. Draw Head / Helmet
+      let headCol = '#fbcfe8'; // default skin tone
+      let hasHelmet = false;
+      let helmCol = '#94a3b8';
+      let plumeCol = '#f43f5e';
+
+      if (s.pl.equip?.head) {
+        hasHelmet = true;
+        if (s.pl.equip.head.includes('mithril')) { helmCol = '#22d3ee'; plumeCol = '#c084fc'; }
+        else if (s.pl.equip.head.includes('iron')) { helmCol = '#94a3b8'; plumeCol = '#ef4444'; }
+        else if (s.pl.equip.head.includes('leather')) { helmCol = '#78350f'; plumeCol = '#fbbf24'; }
+      }
+
+      if (hasHelmet) {
+        // Draw Helmet helmet vector
+        ctx.fillStyle = helmCol;
+        ctx.beginPath();
+        ctx.arc(0, -9, 5.5, Math.PI, 0, false);
+        ctx.fill();
+        ctx.fillRect(-5.5, -9, 11, 3.5); // visor plate
+        
+        // Plume / Crest on helmet
+        ctx.fillStyle = plumeCol;
+        ctx.beginPath();
+        ctx.moveTo(0, -14.5);
+        ctx.lineTo(-4, -11.5);
+        ctx.lineTo(2, -11.5);
+        ctx.closePath();
+        ctx.fill();
+
+        // Eye slit glow
+        ctx.fillStyle = '#fef08a';
+        ctx.fillRect(-3, -7.5, 6, 1);
+      } else {
+        // Draw simple round head
+        ctx.fillStyle = headCol;
+        ctx.beginPath();
+        ctx.arc(0, -7, 5, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw cute little eyes
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(-2.5, -8, 1.2, 1.2);
+        ctx.fillRect(1.3, -8, 1.2, 1.2);
+        
+        // Hair
+        ctx.fillStyle = '#d97706'; // orange/brown hair
+        ctx.fillRect(-4.5, -11, 9, 3);
+      }
+
+      // 5. Draw Active Tool/Weapon in Hand (Rotating/swinging)
+      ctx.save();
+      ctx.translate(6, 1);
+      const activeW = s.pl.weapon || 'fists';
+      if (activeW !== 'fists') {
+        const swing = Math.sin(s.ticks * 0.15) * 0.3; // idle sway
+        ctx.rotate(0.3 + swing);
+
+        // Render Tool vector graphic based on type
+        if (activeW.includes('pickaxe')) {
+          // Curved pickaxe
+          let pickCol = '#94a3b8';
+          if (activeW.includes('mithril')) pickCol = '#22d3ee';
+          else if (activeW.includes('copper')) pickCol = '#ea580c';
+
+          ctx.fillStyle = '#78350f'; // wood staff
+          ctx.fillRect(-1, -12, 2, 14);
+          ctx.fillStyle = pickCol; // metal double spike
+          ctx.beginPath();
+          ctx.moveTo(-6, -11);
+          ctx.quadraticCurveTo(0, -13, 6, -11);
+          ctx.lineTo(1, -9);
+          ctx.lineTo(-1, -9);
+          ctx.closePath();
+          ctx.fill();
+        } else if (activeW.includes('axe')) {
+          // Felling Axe
+          let metalCol = '#94a3b8';
+          if (activeW.includes('mithril')) metalCol = '#22d3ee';
+          else if (activeW.includes('stone')) metalCol = '#475569';
+
+          ctx.fillStyle = '#78350f'; // shaft
+          ctx.fillRect(-1, -12, 2, 14);
+          ctx.fillStyle = metalCol; // axe blade
+          ctx.beginPath();
+          ctx.moveTo(0, -11);
+          ctx.lineTo(5, -14);
+          ctx.lineTo(5, -7);
+          ctx.lineTo(0, -9);
+          ctx.closePath();
+          ctx.fill();
+        } else if (activeW.includes('sword')) {
+          // Sharp glittering sword
+          let metalCol = '#cbd5e1';
+          let hiltCol = '#fbbf24';
+          if (activeW.includes('mithril')) metalCol = '#22d3ee';
+          else if (activeW.includes('copper')) metalCol = '#f97316';
+
+          ctx.fillStyle = hiltCol; // guard
+          ctx.fillRect(-3, -2, 6, 1.5);
+          ctx.fillStyle = '#78350f'; // handle
+          ctx.fillRect(-0.75, -1, 1.5, 3);
+          
+          ctx.fillStyle = metalCol; // double-edged blade
+          ctx.beginPath();
+          ctx.moveTo(-1.2, -2);
+          ctx.lineTo(-1.2, -14);
+          ctx.lineTo(0, -17); // sharp point
+          ctx.lineTo(1.2, -14);
+          ctx.lineTo(1.2, -2);
+          ctx.closePath();
+          ctx.fill();
+
+          // Shining reflection line
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(-0.5, -13, 0.6, 10);
+        } else if (activeW === 'fishing_rod') {
+          // Bent Fishing rod
+          ctx.strokeStyle = '#d97706';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(0, 2);
+          ctx.quadraticCurveTo(3, -5, 8, -10);
+          ctx.stroke();
+
+          // Hanging wire line
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+          ctx.beginPath();
+          ctx.moveTo(8, -10);
+          ctx.lineTo(8, -2);
+          ctx.stroke();
+        } else if (activeW.includes('bow')) {
+          // Bow
+          ctx.strokeStyle = '#d97706';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.arc(0, -5, 6, -Math.PI / 2, Math.PI / 2);
+          ctx.stroke();
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'; // bowstring
+          ctx.beginPath();
+          ctx.moveTo(0, -11);
+          ctx.lineTo(0, 1);
+          ctx.stroke();
+        }
+      } else {
+        // Draw fists
+        ctx.fillStyle = headCol;
+        ctx.beginPath();
+        ctx.arc(-1, 0, 1.5, 0, Math.PI * 2);
+        ctx.arc(1, 1, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+
+      // Overlap original emoji face inside a small float badge if they chose an interesting emoji custom shape
+      if (s.pl.ico && s.pl.ico !== '🧍') {
+        ctx.font = '7px sans-serif';
+        ctx.fillText(s.pl.ico, 0, -16 + Math.sin(s.ticks * 0.08) * 1.5);
+      }
+
+      ctx.restore();
       ctx.globalAlpha = 1;
 
       // Enemies
       for (const e of s.enemies) {
         const ex = e.x - s.cam.x;
         const ey = e.y - s.cam.y;
-        if (ex < -TZ || ex > ctx.canvas.width + TZ || ey < -TZ || ey > ctx.canvas.height + TZ) continue;
+        if (ex < -TZ || ex > (ctx.canvas.width / zoom) + TZ || ey < -TZ || ey > (ctx.canvas.height / zoom) + TZ) continue;
 
         // Beautiful Bobbing and Squish-Stretch Animations
         const bob = Math.sin(s.ticks * 0.12 + e.id * 1.5) * 4;
@@ -4427,40 +6468,134 @@ export default function SurvivalGame() {
         ctx.fill();
         ctx.restore();
 
+        // --- PREMIUM 3D BATTLE TOKEN WRAPPER ---
         ctx.save();
         ctx.translate(ex, ey + bob);
         ctx.scale(squishX, squishY);
 
-        // Flash red glow when hit!
+        const isBoss = ET[e.eid]?.boss || e.boss;
+
+        // Draw glowing token aura background
+        let glowCol = 'rgba(56, 189, 248, 0.15)'; // friendly cyan
+        let borderCol = '#64748b'; // default slate steel
+        
+        if (isBoss) {
+          glowCol = 'rgba(245, 158, 11, 0.35)'; // gold lava glow
+          borderCol = '#fbbf24'; // shiny gold border
+        } else if (e.isAggro) {
+          glowCol = 'rgba(239, 68, 68, 0.25)'; // angry red
+          borderCol = '#ef4444'; // crimson red border
+        } else if (e.slowTicks > 0) {
+          glowCol = 'rgba(56, 189, 248, 0.25)'; // frozen sky blue
+          borderCol = '#38bdf8';
+        }
+
+        // Draw polished 3D base token disk
+        const baseRad = TZ * 0.52;
+        ctx.shadowColor = borderCol;
+        ctx.shadowBlur = isBoss ? 12 : 3;
+        
+        // Inner base fill
+        const radGrad = ctx.createRadialGradient(0, -TZ/6, 0, 0, -TZ/6, baseRad);
+        radGrad.addColorStop(0, '#1e293b'); // dark core
+        radGrad.addColorStop(1, '#0f172a');
+        ctx.fillStyle = radGrad;
+        ctx.beginPath();
+        ctx.arc(0, -TZ/6, baseRad, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Outlined metallic bezel rim
+        ctx.strokeStyle = borderCol;
+        ctx.lineWidth = isBoss ? 2 : 1.2;
+        ctx.beginPath();
+        ctx.arc(0, -TZ/6, baseRad, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0; // reset
+
+        // Red hit flash glow effect
         if (e.flashTicks && e.flashTicks > 0) {
-          ctx.shadowColor = '#ff3333';
-          ctx.shadowBlur = 18;
-          ctx.fillStyle = 'rgba(255, 51, 51, 0.4)';
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.55)';
           ctx.beginPath();
-          ctx.arc(0, -TZ/3, TZ/2, 0, Math.PI * 2);
+          ctx.arc(0, -TZ/6, baseRad - 0.5, 0, Math.PI * 2);
           ctx.fill();
         }
 
-        ctx.font = `${TZ}px serif`;
+        // Bobbing floating emoji monster avatar
+        ctx.font = `${TZ - 4}px serif`;
         ctx.textAlign = 'center';
-        ctx.fillText(ET[e.eid].ico, 0, 0);
+        ctx.textBaseline = 'middle';
+        ctx.fillText(ET[e.eid].ico, 0, -TZ/6);
+        
+        // Draw boss gold crown on top of token if applicable
+        if (isBoss) {
+          ctx.fillStyle = '#fbbf24';
+          ctx.strokeStyle = '#d97706';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(-6, -TZ * 0.72);
+          ctx.lineTo(-7, -TZ * 0.88);
+          ctx.lineTo(-3, -TZ * 0.80);
+          ctx.lineTo(0, -TZ * 0.94); // center spire
+          ctx.lineTo(3, -TZ * 0.80);
+          ctx.lineTo(7, -TZ * 0.88);
+          ctx.lineTo(6, -TZ * 0.72);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          
+          // Tiny diamond dot
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(0, -TZ * 0.94, 0.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
         ctx.restore();
 
-        // Health bar
-        ctx.fillStyle = '#1e1e24';
-        ctx.fillRect(ex - 15, ey - 25 + bob, 30, 4);
-        ctx.fillStyle = '#ff4757';
-        ctx.fillRect(ex - 15, ey - 25 + bob, 30 * (e.hp / e.mhp), 4);
+        // --- GLASSMORPHIC CAPSULE HEALTH BAR ---
+        const barWidth = 32;
+        const barHeight = 4.5;
+        const barY = ey - 27 + bob;
+        
+        // Translucent background track
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.roundRect(ex - barWidth/2, barY, barWidth, barHeight, 2);
+        ctx.fill();
+        ctx.stroke();
 
-        // Render Active Status Effects and Aggro Indicator above head
+        // Filling health bar with high contrast gradient
+        const hpPct = Math.max(0, e.hp / e.mhp);
+        if (hpPct > 0) {
+          const barGrad = ctx.createLinearGradient(ex - barWidth/2, barY, ex + barWidth/2, barY);
+          if (isBoss) {
+            barGrad.addColorStop(0, '#f59e0b'); // amber gold for bosses
+            barGrad.addColorStop(1, '#ef4444');
+          } else {
+            barGrad.addColorStop(0, '#ef4444'); // healthy red-to-pink
+            barGrad.addColorStop(1, '#f472b6');
+          }
+          ctx.fillStyle = barGrad;
+          ctx.beginPath();
+          ctx.roundRect(ex - barWidth/2 + 0.5, barY + 0.5, (barWidth - 1) * hpPct, barHeight - 1, 1.5);
+          ctx.fill();
+
+          // Shiny white glaze sheen reflection on top of health bar
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+          ctx.fillRect(ex - barWidth/2 + 0.5, barY + 0.5, (barWidth - 1) * hpPct, (barHeight - 1) / 2);
+        }
+
+        // Render Active Status Effects above head
         let statusStr = '';
-        if (e.isAggro) statusStr += '😡';
+        if (e.isAggro && !isBoss) statusStr += '😡';
         if (e.slowTicks > 0) statusStr += '🧊';
         if (e.burnTicks > 0) statusStr += '🔥';
         if (statusStr) {
-          ctx.font = '11px serif';
+          ctx.font = '10px serif';
           ctx.textAlign = 'center';
-          ctx.fillText(statusStr, ex, ey - 32 + bob);
+          ctx.fillText(statusStr, ex, ey - 33 + bob);
         }
       }
 
@@ -4468,7 +6603,7 @@ export default function SurvivalGame() {
       for (const c of s.companions) {
         const cx = c.x - s.cam.x;
         const cy = c.y - s.cam.y;
-        if (cx < -TZ || cx > ctx.canvas.width + TZ || cy < -TZ || cy > ctx.canvas.height + TZ) continue;
+        if (cx < -TZ || cx > (ctx.canvas.width / zoom) + TZ || cy < -TZ || cy > (ctx.canvas.height / zoom) + TZ) continue;
 
         // Target Indicator
         if (c.target && c.target.hp > 0) {
@@ -4495,18 +6630,86 @@ export default function SurvivalGame() {
           ctx.fillText("DASH!", cx, cy - 45);
         }
 
-        ctx.font = `${TZ}px serif`;
+        // --- PREMIUM 3D FRIENDLY TOKEN ---
+        ctx.save();
+        const bob = Math.sin(s.ticks * 0.12 + (c.id || 0) * 1.5) * 4;
+        const squishX = 1 + Math.sin(s.ticks * 0.16 + (c.id || 0)) * 0.06;
+        const squishY = 1 - Math.sin(s.ticks * 0.16 + (c.id || 0)) * 0.06;
+
+        // Shadow beneath companion
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy + 11, 10 * squishX, 4 * squishY, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.translate(cx, cy + bob);
+        ctx.scale(squishX, squishY);
+
+        // Friendly green-teal token plate
+        const baseRad = TZ * 0.52;
+        ctx.shadowColor = '#00ffaa';
+        ctx.shadowBlur = 6;
+        
+        // Inner base fill
+        const radGrad = ctx.createRadialGradient(0, -TZ/6, 0, 0, -TZ/6, baseRad);
+        radGrad.addColorStop(0, '#064e3b'); // dark emerald core
+        radGrad.addColorStop(1, '#022c22');
+        ctx.fillStyle = radGrad;
+        ctx.beginPath();
+        ctx.arc(0, -TZ/6, baseRad, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Outlined metallic bezel rim
+        ctx.strokeStyle = '#00ffaa';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(0, -TZ/6, baseRad, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0; // reset
+
+        // Bobbing floating emoji companion avatar
+        ctx.font = `${TZ - 4}px serif`;
         ctx.textAlign = 'center';
-        ctx.fillText(c.ico, cx, cy);
+        ctx.textBaseline = 'middle';
+        ctx.fillText(c.ico || '🤝', 0, -TZ/6);
+        ctx.restore();
+
+        // --- NAME PLATE AND HP BAR ---
         // Name
-        ctx.font = '10px monospace';
+        ctx.font = '10px sans-serif';
         ctx.fillStyle = '#00ffaa';
-        ctx.fillText(c.n, cx, cy - 35);
-        // HP
-        ctx.fillStyle = '#111';
-        ctx.fillRect(cx - 15, cy - 25, 30, 4);
-        ctx.fillStyle = '#00ffaa';
-        ctx.fillRect(cx - 15, cy - 25, 30 * (c.hp / c.mhp), 4);
+        ctx.textAlign = 'center';
+        ctx.fillText(c.n, cx, cy - 35 + bob);
+
+        // Glassmorphic health bar
+        const barWidth = 30;
+        const barHeight = 4.5;
+        const barY = cy - 25 + bob;
+        
+        // Background track
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.roundRect(cx - barWidth/2, barY, barWidth, barHeight, 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Filling health bar with friendly emerald gradient
+        const hpPct = Math.max(0, c.hp / c.mhp);
+        if (hpPct > 0) {
+          const barGrad = ctx.createLinearGradient(cx - barWidth/2, barY, cx + barWidth/2, barY);
+          barGrad.addColorStop(0, '#059669'); // emerald green
+          barGrad.addColorStop(1, '#34d399'); // mint green
+          ctx.fillStyle = barGrad;
+          ctx.beginPath();
+          ctx.roundRect(cx - barWidth/2 + 0.5, barY + 0.5, (barWidth - 1) * hpPct, barHeight - 1, 1.5);
+          ctx.fill();
+
+          // Reflection sheen
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+          ctx.fillRect(cx - barWidth/2 + 0.5, barY + 0.5, (barWidth - 1) * hpPct, (barHeight - 1) / 2);
+        }
         ctx.textAlign = 'start';
       }
 
@@ -4570,7 +6773,7 @@ export default function SurvivalGame() {
       for (const pt of s.parts) {
         const px = pt.x - s.cam.x;
         const py = pt.y - s.cam.y;
-        if (px < -40 || px > ctx.canvas.width + 40 || py < -40 || py > ctx.canvas.height + 40) continue;
+        if (px < -40 || px > (ctx.canvas.width / zoom) + 40 || py < -40 || py > (ctx.canvas.height / zoom) + 40) continue;
         
         ctx.save();
         ctx.fillStyle = pt.col || '#fff';
@@ -4622,12 +6825,12 @@ export default function SurvivalGame() {
         for (const o of s.objs) {
           const ox = o.tx * TZ + TZ/2 - s.cam.x;
           const oy = o.ty * TZ + TZ/2 - s.cam.y;
-          if (ox < -TZ || ox > ctx.canvas.width + TZ || oy < -TZ || oy > ctx.canvas.height + TZ) continue;
+          if (ox < -TZ || ox > (ctx.canvas.width / zoom) + TZ || oy < -TZ || oy > (ctx.canvas.height / zoom) + TZ) continue;
           
           let sRad = 0;
           if (o.type === 'campfire' || o.type === 'camp_fire') {
             sRad = 150 + Math.sin(s.ticks * 0.15) * 8;
-          } else if (o.type === 'town_merchant' || o.type === 'blacksmith_merchant' || o.type === 'alchemist_merchant' || o.type === 'fountain') {
+          } else if (o.type === 'town_merchant' || o.type === 'blacksmith_merchant' || o.type === 'alchemist_merchant' || o.type === 'fountain' || o.type === 'resource_trader') {
             sRad = 120 + Math.sin(s.ticks * 0.08) * 4;
           } else if (o.type === 'cave_entrance' || o.type === 'magic_altar') {
             sRad = 160 + Math.sin(s.ticks * 0.1) * 6;
@@ -4650,7 +6853,7 @@ export default function SurvivalGame() {
         for (const o of s.objs) {
           const ox = o.tx * TZ + TZ/2 - s.cam.x;
           const oy = o.ty * TZ + TZ/2 - s.cam.y;
-          if (ox < -TZ || ox > ctx.canvas.width + TZ || oy < -TZ || oy > ctx.canvas.height + TZ) continue;
+          if (ox < -TZ || ox > (ctx.canvas.width / zoom) + TZ || oy < -TZ || oy > (ctx.canvas.height / zoom) + TZ) continue;
           
           if (o.type === 'campfire' || o.type === 'camp_fire') {
             const size = 30 + Math.sin(s.ticks * 0.15) * 3;
@@ -4675,62 +6878,253 @@ export default function SurvivalGame() {
         ctx.restore();
       }
 
-      // Draw procedural weather/atmospheric particles
+      // Draw procedural weather/atmospheric particles and active weather overlays
       const mapIdx = Math.floor(s.pl.y / (ZH * TZ)) * ZCOLS + Math.floor(s.pl.x / (ZW * TZ));
       const bName = s.zoneMaps?.[mapIdx]?.n || MAPS[mapIdx]?.n || MAPS[0].n;
+      const viewW = ctx.canvas.width / zoom;
+      const viewH = ctx.canvas.height / zoom;
       
+      const activeWeatherType = s.weather?.type || 'clear';
+
+      // 1. Ambient Biome Base Particles
       if (bName.includes('Frozen') || bName.includes('Tundra')) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
-        for (let i = 0; i < 40; i++) {
-          const px = ((Math.sin(i * 123.45) * 0.5 + 0.5) * ctx.canvas.width) % ctx.canvas.width;
-          const py = ((i * 45.67 + s.ticks * 1.5) % ctx.canvas.height);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        for (let i = 0; i < 20; i++) {
+          const px = ((Math.sin(i * 123.45) * 0.5 + 0.5) * viewW) % viewW;
+          const py = ((i * 45.67 + s.ticks * 0.8) % viewH);
           ctx.beginPath();
-          ctx.arc(px, py, 1.5 + Math.sin(i + s.ticks * 0.05) * 0.8, 0, Math.PI * 2);
+          ctx.arc(px, py, 1.2 + Math.sin(i + s.ticks * 0.04) * 0.5, 0, Math.PI * 2);
           ctx.fill();
         }
       } else if (bName.includes('Desert') || bName.includes('Waste') || bName.includes('Oasis')) {
-        ctx.fillStyle = 'rgba(219, 180, 110, 0.35)'; // Sand dust
-        for (let i = 0; i < 30; i++) {
-          const px = ((Math.sin(i * 54.32) * 0.5 + 0.5) * ctx.canvas.width - s.ticks * 2) % ctx.canvas.width;
-          const py = (i * 98.76) % ctx.canvas.height;
-          ctx.fillRect(px < 0 ? px + ctx.canvas.width : px, py, 3, 1.2);
+        ctx.fillStyle = 'rgba(219, 180, 110, 0.2)'; 
+        for (let i = 0; i < 15; i++) {
+          const px = ((Math.sin(i * 54.32) * 0.5 + 0.5) * viewW - s.ticks * 1) % viewW;
+          const py = (i * 98.76) % viewH;
+          ctx.fillRect(px < 0 ? px + viewW : px, py, 2, 1.0);
         }
       } else if (bName.includes('Volcanic') || bName.includes('Scorched') || bName.includes('Spire')) {
-        ctx.fillStyle = `rgba(239, 68, 68, ${0.45 + Math.sin(s.ticks * 0.08) * 0.2})`; // Ash/ember glowing particles
-        for (let i = 0; i < 25; i++) {
-          const px = (Math.sin(i * 87.65) * 0.5 + 0.5) * ctx.canvas.width;
-          const py = (ctx.canvas.height - (i * 32.1 + s.ticks * 0.8) % ctx.canvas.height);
-          ctx.shadowColor = '#ef4444';
-          ctx.shadowBlur = 6;
+        ctx.fillStyle = `rgba(239, 68, 68, ${0.35 + Math.sin(s.ticks * 0.08) * 0.15})`; 
+        for (let i = 0; i < 15; i++) {
+          const px = (Math.sin(i * 87.65) * 0.5 + 0.5) * viewW;
+          const py = (viewH - (i * 32.1 + s.ticks * 0.5) % viewH);
           ctx.beginPath();
-          ctx.arc(px, py, 1.2 + Math.abs(Math.sin(i + s.ticks * 0.1)) * 1.5, 0, Math.PI * 2);
+          ctx.arc(px, py, 1.0 + Math.abs(Math.sin(i + s.ticks * 0.08)) * 1.0, 0, Math.PI * 2);
           ctx.fill();
-          ctx.shadowBlur = 0;
         }
       } else if (bName.includes('Swamp') || bName.includes('Forest') || bName.includes('Grove') || bName.includes('Cavern') || bName.includes('Garden')) {
-        ctx.fillStyle = `rgba(132, 204, 22, ${0.55 + Math.sin(s.ticks * 0.05) * 0.3})`; // Glow flies
-        for (let i = 0; i < 20; i++) {
-          const px = ((Math.sin(i * 92.11) * 0.5 + 0.5) * ctx.canvas.width + Math.sin(s.ticks * 0.02 + i) * 30) % ctx.canvas.width;
-          const py = ((Math.cos(i * 41.22) * 0.5 + 0.5) * ctx.canvas.height + Math.cos(s.ticks * 0.02 + i) * 30) % ctx.canvas.height;
-          ctx.shadowColor = '#84cc16';
-          ctx.shadowBlur = 8;
+        ctx.fillStyle = `rgba(132, 204, 22, ${0.4 + Math.sin(s.ticks * 0.05) * 0.2})`; 
+        for (let i = 0; i < 12; i++) {
+          const px = ((Math.sin(i * 92.11) * 0.5 + 0.5) * viewW + Math.sin(s.ticks * 0.02 + i) * 20) % viewW;
+          const py = ((Math.cos(i * 41.22) * 0.5 + 0.5) * viewH + Math.cos(s.ticks * 0.02 + i) * 20) % viewH;
           ctx.beginPath();
-          ctx.arc(px < 0 ? px + ctx.canvas.width : px, py < 0 ? py + ctx.canvas.height : py, 1.5, 0, Math.PI * 2);
+          ctx.arc(px < 0 ? px + viewW : px, py < 0 ? py + viewH : py, 1.2, 0, Math.PI * 2);
           ctx.fill();
-          ctx.shadowBlur = 0;
         }
       } else if (bName.includes('Celestial') || bName.includes('Void') || bName.includes('Ruins') || bName.includes('Archipelago') || bName.includes('Cyber-Grid')) {
-        ctx.fillStyle = `rgba(168, 85, 247, ${0.45 + Math.sin(s.ticks * 0.04) * 0.2})`; // Void cosmic stardust
-        for (let i = 0; i < 35; i++) {
-          const px = ((Math.sin(i * 111.11) * 0.5 + 0.5) * ctx.canvas.width + Math.sin(s.ticks * 0.01 + i) * 15) % ctx.canvas.width;
-          const py = ((Math.cos(i * 22.22) * 0.5 + 0.5) * ctx.canvas.height + Math.cos(s.ticks * 0.01 + i) * 15) % ctx.canvas.height;
-          ctx.shadowColor = '#a855f7';
-          ctx.shadowBlur = 10;
+        ctx.fillStyle = `rgba(168, 85, 247, ${0.35 + Math.sin(s.ticks * 0.04) * 0.15})`; 
+        for (let i = 0; i < 15; i++) {
+          const px = ((Math.sin(i * 111.11) * 0.5 + 0.5) * viewW + Math.sin(s.ticks * 0.01 + i) * 10) % viewW;
+          const py = ((Math.cos(i * 22.22) * 0.5 + 0.5) * viewH + Math.cos(s.ticks * 0.01 + i) * 10) % viewH;
           ctx.beginPath();
-          ctx.arc(px < 0 ? px + ctx.canvas.width : px, py < 0 ? py + ctx.canvas.height : py, 1 + Math.abs(Math.sin(i + s.ticks * 0.05)) * 2, 0, Math.PI * 2);
+          ctx.arc(px < 0 ? px + viewW : px, py < 0 ? py + viewH : py, 1.0 + Math.abs(Math.sin(i + s.ticks * 0.04)) * 1.2, 0, Math.PI * 2);
           ctx.fill();
-          ctx.shadowBlur = 0;
         }
+      }
+
+      // 2. Active Weather Overlay Drawing
+      if (activeWeatherType === 'rain' || activeWeatherType === 'storm') {
+        // Draw falling rain lines
+        ctx.strokeStyle = activeWeatherType === 'storm' ? 'rgba(125, 211, 252, 0.45)' : 'rgba(186, 230, 253, 0.35)';
+        ctx.lineWidth = 1.0;
+        const count = activeWeatherType === 'storm' ? 55 : 30;
+        ctx.beginPath();
+        for (let i = 0; i < count; i++) {
+          const rx = ((Math.sin(i * 47.11) * 0.5 + 0.5) * viewW - (s.ticks * 1.5)) % viewW;
+          const ry = ((i * 117.8 + s.ticks * 5.0) % viewH);
+          const actualRx = rx < 0 ? rx + viewW : rx;
+          ctx.moveTo(actualRx, ry);
+          ctx.lineTo(actualRx - 6, ry + 18);
+        }
+        ctx.stroke();
+
+        // Storm lightning flash screen-wide overlay
+        if (activeWeatherType === 'storm' && s.lightningFlash && s.lightningFlash > 0) {
+          const flashIntensity = (s.lightningFlash / 12) * 0.6;
+          ctx.fillStyle = `rgba(224, 242, 254, ${flashIntensity})`;
+          ctx.fillRect(0, 0, viewW, viewH);
+        }
+      } else if (activeWeatherType === 'blizzard') {
+        // Heavy, fast drifting snow particles
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        for (let i = 0; i < 60; i++) {
+          const sx = ((Math.sin(i * 139.73) * 0.5 + 0.5) * viewW - s.ticks * 5.5) % viewW;
+          const sy = ((i * 79.2 + s.ticks * 3.0) % viewH);
+          const actualSx = sx < 0 ? sx + viewW : sx;
+          ctx.beginPath();
+          ctx.arc(actualSx, sy, 1.5 + Math.sin(i + s.ticks * 0.1) * 1.0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (activeWeatherType === 'sandstorm') {
+        // Sweep orange/tan sand dust
+        ctx.fillStyle = 'rgba(217, 119, 6, 0.28)';
+        for (let i = 0; i < 45; i++) {
+          const sx = ((Math.sin(i * 83.21) * 0.5 + 0.5) * viewW - s.ticks * 8.0) % viewW;
+          const sy = (i * 133.45) % viewH;
+          const actualSx = sx < 0 ? sx + viewW : sx;
+          ctx.fillRect(actualSx, sy, 15 + Math.sin(i + s.ticks * 0.05) * 10, 1.5);
+        }
+        
+        // Sandstorm warning orange fog vignetting
+        const sandGrad = ctx.createRadialGradient(viewW / 2, viewH / 2, viewW / 3, viewW / 2, viewH / 2, viewW / 1.5);
+        sandGrad.addColorStop(0, 'rgba(217, 119, 6, 0)');
+        sandGrad.addColorStop(1, 'rgba(217, 119, 6, 0.15)');
+        ctx.fillStyle = sandGrad;
+        ctx.fillRect(0, 0, viewW, viewH);
+      } else if (activeWeatherType === 'acid_rain') {
+        // Greenish glowing droplets
+        ctx.strokeStyle = 'rgba(163, 230, 53, 0.4)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        for (let i = 0; i < 25; i++) {
+          const rx = ((Math.sin(i * 39.42) * 0.5 + 0.5) * viewW - (s.ticks * 0.5)) % viewW;
+          const ry = ((i * 143.1 + s.ticks * 3.5) % viewH);
+          const actualRx = rx < 0 ? rx + viewW : rx;
+          ctx.moveTo(actualRx, ry);
+          ctx.lineTo(actualRx - 2, ry + 12);
+        }
+        ctx.stroke();
+
+        // Bubble rings
+        ctx.strokeStyle = 'rgba(163, 230, 53, 0.2)';
+        ctx.lineWidth = 1.0;
+        for (let i = 0; i < 8; i++) {
+          const bx = ((Math.cos(i * 72.1) * 0.5 + 0.5) * viewW + Math.sin(s.ticks * 0.02 + i) * 15) % viewW;
+          const by = ((Math.sin(i * 12.5) * 0.5 + 0.5) * viewH + Math.cos(s.ticks * 0.02 + i) * 15) % viewH;
+          ctx.beginPath();
+          ctx.arc(bx, by, 3 + (s.ticks + i * 20) % 15 * 0.6, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else if (activeWeatherType === 'heatwave') {
+        // Reddish/hot screen border vignette
+        const heatGrad = ctx.createRadialGradient(viewW / 2, viewH / 2, viewW / 4, viewW / 2, viewH / 2, viewW / 1.2);
+        heatGrad.addColorStop(0, 'rgba(239, 68, 68, 0)');
+        heatGrad.addColorStop(1, `rgba(239, 68, 68, ${0.12 + Math.sin(s.ticks * 0.06) * 0.04})`);
+        ctx.fillStyle = heatGrad;
+        ctx.fillRect(0, 0, viewW, viewH);
+      } else if (activeWeatherType === 'chrono_mist') {
+        // Creeping purple stasis mist waves
+        ctx.fillStyle = `rgba(168, 85, 247, ${0.14 + Math.sin(s.ticks * 0.03) * 0.04})`;
+        for (let i = 0; i < 25; i++) {
+          const mx = ((Math.sin(i * 97.4) * 0.5 + 0.5) * viewW + Math.sin(s.ticks * 0.01 + i) * 30) % viewW;
+          const my = ((Math.cos(i * 19.3) * 0.5 + 0.5) * viewH + Math.cos(s.ticks * 0.01 + i) * 30) % viewH;
+          const actualMx = mx < 0 ? mx + viewW : mx;
+          ctx.beginPath();
+          ctx.arc(actualMx, my, 40 + Math.abs(Math.sin(i + s.ticks * 0.02)) * 30, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        
+        // Digital grid glitch particles
+        ctx.fillStyle = 'rgba(6, 182, 212, 0.4)';
+        for (let i = 0; i < 15; i++) {
+          const gx = ((Math.cos(i * 243.11) * 0.5 + 0.5) * viewW) % viewW;
+          const gy = ((Math.sin(i * 87.12) * 0.5 + 0.5) * viewH - s.ticks * 2.0) % viewH;
+          const actualGy = gy < 0 ? gy + viewH : gy;
+          ctx.fillRect(gx, actualGy, 4, 4);
+        }
+      } else if (activeWeatherType === 'aether_gale') {
+        // Swooping wind streaks in purple/magenta
+        ctx.strokeStyle = 'rgba(168, 85, 247, 0.35)';
+        ctx.lineWidth = 1.5;
+        const windAng = s.weather?.windAngle || 0;
+        const cosW = Math.cos(windAng);
+        const sinW = Math.sin(windAng);
+        ctx.beginPath();
+        for (let i = 0; i < 35; i++) {
+          const wx = ((Math.sin(i * 123.4) * 0.5 + 0.5) * viewW + s.ticks * cosW * 8) % viewW;
+          const wy = ((Math.cos(i * 78.9) * 0.5 + 0.5) * viewH + s.ticks * sinW * 8) % viewH;
+          const actualWx = wx < 0 ? wx + viewW : wx;
+          const actualWy = wy < 0 ? wy + viewH : wy;
+          ctx.moveTo(actualWx, actualWy);
+          ctx.lineTo(actualWx + cosW * 45, actualWy + sinW * 45);
+        }
+        ctx.stroke();
+      } else if (activeWeatherType === 'grav_rift') {
+        // Subtle purple vignetting
+        const gravGrad = ctx.createRadialGradient(viewW / 2, viewH / 2, viewW / 4, viewW / 2, viewH / 2, viewW / 1.1);
+        gravGrad.addColorStop(0, 'rgba(124, 58, 237, 0)');
+        gravGrad.addColorStop(1, `rgba(124, 58, 237, ${0.16 + Math.sin(s.ticks * 0.05) * 0.06})`);
+        ctx.fillStyle = gravGrad;
+        ctx.fillRect(0, 0, viewW, viewH);
+        
+        // Render physical vortex center
+        const well = s.weather?.gravityWell;
+        if (well) {
+          const wx = well.x - s.cam.x;
+          const wy = well.y - s.cam.y;
+          
+          ctx.save();
+          // Outer horizon ring
+          ctx.strokeStyle = `rgba(192, 132, 252, ${0.4 + Math.sin(s.ticks * 0.1) * 0.15})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(wx, wy, well.radius, 0, Math.PI * 2);
+          ctx.stroke();
+          
+          // Accretion disk
+          const disks = 3;
+          for (let d = 0; d < disks; d++) {
+            const rot = (s.ticks * 0.03) + (d * Math.PI / disks);
+            ctx.strokeStyle = `rgba(139, 92, 246, ${0.35 - d * 0.08})`;
+            ctx.lineWidth = 4 - d;
+            ctx.beginPath();
+            ctx.ellipse(wx, wy, well.damageRadius + d * 18, (well.damageRadius + d * 18) * 0.4, rot, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+
+          // Singular core
+          ctx.fillStyle = '#000000';
+          ctx.beginPath();
+          ctx.arc(wx, wy, well.damageRadius - 5 + Math.sin(s.ticks * 0.08) * 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#a78bfa';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      // 3. Draw Lightning Bolt (rendered in screen space converted coordinates)
+      if (s.lightningStrike) {
+        const lx = s.lightningStrike.x - s.cam.x;
+        const ly = s.lightningStrike.y - s.cam.y;
+        
+        ctx.save();
+        ctx.strokeStyle = '#ffffff';
+        ctx.shadowColor = '#38bdf8';
+        ctx.shadowBlur = 20;
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        
+        let curX = lx + (Math.random() * 30 - 15);
+        let curY = Math.max(0, ly - 350);
+        ctx.moveTo(curX, curY);
+        
+        const segments = 8;
+        for (let j = 1; j <= segments; j++) {
+          const nextY = Math.max(0, ly - 350) + (350 / segments) * j;
+          const nextX = j === segments ? lx : lx + (Math.random() * 50 - 25);
+          ctx.lineTo(nextX, nextY);
+          curX = nextX;
+          curY = nextY;
+        }
+        ctx.stroke();
+        
+        // Inner core
+        ctx.strokeStyle = '#f0f9ff';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        ctx.restore();
       }
 
       ctx.restore();
@@ -4750,6 +7144,260 @@ export default function SurvivalGame() {
   const addLog = (msg: string, col: string = '#a8ff78') => {
     const id = `${Date.now()}-${Math.random()}`;
     setLogs(prev => [{ id, msg, col }, ...prev].slice(0, 5));
+  };
+
+  useEffect(() => {
+    (window as any).addGameLog = addLog;
+    return () => {
+      delete (window as any).addGameLog;
+    };
+  }, [addLog]);
+
+  const handleMinimapClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = minimapCanvasRef.current;
+    if (!canvas || !stateRef.current) return;
+    const rect = canvas.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+
+    const isWorldMode = minimapModeRef.current === 'world';
+    const zoom = minimapZoomRef.current;
+
+    const s = stateRef.current;
+    const ptx = Math.floor(s.pl.x / TZ);
+    const pty = Math.floor(s.pl.y / TZ);
+
+    let tx = 0;
+    let ty = 0;
+
+    if (isWorldMode) {
+      const pctX = clickX / canvas.width;
+      const pctY = clickY / canvas.height;
+      tx = Math.max(0, Math.min(WW - 1, Math.floor(pctX * WW)));
+      ty = Math.max(0, Math.min(WH - 1, Math.floor(pctY * WH)));
+    } else {
+      const range = Math.round(18 / zoom);
+      const size = range * 2 + 1;
+      const tileSize = canvas.width / size;
+      const dx = Math.floor(clickX / tileSize) - range;
+      const dy = Math.floor(clickY / tileSize) - range;
+      tx = Math.max(0, Math.min(WW - 1, ptx + dx));
+      ty = Math.max(0, Math.min(WH - 1, pty + dy));
+    }
+
+    // Set waypoint
+    setMinimapWaypoint({ tx, ty });
+    addLog(`📍 Waypoint set at [X: ${tx}, Y: ${ty}]`, '#22d3ee');
+
+    // Smooth auto-travel
+    s.pl.targetX = tx * TZ + TZ / 2;
+    s.pl.targetY = ty * TZ + TZ / 2;
+    addLog(`🏃 Auto-traveling to Waypoint...`, '#34d399');
+  }, [addLog]);
+
+  const recruitVillager = (role: string, cost: { [key: string]: number }, name: string, ico: string, spd: number, dmg: number, hp: number) => {
+    const s = stateRef.current;
+    if (!s) return;
+    
+    // Check resources
+    const hasMats = Object.entries(cost).every(([k, v]) => (s.pl.inv[k] || 0) >= v);
+    if (!hasMats) {
+      addLog("⚠️ Insufficient resources to recruit this villager!", "#ef4444");
+      return;
+    }
+
+    // Deduct
+    Object.entries(cost).forEach(([k, v]) => {
+      s.pl.inv[k] -= v;
+    });
+
+    // Spawn companion
+    s.companions.push({
+      n: name,
+      ico: ico,
+      hp: hp,
+      mhp: hp,
+      spd: spd,
+      dmg: dmg,
+      cd: 0,
+      scd: 0,
+      target: null,
+      x: s.pl.x,
+      y: s.pl.y,
+      role: role
+    });
+
+    addLog(`✨ Recruited ${name}! They have joined your survival party.`, '#10b981');
+    spawnExplosion(s, s.pl.x, s.pl.y, '#10b981', 15, 'spell');
+    setGameState({ ...s });
+  };
+
+  // --- Adventurers Guild & Masteries Expansion Logic ---
+  const awardInvItem = (s: any, item: string, qty: number) => {
+    let finalQty = qty;
+    // Apply Masteries
+    if (item === 'wood' || item === 'fiber' || item === 'herb') {
+      const lvl = s.pl.masteries?.double_harvest || 0;
+      if (lvl > 0 && Math.random() < lvl * 0.10) {
+        finalQty *= 2;
+        addLog(`✨ Double Harvest Proc! +${IT[item]?.n || item} x${finalQty}`, '#4df8aa');
+      }
+    } else if (['copper_ore', 'iron_ore', 'gold_ore', 'mithril_ore', 'coal', 'sulfur'].includes(item)) {
+      const lvl = s.pl.masteries?.lucky_miner || 0;
+      if (lvl > 0 && Math.random() < lvl * 0.10) {
+        finalQty *= 2;
+        addLog(`✨ Lucky Miner Proc! +${IT[item]?.n || item} x${finalQty}`, '#fbd38d');
+      }
+    }
+
+    s.pl.inv[item] = (s.pl.inv[item] || 0) + finalQty;
+
+    // Track Quest Objectives
+    if (s.pl.activeQuests) {
+      Object.keys(s.pl.activeQuests).forEach(qid => {
+        const q = GUILD_QUESTS.find(x => x.id === qid);
+        if (q && q.targetType === item) {
+          s.pl.activeQuestsProgress[qid] = Math.min(q.targetCount, (s.pl.activeQuestsProgress[qid] || 0) + finalQty);
+          addLog(`📊 Quest Progress: [${q.n}] (${s.pl.activeQuestsProgress[qid]}/${q.targetCount})`, '#67e8f9');
+        }
+      });
+    }
+  };
+
+  const checkPlayerDeath = (s: any): boolean => {
+    if (s.pl.hp <= 0) {
+      if (s.pl.inv?.phoenix_feather && s.pl.inv.phoenix_feather > 0) {
+        s.pl.inv.phoenix_feather--;
+        s.pl.hp = Math.floor(s.pl.mhp * 0.5);
+        s.pl.sta = 100;
+        s.pl.mp = s.pl.mmp;
+        addLog(`🔥 PHOENIX FEATHER ACTIVATED! You were saved from death and restored to 50% HP!`, '#ef4444');
+        spawnExplosion(s, s.pl.x, s.pl.y, '#f97316', 30, 'fire');
+        return false; // Did not die
+      }
+      return true; // Died
+    }
+    return false;
+  };
+
+  const handleAcceptQuest = (qid: string) => {
+    const s = stateRef.current;
+    if (!s || !s.pl) return;
+    s.pl.activeQuests = s.pl.activeQuests || {};
+    s.pl.activeQuestsProgress = s.pl.activeQuestsProgress || {};
+    
+    // Set active
+    s.pl.activeQuests[qid] = true;
+    s.pl.activeQuestsProgress[qid] = 0;
+    
+    // If it's a delivery quest, pre-populate progress with items in inventory
+    const q = GUILD_QUESTS.find(x => x.id === qid);
+    if (q && !q.isBoss) {
+      const currentQty = s.pl.inv[q.targetType] || 0;
+      s.pl.activeQuestsProgress[qid] = Math.min(q.targetCount, currentQty);
+    }
+    
+    setGameState({ ...s });
+    addLog(`📜 Quest Accepted: "${q?.n}"!`, '#fbbf24');
+  };
+
+  const handleAbandonQuest = (qid: string) => {
+    const s = stateRef.current;
+    if (!s || !s.pl) return;
+    if (s.pl.activeQuests) {
+      delete s.pl.activeQuests[qid];
+    }
+    if (s.pl.activeQuestsProgress) {
+      delete s.pl.activeQuestsProgress[qid];
+    }
+    setGameState({ ...s });
+    addLog(`❌ Abandoned Quest.`, '#f87171');
+  };
+
+  const handleClaimQuest = (qid: string) => {
+    const s = stateRef.current;
+    if (!s || !s.pl) return;
+    const q = GUILD_QUESTS.find(x => x.id === qid);
+    if (!q) return;
+
+    // Double check completed
+    const progress = s.pl.activeQuestsProgress?.[qid] || 0;
+    if (progress < q.targetCount) {
+      addLog(`❌ Quest is not complete yet!`, '#f87171');
+      return;
+    }
+
+    // Deduct items if delivery quest
+    if (!q.isBoss) {
+      const invCount = s.pl.inv[q.targetType] || 0;
+      if (invCount < q.targetCount) {
+        addLog(`❌ You do not have enough ${IT[q.targetType]?.n || q.targetType} in your backpack to deliver!`, '#f87171');
+        return;
+      }
+      s.pl.inv[q.targetType] -= q.targetCount;
+    }
+
+    // Reward Guild Tokens
+    s.pl.guildTokens = (s.pl.guildTokens || 0) + q.rewardTokens;
+
+    // Reward Gold Coins and items
+    Object.entries(q.rewardItems).forEach(([itemKey, qty]) => {
+      s.pl.inv[itemKey] = (s.pl.inv[itemKey] || 0) + (qty as number);
+    });
+
+    // Remove from active
+    delete s.pl.activeQuests[qid];
+    delete s.pl.activeQuestsProgress[qid];
+
+    setGameState({ ...s });
+    addLog(`✨ COMPLETED: "${q.n}"! Gained 🪙${q.rewardTokens} Guild Tokens & items!`, '#10b981');
+  };
+
+  const handleUpgradeMastery = (mid: string, cost: number, maxLevel: number) => {
+    const s = stateRef.current;
+    if (!s || !s.pl) return;
+    s.pl.guildTokens = s.pl.guildTokens || 0;
+    s.pl.masteries = s.pl.masteries || { adrenaline: 0, double_harvest: 0, lucky_miner: 0, toughened_hide: 0, vampiric_strikes: 0, sages_wisdom: 0 };
+
+    const currentLvl = s.pl.masteries[mid] || 0;
+    if (currentLvl >= maxLevel) {
+      addLog(`❌ Mastery already at maximum level!`, '#f87171');
+      return;
+    }
+
+    if (s.pl.guildTokens < cost) {
+      addLog(`❌ Not enough Guild Tokens!`, '#f87171');
+      return;
+    }
+
+    s.pl.guildTokens -= cost;
+    s.pl.masteries[mid] = currentLvl + 1;
+
+    // Apply special immediate effects
+    if (mid === 'sages_wisdom') {
+      s.pl.mmp += 10;
+      s.pl.mp += 10;
+    }
+
+    setGameState({ ...s });
+    addLog(`⚡ Trained Mastery: increased to Level ${currentLvl + 1}!`, '#f59e0b');
+  };
+
+  const handleBuyGuildStoreItem = (itemKey: string, cost: number) => {
+    const s = stateRef.current;
+    if (!s || !s.pl) return;
+    s.pl.guildTokens = s.pl.guildTokens || 0;
+
+    if (s.pl.guildTokens < cost) {
+      addLog(`❌ Not enough Guild Tokens to buy this item!`, '#f87171');
+      return;
+    }
+
+    s.pl.guildTokens -= cost;
+    s.pl.inv[itemKey] = (s.pl.inv[itemKey] || 0) + 1;
+
+    setGameState({ ...s });
+    addLog(`🏪 Bought ${IT[itemKey]?.n || itemKey} from the Guild Store!`, '#10b981');
   };
 
   const triggerWorldEvent = async () => {
@@ -4853,7 +7501,9 @@ export default function SurvivalGame() {
           s.pl.hp = Math.max(0, s.pl.hp - Math.abs(rew.hpChange));
           rewardLogs.push(`${rew.hpChange} HP 💔`);
           if (s.pl.hp <= 0 && !showDeathScreen) {
-            setShowDeathScreen(true);
+            if (checkPlayerDeath(s)) {
+              setShowDeathScreen(true);
+            }
           }
         }
       }
@@ -4933,6 +7583,13 @@ export default function SurvivalGame() {
               s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + heal);
               addLog(`🩸 Vampirism: +${heal} HP!`, '#ff3366');
             }
+          }
+          // Vampiric Strikes Mastery
+          const vampLvl = s.pl.masteries?.vampiric_strikes || 0;
+          if (vampLvl > 0 && Math.random() < vampLvl * 0.05) {
+            s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + 4);
+            addLog(`🩸 Vampiric Strikes Mastery Proc: +4 HP!`, '#ef4444');
+            spawnExplosion(s, s.pl.x, s.pl.y, '#ef4444', 8, 'spark');
           }
           if (e.hp <= 0) {
             handleEnemyKilled(s, e);
@@ -5137,11 +7794,65 @@ export default function SurvivalGame() {
     const it = IT[k];
     if (!it || (s.pl.inv[k] || 0) <= 0) return;
 
-    if (it.t === 'food' || it.t === 'pot' || k === 'mana_crystal' || k === 'philosophers_stone' || k === 'immortality_elixir') {
-      if (k === 'mana_crystal') {
+    if (it.t === 'food' || it.t === 'pot' || k === 'mana_crystal' || k === 'scroll_meteor' || k === 'philosophers_stone' || k === 'immortality_elixir' || k === 'canteen_full' || k === 'canteen_empty') {
+      if (k === 'canteen_full') {
+        s.pl.inv[k]--;
+        s.pl.inv['canteen_empty'] = (s.pl.inv['canteen_empty'] || 0) + 1;
+        s.pl.th = 100;
+        addLog(`🥤 Drank from canteen: fully quenched thirst! (+1 Empty Canteen)`, '#38bdf8');
+        spawnExplosion(s, s.pl.x, s.pl.y, '#38bdf8', 12, 'spark');
+      } else if (k === 'canteen_empty') {
+        const px = Math.floor(s.pl.x / TZ);
+        const py = Math.floor(s.pl.y / TZ);
+        let nearWaterSource = false;
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            const tx = px + dx, ty = py + dy;
+            if (tx >= 0 && tx < WW && ty >= 0 && ty < WH) {
+              const tileType = s.world[ty]?.[tx];
+              if (tileType === TW || tileType === TLV) {
+                nearWaterSource = true;
+              }
+            }
+          }
+        }
+        const adjacentStructure = s.objs.some((o: any) => {
+          const dx = Math.abs(o.tx - px);
+          const dy = Math.abs(o.ty - py);
+          return (o.type === 'water_pump' || o.type === 'water_reservoir' || o.type === 'water_pipe') && dx <= 1 && dy <= 1;
+        });
+        if (nearWaterSource || adjacentStructure) {
+          s.pl.inv[k]--;
+          s.pl.inv['canteen_full'] = (s.pl.inv['canteen_full'] || 0) + 1;
+          addLog(`🥤 Filled empty canteen with clean pure water! (+1 Full Canteen)`, '#38bdf8');
+          spawnExplosion(s, s.pl.x, s.pl.y, '#38bdf8', 12, 'spark');
+        } else {
+          addLog(`⚠️ Stand adjacent to a water source, Water Pump, Reservoir, or Water Pipe to fill!`, '#94a3b8');
+        }
+      } else if (k === 'mana_crystal') {
         s.pl.mp = Math.min(s.pl.mmp, s.pl.mp + 40);
         s.pl.inv[k]--;
         addLog(`Used Mana Crystal: restored 40 MP 🔮`, '#c084fc');
+      } else if (k === 'scroll_meteor') {
+        s.pl.inv[k]--;
+        addLog(`☄️ You channel the Scroll of Meteor: a shower of celestial fire descends!`, '#ef4444');
+        spawnExplosion(s, s.pl.x, s.pl.y, '#f97316', 50, 'fire');
+        // Strike all nearby enemies for 250 damage!
+        let enemiesDamaged = 0;
+        for (let i = s.enemies.length - 1; i >= 0; i--) {
+          const e = s.enemies[i];
+          if (dist(s.pl, e) < 300) {
+            e.hp -= 250;
+            e.flashTicks = 15;
+            spawnExplosion(s, e.x, e.y, '#f97316', 20, 'pixel');
+            enemiesDamaged++;
+            if (e.hp <= 0) {
+              handleEnemyKilled(s, e);
+              s.enemies.splice(i, 1);
+            }
+          }
+        }
+        addLog(`☄️ Sited Meteor shower: hit ${enemiesDamaged} enemy/enemies for 250 flat fire damage!`, '#f97316');
       } else if (k === 'philosophers_stone') {
         s.pl.inv[k]--;
         // Transmute common resources in backpack into Gold Coins!
@@ -5256,10 +7967,30 @@ export default function SurvivalGame() {
        addLog(`Selected ${it.n}`, '#ffffaa');
     } else if (it.t === 'struct') {
       const px = Math.floor(s.pl.x / TZ), py = Math.floor(s.pl.y / TZ);
+      // Calculate HP with Building skill bonus
+      const bldLvl = s.pl.skills?.building?.lvl || 1;
+      let baseHp = 8;
+      if (k === 'stone_wall') baseHp = 24;
+      else if (k === 'watch_tower') baseHp = 60;
+      else if (k === 'water_pump') baseHp = 40;
+      else if (k === 'water_reservoir') baseHp = 40;
+      else if (k === 'water_pipe') baseHp = 15;
+      else if (k === 'supply_crate') baseHp = 30;
+      else if (k === 'sentry_turret') baseHp = 35;
+      else if (k === 'settler_shelter') baseHp = 50;
+      else if (k === 'town_house') baseHp = 70;
+      else if (k === 'town_workshop') baseHp = 90;
+      else if (k === 'storage_depot') baseHp = 100;
+      else if (k === 'merchant_stall') baseHp = 60;
+      else if (k === 'guard_post') baseHp = 80;
+      else if (k === 'farm_plot') baseHp = 30;
+      const finalHp = Math.round(baseHp * (1 + 0.25 * (bldLvl - 1)));
+      
       // Place structure
-      s.objs.push({ type: k, tx: px, ty: py, hp: 5, mhp: 5 });
+      s.objs.push({ type: k, tx: px, ty: py, hp: finalHp, mhp: finalHp, triggered: false });
       s.pl.inv[k]--;
-      addLog(`Placed ${it.n}`, '#ffaa00');
+      addLog(`Placed ${it.n} (Durability: ${finalHp}/${finalHp})`, '#ffaa00');
+      addSkillXPDirect(s, 'building', 20);
     }
     
     // Refresh React state instantly
@@ -5316,6 +8047,229 @@ export default function SurvivalGame() {
       }
     }
     return false;
+  };
+
+  const getBiomeAtPlayer = (s: any) => {
+    const mapIdx = Math.floor(s.pl.y / (ZH * TZ)) * ZCOLS + Math.floor(s.pl.x / (ZW * TZ));
+    const bName = s.zoneMaps?.[mapIdx]?.n || MAPS[mapIdx]?.n || MAPS[0].n;
+    return bName;
+  };
+
+  const getWeatherForBiome = (bName: string): any => {
+    const isCold = bName.includes('Frozen') || bName.includes('Tundra');
+    const isDry = bName.includes('Desert') || bName.includes('Scorched') || bName.includes('Spire') || bName.includes('Oasis');
+    const isSwampy = bName.includes('Swamp') || bName.includes('Cavern') || bName.includes('Volcanic') || bName.includes('Waste') || bName.includes('Ruins');
+    const isRift = bName.includes('Chrono') || bName.includes('Rift') || bName.includes('Aether');
+
+    const rand = Math.random();
+
+    if (isRift) {
+      if (rand < 0.35) {
+        return {
+          type: 'clear',
+          label: 'Chrono-Stasis',
+          icon: '🌌',
+          threat: 'None',
+          desc: 'A calm pocket of space-time. Ideal for exploration and gathering.'
+        };
+      } else if (rand < 0.55) {
+        return {
+          type: 'chrono_mist',
+          label: 'Chrono-Mist',
+          icon: '⏳',
+          threat: 'Medium',
+          desc: 'A misty temporal distortion! Reduces player speed by 20% and reduces enemy vision range by 45%.'
+        };
+      } else if (rand < 0.80) {
+        return {
+          type: 'aether_gale',
+          label: 'Aether Gale',
+          icon: '🌀',
+          threat: 'High',
+          desc: 'Violent spatial winds! Aligns speed with the wind direction, speeding you up or slowing you down.'
+        };
+      } else {
+        return {
+          type: 'grav_rift',
+          label: 'Gravitational Storm',
+          icon: '🕳️',
+          threat: 'Extreme',
+          desc: 'Spatial tears create unstable gravity! Periodically drags you and enemies toward a dimensional vortex.'
+        };
+      }
+    } else if (isCold) {
+      if (rand < 0.45) {
+        return {
+          type: 'clear',
+          label: 'Crisp Calm',
+          icon: '❄️',
+          threat: 'None',
+          desc: 'Cold but clear air. Easy traveling.'
+        };
+      } else {
+        return {
+          type: 'blizzard',
+          label: 'Howling Blizzard',
+          icon: '🌪️',
+          threat: 'Extreme',
+          desc: 'Freezing blizzard! Health (-2 HP/sec) and stamina decline rapidly without a Campfire 🔥 or Shelter ⛺.'
+        };
+      }
+    } else if (isDry) {
+      if (rand < 0.40) {
+        return {
+          type: 'clear',
+          label: 'Sunny Heat',
+          icon: '☀️',
+          threat: 'None',
+          desc: 'Hot and dry conditions.'
+        };
+      } else if (rand < 0.70) {
+        return {
+          type: 'sandstorm',
+          label: 'Raging Sandstorm',
+          icon: '🌪️',
+          threat: 'High',
+          desc: 'Blinding dust! Reduces movement speed by 30% and rapidly drains hydration.'
+        };
+      } else {
+        return {
+          type: 'heatwave',
+          label: 'Scorching Heatwave',
+          icon: '🔥',
+          threat: 'Medium',
+          desc: 'Extreme solar radiation! Rapidly depletes hydration. Stand in water or near a reservoir to stay cool.'
+        };
+      }
+    } else if (isSwampy) {
+      if (rand < 0.40) {
+        return {
+          type: 'clear',
+          label: 'Dense Smog',
+          icon: '🌫️',
+          threat: 'Low',
+          desc: 'Heavy, damp, sulfurous air.'
+        };
+      } else if (rand < 0.70) {
+        return {
+          type: 'acid_rain',
+          label: 'Acid Torrent',
+          icon: '☣️',
+          threat: 'High',
+          desc: 'Corrosive chemical rainfall! Slowly corrodes health (-1 HP/sec) unless fully armored or in a Shelter ⛺.'
+        };
+      } else {
+        return {
+          type: 'storm',
+          label: 'Toxic Tempest',
+          icon: '⛈️',
+          threat: 'Medium',
+          desc: 'Acidic lightning storm. Standing in open land drains stamina and triggers lightning.'
+        };
+      }
+    } else {
+      // Normal / Lush biomes
+      if (rand < 0.40) {
+        return {
+          type: 'clear',
+          label: 'Clear Skies',
+          icon: '☀️',
+          threat: 'None',
+          desc: 'Mild conditions. Standard health and stamina regeneration.'
+        };
+      } else if (rand < 0.75) {
+        return {
+          type: 'rain',
+          label: 'Steady Rain',
+          icon: '🌧️',
+          threat: 'Low',
+          desc: 'Cool rain. Dampens open fires. Naturally replenishes your hydration (+0.1/sec).'
+        };
+      } else {
+        return {
+          type: 'storm',
+          label: 'Violent Thunderstorm',
+          icon: '⛈️',
+          threat: 'Medium',
+          desc: 'Severe lightning storms. Damps open fires, drains stamina, and strikes nearby tiles.'
+        };
+      }
+    }
+  };
+
+  const isWeatherCompatible = (weatherType: string, bName: string) => {
+    const isCold = bName.includes('Frozen') || bName.includes('Tundra');
+    const isDry = bName.includes('Desert') || bName.includes('Scorched') || bName.includes('Spire') || bName.includes('Oasis');
+    const isSwampy = bName.includes('Swamp') || bName.includes('Cavern') || bName.includes('Volcanic') || bName.includes('Waste') || bName.includes('Ruins');
+    const isRift = bName.includes('Chrono') || bName.includes('Rift') || bName.includes('Aether');
+    
+    if (isRift) {
+      return ['clear', 'chrono_mist', 'aether_gale', 'grav_rift'].includes(weatherType);
+    }
+    if (isCold) {
+      return ['clear', 'blizzard'].includes(weatherType);
+    }
+    if (isDry) {
+      return ['clear', 'sandstorm', 'heatwave'].includes(weatherType);
+    }
+    if (isSwampy) {
+      return ['clear', 'acid_rain', 'storm'].includes(weatherType);
+    }
+    return ['clear', 'rain', 'storm'].includes(weatherType);
+  };
+
+  const triggerLightningStrike = (s: any) => {
+    const ptx = Math.floor(s.pl.x / TZ);
+    const pty = Math.floor(s.pl.y / TZ);
+    const dx = Math.floor(Math.random() * 11) - 5;
+    const dy = Math.floor(Math.random() * 11) - 5;
+    const tx = ptx + dx;
+    const ty = pty + dy;
+    
+    if (tx >= 0 && tx < WW && ty >= 0 && ty < WH) {
+      const sx = tx * TZ + TZ / 2;
+      const sy = ty * TZ + TZ / 2;
+      
+      s.lightningFlash = 12;
+      s.lightningStrike = { x: sx, y: sy, duration: 8 };
+      
+      spawnExplosion(s, sx, sy, '#38bdf8', 15, 'spark');
+      
+      const distToPlayer = Math.hypot(s.pl.x - sx, s.pl.y - sy);
+      if (distToPlayer < 40) {
+        s.pl.hp = Math.max(0, s.pl.hp - 15);
+        addLog("⚡ Crack! Lightning struck extremely close and shocked you for 15 damage!", "#ef4444");
+        s.camShake = Math.max(s.camShake || 0, 10);
+      } else if (distToPlayer < 120) {
+        addLog("⚡ BOOM! Thunder rumbles deafeningly nearby!", "#38bdf8");
+        s.camShake = Math.max(s.camShake || 0, 6);
+      }
+      
+      for (let i = s.objs.length - 1; i >= 0; i--) {
+        const o = s.objs[i];
+        if (o.tx === tx && o.ty === ty) {
+          if (o.hp !== undefined && o.hp !== 999) {
+            o.hp -= 15;
+            if (o.hp <= 0) {
+              s.objs.splice(i, 1);
+              addLog(`⚡ Lightning destroyed a ${IT[o.type]?.n || o.type}!`, "#ef4444");
+            }
+          }
+        }
+      }
+      
+      for (let i = s.enemies.length - 1; i >= 0; i--) {
+        const e = s.enemies[i];
+        const dist = Math.hypot(e.x - sx, e.y - sy);
+        if (dist < 45) {
+          e.hp -= 40;
+          if (e.hp <= 0) {
+            s.enemies.splice(i, 1);
+            addLog(`⚡ Lightning vaporized a ${ET[e.eid]?.n || 'hostile'}!`, "#38bdf8");
+          }
+        }
+      }
+    }
   };
 
   const isNearWater = () => {
@@ -5417,8 +8371,14 @@ export default function SurvivalGame() {
         woodcutting: { lvl: 1, xp: 0, xpNext: 100 },
         combat: { lvl: 1, xp: 0, xpNext: 100 },
         alchemy: { lvl: 1, xp: 0, xpNext: 100 },
-        hunting: { lvl: 1, xp: 0, xpNext: 100 }
+        hunting: { lvl: 1, xp: 0, xpNext: 100 },
+        smithing: { lvl: 1, xp: 0, xpNext: 100 },
+        farming: { lvl: 1, xp: 0, xpNext: 100 },
+        building: { lvl: 1, xp: 0, xpNext: 100 }
       };
+    }
+    if (!s.pl.skills[skill]) {
+      s.pl.skills[skill] = { lvl: 1, xp: 0, xpNext: 100 };
     }
     const sk = s.pl.skills[skill];
     if (!sk) return;
@@ -5444,6 +8404,18 @@ export default function SurvivalGame() {
   const handleEnemyKilled = (s: any, e: any) => {
     const et = ET[e.eid];
     if (!et) return;
+
+    // Track monster slaying quest progress
+    if (s.pl.activeQuests) {
+      s.pl.activeQuestsProgress = s.pl.activeQuestsProgress || {};
+      Object.keys(s.pl.activeQuests).forEach(qid => {
+        const q = GUILD_QUESTS.find(x => x.id === qid);
+        if (q && q.targetType === e.eid) {
+          s.pl.activeQuestsProgress[qid] = Math.min(q.targetCount, (s.pl.activeQuestsProgress[qid] || 0) + 1);
+          addLog(`📊 Quest Progress: [${q.n}] (${s.pl.activeQuestsProgress[qid]}/${q.targetCount})`, '#67e8f9');
+        }
+      });
+    }
 
     // 1. Give character general XP
     s.pl.xp += et.xp;
@@ -5513,34 +8485,12 @@ export default function SurvivalGame() {
     }
   };
 
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    // 1. Don't gather if a menu/modal is open
-    if (showSkills || showCraft || showRecipeBook || showOracle || showSaveMenu || showWorldMenu || showSpellbook || showNFTMarket || showShop || showDeathScreen || showInv || showMusicMenu || isFishing) {
-      return;
-    }
-
+  const executeInteractAtTile = (tx: number, ty: number) => {
     const s = stateRef.current;
-    if (!s || !canvasRef.current) return;
-
-    // Convert mouse coordinates to world tile
-    const rect = canvasRef.current.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    const tx = Math.floor((mouseX + s.cam.x) / TZ);
-    const ty = Math.floor((mouseY + s.cam.y) / TZ);
+    if (!s) return;
 
     // Bounds check
     if (tx < 0 || tx >= WW || ty < 0 || ty >= WH) return;
-
-    // Distance check (Reach limit of 4 tiles)
-    const px = Math.floor(s.pl.x / TZ);
-    const py = Math.floor(s.pl.y / TZ);
-    const distTiles = Math.abs(tx - px) + Math.abs(ty - py);
-
-    if (distTiles > 4) {
-      addLog("That tile is too far away to harvest! Get closer.", "#ff8888");
-      return;
-    }
 
     // Stamina check (harvesting requires stamina and consumes a bit)
     if ((s.pl.sta || 100) < 5) {
@@ -5551,7 +8501,7 @@ export default function SurvivalGame() {
     // Spend stamina
     s.pl.sta = Math.max(0, (s.pl.sta || 100) - 4);
 
-    // 2. Check if clicking on an object in s.objs
+    // Check if clicking on an object in s.objs
     let objGathered = false;
     for (let i = s.objs.length - 1; i >= 0; i--) {
       const o = s.objs[i];
@@ -5561,9 +8511,16 @@ export default function SurvivalGame() {
 
         if (o.type === 'tree') {
           // Calculate weapon damage bonus for chopping wood
-          const isAxe = s.pl.weapon && s.pl.weapon.includes('axe');
-          const isPick = s.pl.weapon && s.pl.weapon.includes('pickaxe');
-          const dmg = isAxe ? 3 : isPick ? 1 : 1;
+          let dmg = 1;
+          const w = s.pl.weapon;
+          if (w) {
+            if (w === 'stone_axe') dmg = 2;
+            else if (w === 'copper_axe') dmg = 3;
+            else if (w === 'iron_axe') dmg = 4;
+            else if (w === 'gold_axe') dmg = 5;
+            else if (w === 'mithril_axe') dmg = 6;
+            else if (w.includes('axe')) dmg = 3; // fallback
+          }
           
           o.hp -= dmg;
           gainSkillXP('woodcutting', 3);
@@ -5575,8 +8532,7 @@ export default function SurvivalGame() {
             const baseLogs = 2 + Math.floor(Math.random() * 2);
             const bonusLogs = Math.floor(Math.random() * (wcLvl * 0.5));
             const q = baseLogs + bonusLogs;
-            s.pl.inv.wood = (s.pl.inv.wood || 0) + q;
-            addLog(`+Wood x${q} ${bonusLogs > 0 ? `(Skill Bonus +${bonusLogs})` : ''}`, '#22c55e');
+            awardInvItem(s, 'wood', q);
 
             // Biome-specific custom tree drops
             if (o.subtype === 'cactus') {
@@ -5606,6 +8562,40 @@ export default function SurvivalGame() {
                 s.pl.inv.magic_essence = (s.pl.inv.magic_essence || 0) + qty;
                 addLog(`+Magic Essence x${qty}! ✨`, '#22d3ee');
               }
+            } else if (o.subtype === 'maple') {
+              if (Math.random() < 0.60) {
+                s.pl.inv.maple_syrup = (s.pl.inv.maple_syrup || 0) + 1;
+                addLog(`+Maple Syrup x1! 🍁`, '#fb923c');
+              }
+            } else if (o.subtype === 'apple') {
+              if (Math.random() < 0.60) {
+                const qty = 1 + Math.floor(Math.random() * 2);
+                s.pl.inv.apple = (s.pl.inv.apple || 0) + qty;
+                addLog(`+Apple x${qty}! 🍎`, '#ef4444');
+              }
+            } else if (o.subtype === 'redwood') {
+              const extraWood = 5 + Math.floor(Math.random() * 5);
+              s.pl.inv.wood = (s.pl.inv.wood || 0) + extraWood;
+              addLog(`+Giant Redwood Lumber x${extraWood}! 🪵`, '#fb923c');
+              if (Math.random() < 0.40) {
+                s.pl.inv.amber = (s.pl.inv.amber || 0) + 1;
+                addLog(`+Amber Clump x1! 🟡`, '#eab308');
+              }
+            } else if (o.subtype === 'glowshroom') {
+              if (Math.random() < 0.50) {
+                const qty = 1 + Math.floor(Math.random() * 2);
+                s.pl.inv.glowing_spore = (s.pl.inv.glowing_spore || 0) + qty;
+                addLog(`+Glowing Spore x${qty}! 🍄`, '#a855f7');
+              }
+            } else if (o.subtype === 'shadowwood') {
+              if (Math.random() < 0.50) {
+                s.pl.inv.shadow_bark = (s.pl.inv.shadow_bark || 0) + 1;
+                addLog(`+Shadow Bark x1! 🎋`, '#c084fc');
+              }
+              if (Math.random() < 0.30) {
+                s.pl.inv.void_crystal = (s.pl.inv.void_crystal || 0) + 1;
+                addLog(`+Void Crystal x1! 🔮`, '#a855f7');
+              }
             }
 
             if (Math.random() < 0.2 + (wcLvl * 0.05)) {
@@ -5624,8 +8614,17 @@ export default function SurvivalGame() {
           }
         } else if (o.type === 'rock') {
           // Calculate weapon damage bonus for mining rocks
-          const isPick = s.pl.weapon && s.pl.weapon.includes('pickaxe');
-          const dmg = isPick ? 3 : 1;
+          let dmg = 1;
+          const w = s.pl.weapon;
+          if (w) {
+            if (w === 'stone_pickaxe') dmg = 2;
+            else if (w === 'copper_pickaxe') dmg = 3;
+            else if (w === 'iron_pickaxe') dmg = 4;
+            else if (w === 'gold_pickaxe') dmg = 5;
+            else if (w === 'mithril_pickaxe') dmg = 6;
+            else if (w === 'aether_pickaxe') dmg = 8;
+            else if (w.includes('pickaxe')) dmg = 3; // fallback
+          }
 
           o.hp -= dmg;
           gainSkillXP('mining', 3);
@@ -5642,28 +8641,22 @@ export default function SurvivalGame() {
             // Biome-specific custom rock drops
             if (o.subtype === 'copper') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.3);
-              s.pl.inv.copper_ore = (s.pl.inv.copper_ore || 0) + qty;
-              addLog(`+Copper Ore x${qty}! 🪙`, '#fb923c');
+              awardInvItem(s, 'copper_ore', qty);
             } else if (o.subtype === 'iron') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.3);
-              s.pl.inv.iron_ore = (s.pl.inv.iron_ore || 0) + qty;
-              addLog(`+Iron Ore x${qty}! ⚙️`, '#818cf8');
+              awardInvItem(s, 'iron_ore', qty);
             } else if (o.subtype === 'coal') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.3);
-              s.pl.inv.coal = (s.pl.inv.coal || 0) + qty;
-              addLog(`+Coal x${qty}! 🖤`, '#4b5563');
+              awardInvItem(s, 'coal', qty);
             } else if (o.subtype === 'gold') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.2);
-              s.pl.inv.gold_ore = (s.pl.inv.gold_ore || 0) + qty;
-              addLog(`+Gold Ore x${qty}! ⭐`, '#facc15');
+              awardInvItem(s, 'gold_ore', qty);
             } else if (o.subtype === 'mithril') {
               const qty = 1 + Math.floor(Math.random() * 1) + Math.floor(mineLvl * 0.15);
-              s.pl.inv.mithril_ore = (s.pl.inv.mithril_ore || 0) + qty;
-              addLog(`+Mithril Ore x${qty}! 🪐`, '#22d3ee');
+              awardInvItem(s, 'mithril_ore', qty);
             } else if (o.subtype === 'sulfur') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.2);
-              s.pl.inv.sulfur = (s.pl.inv.sulfur || 0) + qty;
-              addLog(`+Sulfur x${qty}! 🟡`, '#facc15');
+              awardInvItem(s, 'sulfur', qty);
             } else if (o.subtype === 'mana_crystal') {
               const qty = 1 + Math.floor(Math.random() * 2);
               s.pl.inv.mana_crystal = (s.pl.inv.mana_crystal || 0) + qty;
@@ -5730,8 +8723,43 @@ export default function SurvivalGame() {
         } else if (o.type === 'drop') {
           s.pl.inv[o.item] = (s.pl.inv[o.item] || 0) + o.qty;
           addLog(`+${IT[o.item]?.n || o.item} x${o.qty}`, '#ccffaa');
+          const farmItems = ['herb', 'berry', 'mushroom', 'cactus_fruit', 'snowberry', 'astral_flower', 'fiber'];
+          if (farmItems.includes(o.item)) {
+            addSkillXPDirect(s, 'farming', 10 * o.qty);
+          }
           s.objs.splice(i, 1);
           spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#ccffaa', 8, 'spark');
+        } else if (o.type === 'supply_crate') {
+          setActiveCrateIndex(i);
+          if (!o.items) o.items = {};
+          addLog("📦 Opened Supply Crate. Click items in backpack or crate to transfer!", "#fb923c");
+          spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#fb923c', 8, 'spark');
+        } else if (o.type === 'water_pump') {
+          s.pl.th = 100;
+          let refilledCount = 0;
+          const canteenQty = s.pl.inv['canteen_empty'] || 0;
+          if (canteenQty > 0) {
+            s.pl.inv['canteen_empty'] = 0;
+            s.pl.inv['canteen_full'] = (s.pl.inv['canteen_full'] || 0) + canteenQty;
+            refilledCount = canteenQty;
+          }
+          addLog(`⛲ Activated Water Pump! Quenched thirst completely and refilled ${refilledCount} canteens!`, '#38bdf8');
+          spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#38bdf8', 12, 'spark');
+        } else if (o.type === 'water_reservoir') {
+          s.pl.th = 100;
+          let refilledCount = 0;
+          const canteenQty = s.pl.inv['canteen_empty'] || 0;
+          if (canteenQty > 0) {
+            s.pl.inv['canteen_empty'] = 0;
+            s.pl.inv['canteen_full'] = (s.pl.inv['canteen_full'] || 0) + canteenQty;
+            refilledCount = canteenQty;
+          }
+          addLog(`🛢️ Accessed Water Reservoir! Quenched thirst completely and refilled ${refilledCount} canteens!`, '#38bdf8');
+          spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#38bdf8', 12, 'spark');
+        } else if (o.type === 'water_pipe') {
+          s.pl.th = 100;
+          addLog(`🚰 Drank from Water Pipe: Quenched thirst completely!`, '#38bdf8');
+          spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#38bdf8', 8, 'spark');
         } else if (o.type === 'cave_treasure') {
           s.objs.splice(i, 1);
           const goldBonus = 150 + Math.floor(Math.random() * 250);
@@ -5750,13 +8778,21 @@ export default function SurvivalGame() {
       }
     }
 
-    // 3. If no object was clicked, harvest the raw tile directly from the terrain!
+    // If no object was clicked, harvest the raw tile directly from the terrain!
     if (!objGathered) {
       const tileType = s.world[ty]?.[tx];
       let collectedName = "";
       let collectedKey = "";
       let colVal = "#ffffff";
       let xpCategory = "";
+
+      if ((tileType === TW || tileType === TLV) && (s.pl.weapon === 'fishing_rod' || (s.pl.inv && s.pl.inv.fishing_rod > 0))) {
+        if (s.pl.weapon !== 'fishing_rod' && s.pl.inv.fishing_rod > 0) {
+          s.pl.weapon = 'fishing_rod';
+        }
+        handleStartFishing();
+        return;
+      }
 
       if (tileType === TG || tileType === TD) {
         // Grass / Soil: Harvest wood (stick) or fiber or herb
@@ -5765,16 +8801,18 @@ export default function SurvivalGame() {
           collectedKey = "fiber";
           collectedName = "Fiber";
           colVal = "#a3e635";
+          xpCategory = "farming";
         } else if (r < 0.8) {
           collectedKey = "stick";
           collectedName = "Stick";
           colVal = "#b45309";
+          xpCategory = "woodcutting";
         } else {
           collectedKey = "herb";
           collectedName = "Herb";
           colVal = "#22c55e";
+          xpCategory = "farming";
         }
-        xpCategory = "woodcutting";
       } else if (tileType === TS || tileType === TSN) {
         // Stone / Snow: Harvest stone or flint
         const r = Math.random();
@@ -5849,6 +8887,76 @@ export default function SurvivalGame() {
         spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, colVal, 6, 'spark');
       }
     }
+  };
+
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // 1. Don't gather if a menu/modal is open
+    if (showTownHub || showCharCustomizer || showSkills || showQuests || showMasteries || showCraft || showRecipeBook || showOracle || showSaveMenu || showWorldMenu || showSpellbook || showNFTMarket || showShop || showDeathScreen || showInv || showMusicMenu || isFishing || activeNPC) {
+      return;
+    }
+
+    const s = stateRef.current;
+    if (!s || !canvasRef.current) return;
+
+    // Convert mouse coordinates to world tile
+    const rect = canvasRef.current.getBoundingClientRect();
+    const mouseX = (e.clientX - rect.left) / gameZoom;
+    const mouseY = (e.clientY - rect.top) / gameZoom;
+    const tx = Math.floor((mouseX + s.cam.x) / TZ);
+    const ty = Math.floor((mouseY + s.cam.y) / TZ);
+
+    // Bounds check
+    if (tx < 0 || tx >= WW || ty < 0 || ty >= WH) return;
+
+    const px = Math.floor(s.pl.x / TZ);
+    const py = Math.floor(s.pl.y / TZ);
+    const distTiles = Math.abs(tx - px) + Math.abs(ty - py);
+
+    // Check if there is an enemy under the click/tap!
+    let clickedEnemy = null;
+    const clickWorldX = mouseX + s.cam.x;
+    const clickWorldY = mouseY + s.cam.y;
+    for (const enemy of s.enemies) {
+      const d = Math.hypot(enemy.x - clickWorldX, enemy.y - clickWorldY);
+      if (d < TZ * 1.3) {
+        clickedEnemy = enemy;
+        break;
+      }
+    }
+
+    if (clickedEnemy) {
+      const wp = getWeaponStats(s, s.pl.weapon);
+      const pxDist = dist(s.pl, clickedEnemy);
+      if (pxDist <= wp.rng) {
+        // Attack immediately!
+        s.pl.touchTarget = null;
+        handleAttack();
+      } else {
+        // Set target to walk and attack!
+        s.pl.touchTarget = {
+          tx: Math.floor(clickedEnemy.x / TZ),
+          ty: Math.floor(clickedEnemy.y / TZ),
+          action: { type: 'attack', targetId: clickedEnemy.id }
+        };
+        addLog(`🎯 Targeting ${ET[clickedEnemy.eid]?.n || 'enemy'}... Moving into attack range!`, '#ef4444');
+      }
+      setGameState({ ...s });
+      return;
+    }
+
+    // Check distance for immediate gathering vs auto-walk pathing
+    if (distTiles <= 4) {
+      s.pl.touchTarget = null;
+      executeInteractAtTile(tx, ty);
+    } else {
+      // Set path target to walk and harvest
+      s.pl.touchTarget = {
+        tx,
+        ty,
+        action: { type: 'gather_or_interact', tx, ty }
+      };
+      addLog(`🚶 Moving towards target tile...`, '#38bdf8');
+    }
 
     setGameState({ ...s });
   };
@@ -5862,7 +8970,17 @@ export default function SurvivalGame() {
       const o = s.objs[i];
       if (Math.abs(o.tx - px) + Math.abs(o.ty - py) <= 2) {
         if (o.type === 'tree') {
-          o.hp--;
+          let dmg = 1;
+          const w = s.pl.weapon;
+          if (w) {
+            if (w === 'stone_axe') dmg = 2;
+            else if (w === 'copper_axe') dmg = 3;
+            else if (w === 'iron_axe') dmg = 4;
+            else if (w === 'gold_axe') dmg = 5;
+            else if (w === 'mithril_axe') dmg = 6;
+            else if (w.includes('axe')) dmg = 3;
+          }
+          o.hp -= dmg;
           gainSkillXP('woodcutting', 3);
           if (o.hp <= 0) {
             s.objs.splice(i, 1);
@@ -5870,8 +8988,7 @@ export default function SurvivalGame() {
             const baseLogs = 2 + Math.floor(Math.random() * 2);
             const bonusLogs = Math.floor(Math.random() * (wcLvl * 0.5));
             const q = baseLogs + bonusLogs;
-            s.pl.inv.wood = (s.pl.inv.wood || 0) + q;
-            addLog(`+Wood x${q} ${bonusLogs > 0 ? `(Skill Bonus +${bonusLogs})` : ''}`, '#22c55e');
+            awardInvItem(s, 'wood', q);
 
             // Biome-specific custom tree drops
             if (o.subtype === 'cactus') {
@@ -5901,6 +9018,40 @@ export default function SurvivalGame() {
                 s.pl.inv.magic_essence = (s.pl.inv.magic_essence || 0) + qty;
                 addLog(`+Magic Essence x${qty}! ✨`, '#22d3ee');
               }
+            } else if (o.subtype === 'maple') {
+              if (Math.random() < 0.60) {
+                s.pl.inv.maple_syrup = (s.pl.inv.maple_syrup || 0) + 1;
+                addLog(`+Maple Syrup x1! 🍁`, '#fb923c');
+              }
+            } else if (o.subtype === 'apple') {
+              if (Math.random() < 0.60) {
+                const qty = 1 + Math.floor(Math.random() * 2);
+                s.pl.inv.apple = (s.pl.inv.apple || 0) + qty;
+                addLog(`+Apple x${qty}! 🍎`, '#ef4444');
+              }
+            } else if (o.subtype === 'redwood') {
+              const extraWood = 5 + Math.floor(Math.random() * 5);
+              s.pl.inv.wood = (s.pl.inv.wood || 0) + extraWood;
+              addLog(`+Giant Redwood Lumber x${extraWood}! 🪵`, '#fb923c');
+              if (Math.random() < 0.40) {
+                s.pl.inv.amber = (s.pl.inv.amber || 0) + 1;
+                addLog(`+Amber Clump x1! 🟡`, '#eab308');
+              }
+            } else if (o.subtype === 'glowshroom') {
+              if (Math.random() < 0.50) {
+                const qty = 1 + Math.floor(Math.random() * 2);
+                s.pl.inv.glowing_spore = (s.pl.inv.glowing_spore || 0) + qty;
+                addLog(`+Glowing Spore x${qty}! 🍄`, '#a855f7');
+              }
+            } else if (o.subtype === 'shadowwood') {
+              if (Math.random() < 0.50) {
+                s.pl.inv.shadow_bark = (s.pl.inv.shadow_bark || 0) + 1;
+                addLog(`+Shadow Bark x1! 🎋`, '#c084fc');
+              }
+              if (Math.random() < 0.30) {
+                s.pl.inv.void_crystal = (s.pl.inv.void_crystal || 0) + 1;
+                addLog(`+Void Crystal x1! 🔮`, '#a855f7');
+              }
             }
 
             if (Math.random() < 0.2 + (wcLvl * 0.05)) {
@@ -5917,7 +9068,18 @@ export default function SurvivalGame() {
           return;
         }
         if (o.type === 'rock') {
-          o.hp--;
+          let dmg = 1;
+          const w = s.pl.weapon;
+          if (w) {
+            if (w === 'stone_pickaxe') dmg = 2;
+            else if (w === 'copper_pickaxe') dmg = 3;
+            else if (w === 'iron_pickaxe') dmg = 4;
+            else if (w === 'gold_pickaxe') dmg = 5;
+            else if (w === 'mithril_pickaxe') dmg = 6;
+            else if (w === 'aether_pickaxe') dmg = 8;
+            else if (w.includes('pickaxe')) dmg = 3;
+          }
+          o.hp -= dmg;
           gainSkillXP('mining', 3);
           if (o.hp <= 0) {
             s.objs.splice(i, 1);
@@ -5930,28 +9092,22 @@ export default function SurvivalGame() {
             // Biome-specific custom rock drops
             if (o.subtype === 'copper') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.3);
-              s.pl.inv.copper_ore = (s.pl.inv.copper_ore || 0) + qty;
-              addLog(`+Copper Ore x${qty}! 🪙`, '#fb923c');
+              awardInvItem(s, 'copper_ore', qty);
             } else if (o.subtype === 'iron') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.3);
-              s.pl.inv.iron_ore = (s.pl.inv.iron_ore || 0) + qty;
-              addLog(`+Iron Ore x${qty}! ⚙️`, '#818cf8');
+              awardInvItem(s, 'iron_ore', qty);
             } else if (o.subtype === 'coal') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.3);
-              s.pl.inv.coal = (s.pl.inv.coal || 0) + qty;
-              addLog(`+Coal x${qty}! 🖤`, '#4b5563');
+              awardInvItem(s, 'coal', qty);
             } else if (o.subtype === 'gold') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.2);
-              s.pl.inv.gold_ore = (s.pl.inv.gold_ore || 0) + qty;
-              addLog(`+Gold Ore x${qty}! ⭐`, '#facc15');
+              awardInvItem(s, 'gold_ore', qty);
             } else if (o.subtype === 'mithril') {
               const qty = 1 + Math.floor(Math.random() * 1) + Math.floor(mineLvl * 0.15);
-              s.pl.inv.mithril_ore = (s.pl.inv.mithril_ore || 0) + qty;
-              addLog(`+Mithril Ore x${qty}! 🪐`, '#22d3ee');
+              awardInvItem(s, 'mithril_ore', qty);
             } else if (o.subtype === 'sulfur') {
               const qty = 1 + Math.floor(Math.random() * 2) + Math.floor(mineLvl * 0.2);
-              s.pl.inv.sulfur = (s.pl.inv.sulfur || 0) + qty;
-              addLog(`+Sulfur x${qty}! 🟡`, '#facc15');
+              awardInvItem(s, 'sulfur', qty);
             } else if (o.subtype === 'mana_crystal') {
               const qty = 1 + Math.floor(Math.random() * 2);
               s.pl.inv.mana_crystal = (s.pl.inv.mana_crystal || 0) + qty;
@@ -6109,6 +9265,11 @@ export default function SurvivalGame() {
           addLog(`🧔 Conversing with the local merchant...`, '#38bdf8');
           return;
         }
+        if (o.type === 'lost_explorer' || o.type === 'elven_druid' || o.type === 'tame_dog' || o.type === 'tavern_bard' || o.type === 'resource_trader') {
+          setActiveNPC(o);
+          addLog(`💬 Conversing with the ${o.type.replace('_', ' ')}...`, '#38bdf8');
+          return;
+        }
         if (o.type === 'bandit_chest') {
           // Verify if bandits are still alive in this zone to protect it
           const zc = Math.floor(s.pl.x / (ZW * TZ));
@@ -6247,9 +9408,14 @@ export default function SurvivalGame() {
     setGameState({ ...s });
   };
 
-  const handleAwardNFTs = (nftIds: number[]) => {
+  const handleAwardNFTs = (nftIds: number[], goldCost: number = 0) => {
     const s = stateRef.current;
     if (!s) return;
+    
+    if (goldCost !== 0) {
+      const currentCoins = s.pl.inv.gold_coins || 0;
+      s.pl.inv.gold_coins = Math.max(0, currentCoins - goldCost);
+    }
     
     if (nftIds.length > 5) {
       nftIds.forEach((tokenId) => {
@@ -6326,6 +9492,14 @@ export default function SurvivalGame() {
     const s = stateRef.current;
     if (!s) return;
 
+    let actualManaCost = manaCost;
+    if (paymentType === 'mp') {
+      const sageLvl = s.pl.masteries?.sages_wisdom || 0;
+      if (sageLvl > 0) {
+        actualManaCost = Math.round(manaCost * (1 - sageLvl * 0.10));
+      }
+    }
+
     const crystalCost = spellName === "Heal" ? 1 
       : spellName === "Reveal Map" ? 2 
       : spellName === "Healing Sanctuary" ? 2 
@@ -6343,14 +9517,14 @@ export default function SurvivalGame() {
       setGameState({ ...s });
       addLog(`✨ Channelling spell: "${spellName}" (${crystalCost} Mana Crystal(s) spent)...`, "#c084fc");
     } else {
-      if (s.pl.mp < manaCost) {
+      if (s.pl.mp < actualManaCost) {
         addLog("❌ You do not have enough Mana to cast this spell!", "#ef4444");
         return;
       }
       // Spend Mana immediately
-      s.pl.mp -= manaCost;
+      s.pl.mp -= actualManaCost;
       setGameState({ ...s });
-      addLog(`✨ Channelling spell: "${spellName}" (${manaCost} MP spent)...`, "#c084fc");
+      addLog(`✨ Channelling spell: "${spellName}" (${actualManaCost} MP spent)...`, "#c084fc");
     }
 
     setIsCasting(true);
@@ -6608,6 +9782,15 @@ export default function SurvivalGame() {
       }
     }
 
+    // Check building skill level requirement
+    if (r.reqBld) {
+      const bldLvl = s.pl.skills?.building?.lvl || 1;
+      if (bldLvl < r.reqBld) {
+        addLog(`❌ Requires Building level ${r.reqBld} to craft this!`, '#ff4444');
+        return;
+      }
+    }
+
     // Check costs
     for (const [k, v] of Object.entries(r.c)) {
       if ((s.pl.inv[k] || 0) < (v as number) * qty) {
@@ -6639,6 +9822,10 @@ export default function SurvivalGame() {
       addSkillXPDirect(s, 'cooking', 15 * qty);
     } else if (r.out === 'mana_crystal' || r.out === 'void_essence' || r.out.includes('staff')) {
       addSkillXPDirect(s, 'alchemy', 25 * qty);
+    } else if (r.cat === 'Weapons' || r.cat === 'Armor' || r.out.includes('bar') || r.out.includes('pickaxe') || r.out.includes('axe')) {
+      addSkillXPDirect(s, 'smithing', 20 * qty);
+    } else if (r.cat === 'Structures') {
+      addSkillXPDirect(s, 'building', 30 * qty);
     }
 
     s.pl.inv[r.out] = (s.pl.inv[r.out] || 0) + actualQty;
@@ -7067,8 +10254,8 @@ export default function SurvivalGame() {
           const s = stateRef.current;
           if (!s || !canvasRef.current) return;
           const rect = canvasRef.current.getBoundingClientRect();
-          const mouseX = e.clientX - rect.left;
-          const mouseY = e.clientY - rect.top;
+          const mouseX = (e.clientX - rect.left) / gameZoom;
+          const mouseY = (e.clientY - rect.top) / gameZoom;
           const tx = Math.floor((mouseX + s.cam.x) / TZ);
           const ty = Math.floor((mouseY + s.cam.y) / TZ);
           if (tx >= 0 && tx < WW && ty >= 0 && ty < WH) {
@@ -7132,8 +10319,36 @@ export default function SurvivalGame() {
         )}
       </AnimatePresence>
 
+      {/* Floating HUD Controller & Zoom Pill (Always interactive, clean and modern) */}
+      <div className="absolute top-4 left-4 z-50 flex items-center gap-1.5 pointer-events-auto bg-zinc-950/90 border border-white/10 p-1.5 rounded-xl backdrop-blur-md shadow-2xl text-xs font-mono font-bold select-none">
+        <button 
+          onClick={() => setIsHUDHidden(prev => !prev)}
+          className="px-2 py-1 bg-white/5 border border-white/10 hover:border-yellow-500/50 hover:bg-yellow-500/10 rounded-lg text-[10px] text-zinc-300 hover:text-yellow-400 cursor-pointer transition-all active:scale-95 flex items-center gap-1"
+          title="Toggle HUD Visibility (H)"
+        >
+          {isHUDHidden ? '👁️ SHOW HUD' : '🙈 HIDE HUD'}
+          <span className="text-[8px] bg-white/10 px-1 rounded text-zinc-400 font-bold">H</span>
+        </button>
+        <div className="h-4 w-px bg-white/10 mx-0.5" />
+        <button 
+          onClick={() => setGameZoom(prev => Math.max(0.4, Number((prev - 0.15).toFixed(2))))}
+          className="w-6 h-6 flex items-center justify-center bg-white/5 border border-white/10 hover:border-cyan-500/50 hover:bg-cyan-500/10 rounded-lg text-zinc-300 hover:text-cyan-400 cursor-pointer transition-all active:scale-95 font-black"
+          title="Zoom Out"
+        >
+          ➖
+        </button>
+        <span className="text-[10px] text-zinc-400 px-1 text-center min-w-[32px]">{Math.round(gameZoom * 100)}%</span>
+        <button 
+          onClick={() => setGameZoom(prev => Math.min(1.5, Number((prev + 0.15).toFixed(2))))}
+          className="w-6 h-6 flex items-center justify-center bg-white/5 border border-white/10 hover:border-cyan-500/50 hover:bg-cyan-500/10 rounded-lg text-zinc-300 hover:text-cyan-400 cursor-pointer transition-all active:scale-95 font-black"
+          title="Zoom In"
+        >
+          ➕
+        </button>
+      </div>
+
       {/* --- HUD --- */}
-      <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none z-10">
+      <div className={`absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none z-10 transition-all duration-300 ${isHUDHidden ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
         <div className="flex flex-col gap-2 max-h-[85vh] overflow-y-auto pr-2 scrollbar-none pointer-events-none select-none">
           
           {/* Detailed, RPG-Style Survival Status Panel */}
@@ -7151,11 +10366,17 @@ export default function SurvivalGame() {
             <div className="flex flex-col gap-2 p-3.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto min-w-[250px] select-none">
               {/* Avatar / Level Indicator */}
               <div className="flex items-center gap-2 border-b border-white/10 pb-2 mb-0.5">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-yellow-500 to-amber-300 flex items-center justify-center text-xs font-black text-black shadow-inner shadow-black/20 animate-pulse">
-                  👑
-                </div>
+                <button 
+                  onClick={() => setShowCharCustomizer(true)}
+                  className="w-8 h-8 rounded-full bg-gradient-to-tr from-yellow-500 to-amber-300 flex items-center justify-center text-sm font-black text-black shadow-inner shadow-black/20 animate-pulse hover:scale-110 active:scale-95 transition-all cursor-pointer"
+                  title="Click to Edit Character"
+                >
+                  {gameState?.pl.ico || '🧍'}
+                </button>
                 <div className="flex flex-col">
-                  <span className="text-[10px] font-bold tracking-wider text-yellow-400 uppercase font-sans">Survival Core</span>
+                  <span className="text-[10px] font-bold tracking-wider text-yellow-400 uppercase font-sans">
+                    {gameState?.pl.charName || 'Hero'} the {gameState?.pl.class || 'Survivor'}
+                  </span>
                   <span className="text-xs font-extrabold text-white font-mono">LVL {gameState?.pl.lvl || 1}</span>
                 </div>
                 <div className="ml-auto text-[9px] text-zinc-400 font-mono">
@@ -7290,6 +10511,7 @@ export default function SurvivalGame() {
                   { slot: 'legs', n: 'Legs', ico: '👖' },
                   { slot: 'feet', n: 'Feet', ico: '🥾' },
                   { slot: 'ring', n: 'Ring', ico: '💍' },
+                  { slot: 'back', n: 'Backpack', ico: '🎒' },
                 ].map(({ slot, n, ico }) => {
                   const itemKey = gameState?.pl.equip?.[slot];
                   const item = itemKey ? IT[itemKey] : null;
@@ -7522,7 +10744,32 @@ export default function SurvivalGame() {
           <div className="text-xs text-blue-300 opacity-80">
             {gameState?.zoneMaps?.[Math.floor((gameState?.pl.y || 0) / (ZH * TZ)) * ZCOLS + Math.floor((gameState?.pl.x || 0) / (ZW * TZ))]?.n || "Unknown"}
           </div>
-          <div className="text-[10px] font-mono text-orange-400 font-bold tracking-wider">
+
+          {gameState?.weather && (
+            <div className="mt-1 flex flex-col items-end gap-0.5 bg-black/50 border border-white/5 backdrop-blur-md p-1.5 rounded-xl max-w-[170px] text-right shadow-lg">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-white leading-none">
+                <span className="text-sm">{gameState.weather.icon}</span>
+                <span className="tracking-tight">{gameState.weather.label}</span>
+              </div>
+              <div className="flex items-center gap-1 text-[9px] font-mono leading-none">
+                <span className="opacity-50">Threat:</span>
+                <span className={
+                  gameState.weather.threat === 'Extreme' ? 'text-red-400 font-bold animate-pulse' :
+                  gameState.weather.threat === 'High' ? 'text-orange-400 font-bold' :
+                  gameState.weather.threat === 'Medium' ? 'text-yellow-400 font-bold' :
+                  gameState.weather.threat === 'Low' ? 'text-sky-300' :
+                  'text-emerald-400'
+                }>
+                  {gameState.weather.threat}
+                </span>
+              </div>
+              <p className="text-[8px] leading-tight text-white/50 select-none mt-0.5">
+                {gameState.weather.desc}
+              </p>
+            </div>
+          )}
+
+          <div className="text-[10px] font-mono text-orange-400 font-bold tracking-wider mt-0.5">
             {gameState?.waveActive ? (
               <span className="text-red-400 animate-pulse">⚠️ WAVE {gameState?.waveNum} ({gameState?.waveTimer}s left)</span>
             ) : (
@@ -7534,101 +10781,164 @@ export default function SurvivalGame() {
           </div>
 
           {/* Master Action & Management Menu Bar */}
-          <div className="mt-3 flex flex-wrap gap-1.5 sm:gap-2 justify-end max-w-[310px] sm:max-w-[460px] md:max-w-[600px] lg:max-w-none pointer-events-auto">
-            <button 
-              onClick={() => { setShowInv(true); setSelectedInvItem(null); setInvCategory('all'); }}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-white/10 hover:border-yellow-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-yellow-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <Backpack size={11} className="text-yellow-500" />
-              <span>INV</span>
-            </button>
-            <button 
-              onClick={() => setShowCraft(true)}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-white/10 hover:border-yellow-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-yellow-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <Hammer size={11} className="text-yellow-500" />
-              <span>CRAFT</span>
-            </button>
-            <button 
-              onClick={() => setShowRecipeBook(true)}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-amber-500/20 hover:border-amber-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-amber-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <Book size={11} className="text-amber-400" />
-              <span>RECIPES</span>
-            </button>
-            <button 
-              onClick={() => setIsAutoCollapsed(prev => !prev)}
-              className={`px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-lg ${!isAutoCollapsed ? 'border-teal-400 text-teal-300 shadow-[0_0_15px_rgba(20,184,166,0.25)] font-bold' : 'border-teal-500/20 text-white hover:text-teal-300'}`}
-            >
-              <Cpu size={11} className="text-teal-400" />
-              <span>AUTOMATE</span>
-            </button>
-            <button 
-              onClick={() => setShowSkills(true)}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-teal-500/20 hover:border-teal-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-teal-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <Sparkles size={11} className="text-teal-400" />
-              <span>SKILLS</span>
-            </button>
-            <button 
-              onClick={handleConsultOracle}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-purple-500/20 hover:border-purple-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-purple-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <BrainCircuit size={11} className="text-purple-400" />
-              <span>ORACLE</span>
-            </button>
-            <button 
-              onClick={() => setShowSpellbook(true)}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-fuchsia-500/20 hover:border-fuchsia-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-fuchsia-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <BookOpen size={11} className="text-fuchsia-400" />
-              <span>SPELLS</span>
-            </button>
-            <button 
-              id="system-save-btn"
-              onClick={() => {
-                loadSlotMetadata();
-                setShowSaveMenu(true);
-              }}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-white/10 hover:border-yellow-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-yellow-500 hover:text-yellow-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <Save size={11} className="animate-pulse text-yellow-500" />
-              <span>SAVE</span>
-            </button>
-            <button 
-              onClick={() => setShowWorldMenu(true)}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-emerald-500/20 hover:border-emerald-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-emerald-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <Globe size={11} className="text-emerald-400" />
-              <span>WORLD</span>
-            </button>
-            <button 
-              onClick={() => setShowNFTMarket(true)}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-cyan-500/30 hover:border-cyan-400 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-cyan-400 hover:text-cyan-300 hover:scale-105 active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(6,182,212,0.15)] hover:shadow-[0_0_25px_rgba(6,182,212,0.3)] animate-pulse"
-            >
-              <Cpu size={11} className="text-cyan-400" />
-              <span>NFT SHOP</span>
-            </button>
-            <button 
-              onClick={() => setShowShop(true)}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-500/40 hover:border-yellow-400 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-yellow-400 hover:text-yellow-300 hover:scale-105 active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(245,158,11,0.15)] hover:shadow-[0_0_25px_rgba(245,158,11,0.3)]"
-            >
-              <Sparkles size={11} className="text-yellow-400" />
-              <span>💎 SHOP</span>
-            </button>
-            <button 
-              onClick={() => setShowMusicMenu(true)}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-rose-500/20 hover:border-rose-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-rose-400 hover:text-rose-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <Music size={11} className={isMusicPlaying ? "animate-bounce text-rose-400" : "text-rose-400"} />
-              <span>MUSIC</span>
-            </button>
-          </div>
+          {isMenuBarCollapsed ? (
+            <div className="mt-3 pointer-events-auto">
+              <button 
+                onClick={() => setIsMenuBarCollapsed(false)}
+                className="px-3 py-2 bg-zinc-950/90 border border-yellow-500/30 hover:border-yellow-400 text-yellow-400 hover:text-yellow-300 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-lg animate-pulse"
+              >
+                <span>🎛️ SYSTEM CONTROLS</span>
+                <span className="text-[8px] bg-yellow-500/20 text-yellow-300 px-1.5 py-0.5 rounded font-black">OPEN</span>
+              </button>
+            </div>
+          ) : (
+            <div className="mt-3 flex flex-wrap gap-1.5 sm:gap-2 justify-end max-w-[310px] sm:max-w-[460px] md:max-w-[600px] lg:max-w-[550px] pointer-events-auto bg-zinc-950/95 border border-white/10 p-3 rounded-2xl backdrop-blur-md shadow-2xl transition-all">
+              <div className="w-full flex justify-between items-center border-b border-white/10 pb-2 mb-1">
+                <span className="text-[10px] font-bold text-yellow-400 tracking-widest uppercase">🎛️ CONTROLS MENU</span>
+                <button 
+                  onClick={() => setIsMenuBarCollapsed(true)}
+                  className="px-2 py-0.5 bg-zinc-900 border border-red-500/20 hover:border-red-500 text-[9px] rounded-lg text-zinc-400 hover:text-red-400 cursor-pointer transition-all active:scale-95"
+                >
+                  ✕ HIDE
+                </button>
+              </div>
+              <button 
+                onClick={() => { setShowInv(true); setSelectedInvItem(null); setInvCategory('all'); }}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-white/10 hover:border-yellow-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-yellow-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Backpack size={11} className="text-yellow-500" />
+                <span>INV</span>
+              </button>
+              <button 
+                onClick={() => setShowCraft(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-white/10 hover:border-yellow-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-yellow-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Hammer size={11} className="text-yellow-500" />
+                <span>CRAFT</span>
+              </button>
+              <button 
+                onClick={() => {
+                  const s = stateRef.current;
+                  if (s && s.pl) {
+                    setCustomTownName(s.pl.townName || 'Camp Horizon');
+                  }
+                  setShowTownHub(true);
+                }}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-green-500/20 hover:border-green-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-green-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <span className="text-green-400 text-[11px] sm:text-xs">🏘️</span>
+                <span>TOWN HUB</span>
+              </button>
+              <button 
+                onClick={() => setShowCharCustomizer(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-purple-500/20 hover:border-purple-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-purple-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <span className="text-purple-400 text-[11px] sm:text-xs">👤</span>
+                <span>PLAYER</span>
+              </button>
+              <button 
+                onClick={() => setShowResearch(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-cyan-500/20 hover:border-cyan-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-cyan-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Cpu size={11} className="text-cyan-400 font-bold" />
+                <span>RESEARCH</span>
+              </button>
+              <button 
+                onClick={() => setShowRecipeBook(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-amber-500/20 hover:border-amber-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-amber-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Book size={11} className="text-amber-400" />
+                <span>RECIPES</span>
+              </button>
+              <button 
+                onClick={() => setIsAutoCollapsed(prev => !prev)}
+                className={`px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-lg ${!isAutoCollapsed ? 'border-teal-400 text-teal-300 shadow-[0_0_15px_rgba(20,184,166,0.25)] font-bold' : 'border-teal-500/20 text-white hover:text-teal-300'}`}
+              >
+                <Cpu size={11} className="text-teal-400" />
+                <span>AUTOMATE</span>
+              </button>
+              <button 
+                onClick={() => setShowSkills(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-teal-500/20 hover:border-teal-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-teal-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Sparkles size={11} className="text-teal-400" />
+                <span>SKILLS</span>
+              </button>
+              <button 
+                onClick={() => setShowQuests(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-emerald-500/20 hover:border-emerald-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-emerald-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Compass size={11} className="text-emerald-400" />
+                <span>QUESTS</span>
+              </button>
+              <button 
+                onClick={() => setShowMasteries(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-orange-500/20 hover:border-orange-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-orange-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Flame size={11} className="text-orange-400" />
+                <span>MASTERIES</span>
+              </button>
+              <button 
+                onClick={handleConsultOracle}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-purple-500/20 hover:border-purple-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-purple-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <BrainCircuit size={11} className="text-purple-400" />
+                <span>ORACLE</span>
+              </button>
+              <button 
+                onClick={() => setShowSpellbook(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-fuchsia-500/20 hover:border-fuchsia-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-fuchsia-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <BookOpen size={11} className="text-fuchsia-400" />
+                <span>SPELLS</span>
+              </button>
+              <button 
+                id="system-save-btn"
+                onClick={() => {
+                  loadSlotMetadata();
+                  setShowSaveMenu(true);
+                }}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-white/10 hover:border-yellow-500/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-yellow-500 hover:text-yellow-400 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Save size={11} className="animate-pulse text-yellow-500" />
+                <span>SAVE</span>
+              </button>
+              <button 
+                onClick={() => setShowWorldMenu(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-emerald-500/20 hover:border-emerald-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-white hover:text-emerald-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Globe size={11} className="text-emerald-400" />
+                <span>WORLD</span>
+              </button>
+              <button 
+                onClick={() => setShowNFTMarket(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-cyan-500/30 hover:border-cyan-400 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-cyan-400 hover:text-cyan-300 hover:scale-105 active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(6,182,212,0.15)] hover:shadow-[0_0_25px_rgba(6,182,212,0.3)] animate-pulse"
+              >
+                <Cpu size={11} className="text-cyan-400" />
+                <span>NFT SHOP</span>
+              </button>
+              <button 
+                onClick={() => setShowShop(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-500/40 hover:border-yellow-400 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-yellow-400 hover:text-yellow-300 hover:scale-105 active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(245,158,11,0.15)] hover:shadow-[0_0_25px_rgba(245,158,11,0.3)]"
+              >
+                <Sparkles size={11} className="text-yellow-400" />
+                <span>💎 SHOP</span>
+              </button>
+              <button 
+                onClick={() => setShowMusicMenu(true)}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-zinc-900 border border-rose-500/20 hover:border-rose-400/50 rounded-xl text-[9px] sm:text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 transition-all text-rose-400 hover:text-rose-300 hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Music size={11} className={isMusicPlaying ? "animate-bounce text-rose-400" : "text-rose-400"} />
+                <span>MUSIC</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
       {/* --- MINIMAP OVERLAY PANEL --- */}
-      {!isMinimapCollapsed ? (
+      <div className={`transition-all duration-300 ${isHUDHidden ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
+        {!isMinimapCollapsed ? (
         <div className="absolute top-[280px] sm:top-[220px] right-4 flex flex-col gap-2 p-3 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto w-[200px] select-none z-10">
           <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-1">
             <span className="text-[10px] font-extrabold tracking-wider text-cyan-400 uppercase flex items-center gap-1">
@@ -7659,7 +10969,9 @@ export default function SurvivalGame() {
               ref={minimapCanvasRef} 
               width={174} 
               height={174} 
-              className="w-[174px] h-[174px]"
+              onClick={handleMinimapClick}
+              className="w-[174px] h-[174px] cursor-crosshair active:scale-95 transition-transform"
+              title="Click to place waypoint and auto-travel"
             />
             
             {/* Scope crosshair decorative rings overlay */}
@@ -7688,6 +11000,69 @@ export default function SurvivalGame() {
                 })()}
               </span>
             </div>
+
+            {/* Cave Compass */}
+            {gameState && (
+              <div className="mt-1.5 border-t border-white/5 pt-1.5 flex flex-col gap-0.5 text-center bg-pink-950/20 border border-pink-500/20 rounded-lg p-1 animate-pulse">
+                <span className="text-[7px] text-pink-400 font-extrabold tracking-widest uppercase flex items-center justify-center gap-1">
+                  <Compass size={8} className="text-pink-400" /> CAVE COMPASS
+                </span>
+                {(() => {
+                  if (gameState.inCave) {
+                    return (
+                      <div className="text-[9px] font-black text-green-400">
+                        🪜 Cave Exit nearby!
+                      </div>
+                    );
+                  }
+                  const ptx = Math.floor(gameState.pl.x / TZ);
+                  const pty = Math.floor(gameState.pl.y / TZ);
+                  let nearest = null;
+                  let minDist = Infinity;
+                  const caveZones = [
+                    { zc: 0, r: 1 },
+                    { zc: 3, r: 3 },
+                    { zc: 5, r: 4 },
+                    { zc: 1, r: 5 },
+                    { zc: 6, r: 2 },
+                    { zc: 4, r: 7 },
+                  ];
+                  for (const cz of caveZones) {
+                    const etx = cz.zc * ZW + 30;
+                    const ety = cz.r * ZH + 30;
+                    const dx = etx - ptx;
+                    const dy = ety - pty;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < minDist) {
+                      minDist = dist;
+                      nearest = { cz, dx, dy, dist };
+                    }
+                  }
+                  if (!nearest) return null;
+                  const dx = nearest.dx;
+                  const dy = nearest.dy;
+                  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+                  let dirStr = "";
+                  if (nearest.dist < 8) dirStr = "🕳️ RIGHT HERE!";
+                  else {
+                    if (angle >= -22.5 && angle < 22.5) dirStr = "➡️ East";
+                    else if (angle >= 22.5 && angle < 67.5) dirStr = "➡️⬇️ SE";
+                    else if (angle >= 67.5 && angle < 112.5) dirStr = "⬇️ South";
+                    else if (angle >= 112.5 && angle < 157.5) dirStr = "⬅️⬇️ SW";
+                    else if (angle >= 157.5 || angle < -157.5) dirStr = "⬅️ West";
+                    else if (angle >= -157.5 && angle < -112.5) dirStr = "⬅️⬆️ NW";
+                    else if (angle >= -112.5 && angle < -67.5) dirStr = "⬆️ North";
+                    else if (angle >= -67.5 && angle < -22.5) dirStr = "➡️⬆️ NE";
+                  }
+                  return (
+                    <div className="text-[9px] font-bold text-pink-300">
+                      <div>{dirStr} ({Math.round(nearest.dist)}m)</div>
+                      <div className="text-[7px] text-pink-400/80">Zone ({nearest.cz.zc}, {nearest.cz.r})</div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </div>
 
           {/* Local zoom controls */}
@@ -7709,6 +11084,126 @@ export default function SurvivalGame() {
               </button>
             </div>
           )}
+
+          {/* Legend toggle & content */}
+          <div className="flex flex-col gap-1 mt-1 border-t border-white/5 pt-1">
+            <button
+              onClick={() => setShowMinimapLegend(prev => !prev)}
+              className="w-full py-0.5 bg-zinc-900 border border-white/5 hover:border-cyan-500/30 text-[8px] font-bold rounded-md text-zinc-300 hover:text-white cursor-pointer transition-all flex items-center justify-center gap-1 uppercase"
+            >
+              <span>{showMinimapLegend ? 'Hide Legend ▲' : 'Show Legend ▼'}</span>
+            </button>
+            
+            {showMinimapLegend && (
+              <div className="grid grid-cols-2 gap-x-1 gap-y-1 text-[8px] font-mono text-zinc-300 bg-black/40 p-1.5 rounded-lg border border-white/5 max-h-[140px] overflow-y-auto scrollbar-none">
+                <div className="col-span-2 text-[7px] text-cyan-400 font-bold uppercase tracking-wider mb-0.5 border-b border-white/5 pb-0.5">Terrain / Markers</div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#22c55e] border border-white/20" />
+                  <span>You</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#ef4444]" />
+                  <span>Enemies</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#f97316]" />
+                  <span>Structures</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#a855f7]" />
+                  <span>Portal</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#ec4899]" />
+                  <span>Cave 🕳️</span>
+                </div>
+
+                <div className="col-span-2 text-[7px] text-yellow-400 font-bold uppercase tracking-wider mt-1.5 mb-0.5 border-b border-white/5 pb-0.5">Resources / Nodes</div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#15803d] border border-black/40" />
+                  <span>Tree</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#a3e635] border border-black/40" />
+                  <span>Cactus</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#93c5fd] border border-black/40" />
+                  <span>Snowpine</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#f472b6] border border-black/40" />
+                  <span>Blossom</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#a855f7] border border-black/40" />
+                  <span>Cosmic Tree</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#94a3b8] border border-black/40" />
+                  <span>Stone Node</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#f97316] border border-black/40" />
+                  <span>Copper Ore</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#818cf8] border border-black/40" />
+                  <span>Iron Ore</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#facc15] border border-black/40" />
+                  <span>Gold Ore</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#22d3ee] border border-black/40" />
+                  <span>Mithril Ore</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#fbbf24] border border-black/40" />
+                  <span>Sulfur Node</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#c084fc] border border-black/40" />
+                  <span>Mana Crystal</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#ec4899] border border-black/40" />
+                  <span>Void Crystal</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#38bdf8] border border-black/40" />
+                  <span>Celestial</span>
+                </div>
+
+                <div className="col-span-2 text-[7px] text-emerald-400 font-bold uppercase tracking-wider mt-1.5 mb-0.5 border-b border-white/5 pb-0.5">Loose Ground Drops</div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1 h-1 rounded-full bg-[#b45309]" />
+                  <span>Wood 🪵</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1 h-1 rounded-full bg-[#6b7280]" />
+                  <span>Stone 🪨</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1 h-1 rounded-full bg-[#10b981]" />
+                  <span>Fiber 🌿</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1 h-1 rounded-full bg-[#c084fc]" />
+                  <span>Berries 🫐</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1 h-1 rounded-full bg-[#f472b6]" />
+                  <span>Mushroom 🍄</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-1 h-1 rounded-full bg-[#34d399]" />
+                  <span>Herbs 🌿</span>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         <div className="absolute top-[280px] sm:top-[220px] right-4 flex flex-col gap-2 p-2 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-lg pointer-events-auto select-none z-10">
@@ -7721,24 +11216,28 @@ export default function SurvivalGame() {
           </button>
         </div>
       )}
-
-      {/* --- Logs --- */}
-      <div className="absolute top-24 left-[276px] flex flex-col gap-1 pointer-events-none z-10 max-w-sm">
-        <AnimatePresence>
-          {logs.map((log, idx) => (
-            <motion.div 
-              key={`${log.id}-${idx}`}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className="px-3 py-1 rounded bg-black/80 border-l-4 text-xs"
-              style={{ borderColor: log.col }}
-            >
-              {log.msg}
-            </motion.div>
-          ))}
-        </AnimatePresence>
       </div>
+
+      {/* --- Logs (Restored as a clean, sleek, auto-fading game console feed) --- */}
+      {!isHUDHidden && logs && logs.length > 0 && (
+        <div className="absolute bottom-[280px] sm:bottom-[160px] left-4 z-40 flex flex-col gap-1 max-w-[280px] pointer-events-none select-none font-mono">
+          <AnimatePresence>
+            {logs.slice(0, 4).map((log) => (
+              <motion.div
+                key={log.id}
+                initial={{ opacity: 0, x: -20, scale: 0.95 }}
+                animate={{ opacity: 0.85, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: -20, scale: 0.95 }}
+                transition={{ duration: 0.2 }}
+                className="px-2.5 py-1 bg-black/80 border border-white/5 rounded-lg shadow-md backdrop-blur-xs text-[10px] font-bold leading-normal"
+                style={{ color: log.col || '#fff' }}
+              >
+                {log.msg}
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
 
       {/* --- Active World Event Banner --- */}
       {gameState?.activeEvent && (
@@ -7885,14 +11384,126 @@ export default function SurvivalGame() {
 
       {/* --- Controls --- */}
       {/* Bottom Center: Hotbar (Always centered at the bottom, pointer enabled, persistent floating design) */}
-      {(!showSkills && !showCraft && !showRecipeBook && !showOracle && !showSaveMenu && !showWorldMenu && !showSpellbook && !showNFTMarket && !showShop && !showDeathScreen) && (
+      {(!showRecipeBook && !showOracle && !showSaveMenu && !showWorldMenu && !showSpellbook && !showNFTMarket && !showDeathScreen && gameState) && (
         <div 
           className={`absolute left-1/2 -translate-x-1/2 pointer-events-auto select-none flex flex-col items-center gap-2 transition-all duration-300 ${
-            showInv 
+            (showInv || showCraft || showSkills || showShop || showTownShop)
               ? 'bottom-6 z-[52] scale-105' 
-              : 'bottom-4 z-20'
+              : 'bottom-4 z-[52]'
           }`}
         >
+          {/* Quick Crafting Panel */}
+          {(!showInv && !showCraft && !showSkills && !showShop && !showTownShop) && (() => {
+            const getNearStations = () => {
+              if (!gameState || !gameState.pl || !gameState.objs) return [];
+              const ptx = Math.floor(gameState.pl.x / TZ);
+              const pty = Math.floor(gameState.pl.y / TZ);
+              const stations = ['campfire', 'camp_fire', 'workbench', 'forge', 'magic_altar'];
+              const near: string[] = [];
+              
+              for (const o of gameState.objs) {
+                if (stations.includes(o.type)) {
+                  const dx = o.tx - ptx;
+                  const dy = o.ty - pty;
+                  if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) {
+                    if (!near.includes(o.type)) {
+                      near.push(o.type);
+                    }
+                  }
+                }
+              }
+              return near;
+            };
+
+            const activeStations = getNearStations();
+            if (activeStations.length === 0) return null;
+
+            const getStationDisplayName = (station: string) => {
+              if (station === 'campfire' || station === 'camp_fire') return 'Campfire 🔥';
+              if (station === 'workbench') return 'Workbench 🪚';
+              if (station === 'forge') return 'Forge 🌋';
+              if (station === 'magic_altar') return 'Magic Altar 🔮';
+              return station;
+            };
+
+            const validQuickRecipes = recipes
+              .map((r, i) => ({ r, i }))
+              .filter(({ r }) => {
+                if (!r.discovered) return false;
+                
+                const isStationMatch = !r.req || activeStations.some(ns => {
+                  if (r.req === 'campfire' && ns === 'camp_fire') return true;
+                  if (r.req === 'camp_fire' && ns === 'campfire') return true;
+                  return r.req === ns;
+                });
+                if (!isStationMatch) return false;
+
+                const hasMats = Object.entries(r.c).every(([k, v]) => (gameState?.pl?.inv[k] || 0) >= (v as number));
+                if (!hasMats) return false;
+
+                const bldLvl = gameState?.pl?.skills?.building?.lvl || 1;
+                const bldMet = !r.reqBld || bldLvl >= r.reqBld;
+                if (!bldMet) return false;
+
+                return true;
+              });
+
+            return (
+              <motion.div
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                className="bg-zinc-950/95 border border-cyan-500/30 p-2.5 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.7)] w-[360px] md:w-[450px] flex flex-col gap-1.5 select-none shrink-0"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-white/5 pb-1 px-1">
+                  <span className="text-[9px] font-black tracking-widest text-cyan-400 flex items-center gap-1.5 uppercase">
+                    <span className="animate-pulse">⚡</span> QUICK CRAFT: {activeStations.map(getStationDisplayName).join(' & ')}
+                  </span>
+                  <span className="text-[8px] text-zinc-400 uppercase font-mono">
+                    {validQuickRecipes.length} item(s) available
+                  </span>
+                </div>
+
+                {/* Content */}
+                {validQuickRecipes.length > 0 ? (
+                  <div className="flex gap-2 overflow-x-auto py-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                    {validQuickRecipes.map(({ r, i }) => (
+                      <motion.button
+                        key={`${r.out}-${i}`}
+                        onClick={() => craft(i, 1)}
+                        whileHover={{ scale: 1.02, borderColor: 'rgba(6,182,212,0.5)' }}
+                        whileTap={{ scale: 0.96 }}
+                        className="flex-shrink-0 bg-white/[0.02] border border-white/10 hover:bg-cyan-500/[0.05] p-2 rounded-xl flex items-center gap-2 cursor-pointer transition-all duration-200 max-w-[150px] md:max-w-[180px]"
+                        title={`Craft 1x ${r.n}`}
+                      >
+                        <span className="text-lg shrink-0">{IT[r.out]?.ico || '📦'}</span>
+                        <div className="text-left min-w-0">
+                          <div className="text-[9px] font-black text-zinc-100 truncate uppercase leading-tight">
+                            {r.n}
+                          </div>
+                          {/* Cost preview */}
+                          <div className="flex gap-1 items-center mt-0.5 overflow-x-auto scrollbar-none">
+                            {Object.entries(r.c).map(([matKey, qty]) => (
+                              <span key={matKey} className="text-[7.5px] text-zinc-400 flex items-center gap-0.5 bg-black/40 px-1 rounded-sm shrink-0">
+                                <span>{IT[matKey]?.ico || '📦'}</span>
+                                <span className="font-sans font-bold">{qty}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </motion.button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-2 text-[8px] text-zinc-500 uppercase tracking-wider font-mono">
+                    No quick recipes can be forged. Collect materials to craft here!
+                  </div>
+                )}
+              </motion.div>
+            );
+          })()}
+
           {/* Visual Vital Status Progress HUD (Health, Hunger, Thirst, Mana) */}
           <div className="bg-zinc-950/90 border border-white/10 p-3 px-4 rounded-2xl backdrop-blur-md shadow-2xl grid grid-cols-2 gap-x-5 gap-y-2 select-none w-[360px] md:w-[450px] relative">
             {/* Health Bar */}
@@ -8099,10 +11710,10 @@ export default function SurvivalGame() {
             </div>
 
             {/* Quick access status / guide label */}
-            <span className="text-[7.5px] font-mono tracking-wider opacity-50 uppercase text-zinc-400 select-none">
+            <span className="text-[7.5px] font-mono tracking-wider opacity-50 uppercase text-zinc-400 select-none text-center px-2">
               {showInv 
-                ? '🖐️ Drag items onto slots • Drag slots to swap • Click active to use'
-                : '⚡ Click active slot again to instantly Use/Equip'
+                ? '🖐️ Hover over backpack items + press [1-8] to instantly bind • Drag slots to swap'
+                : '⚡ Press [1-8] key to switch slots and equip/use • Click active slot to use'
               }
             </span>
           </div>
@@ -8215,6 +11826,283 @@ export default function SurvivalGame() {
 
       {/* --- Modals --- */}
       <AnimatePresence>
+        {showTownHub && (
+          <motion.div 
+            key="town-hub-modal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/95 flex flex-col font-mono"
+          >
+            {/* Header */}
+            <div className="p-4 sm:p-6 flex justify-between items-center border-b border-white/10 shrink-0">
+              <h2 className="text-xl font-bold tracking-widest text-green-400 flex items-center gap-2">
+                🏘️ {gameState?.pl.townName || 'Camp Horizon'} Town Management
+              </h2>
+              <button 
+                onClick={() => setShowTownHub(false)} 
+                className="p-2 hover:bg-white/10 rounded-full cursor-pointer transition-all active:scale-95 text-zinc-400 hover:text-white"
+              >
+                <X />
+              </button>
+            </div>
+
+            {/* Content body */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+              
+              {/* Town Naming and Level Section */}
+              <div className="bg-zinc-900/60 border border-white/10 p-4 sm:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex-1 space-y-2">
+                  <label className="text-[10px] text-green-400 font-extrabold tracking-widest uppercase">Settlement Name</label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text"
+                      value={customTownName}
+                      onChange={(e) => setCustomTownName(e.target.value)}
+                      maxLength={24}
+                      className="bg-black/50 border border-white/10 hover:border-white/20 focus:border-green-400/80 rounded-xl px-3 py-2 text-white font-bold tracking-wide outline-none flex-1 max-w-sm text-sm"
+                    />
+                    <button 
+                      onClick={() => {
+                        const s = stateRef.current;
+                        if (s && s.pl) {
+                          s.pl.townName = customTownName || 'Camp Horizon';
+                          addLog(`🏘️ Settlement successfully renamed to: "${s.pl.townName}"`, '#10b981');
+                          setGameState({ ...s });
+                        }
+                      }}
+                      className="px-4 py-2 bg-green-500 hover:bg-green-400 text-black font-black uppercase text-xs tracking-wider rounded-xl cursor-pointer transition-all active:scale-95 shadow-lg shadow-green-500/10"
+                    >
+                      Save Name
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 bg-black/40 border border-white/5 p-4 rounded-xl">
+                  <div className="text-3xl">🏘️</div>
+                  <div>
+                    <div className="text-[10px] text-zinc-400 uppercase font-extrabold tracking-widest">Town Status</div>
+                    <div className="text-sm font-black text-white">
+                      {(() => {
+                        const s = stateRef.current;
+                        if (!s) return 'Wilderness Camp (LVL 1)';
+                        const count = s.objs.filter((o: any) => ['settler_shelter', 'town_house', 'town_workshop', 'storage_depot', 'merchant_stall', 'guard_post', 'farm_plot'].includes(o.type)).length;
+                        if (count >= 9) return 'Survival Citadel (LVL 4)';
+                        if (count >= 5) return 'Thriving Village (LVL 3)';
+                        if (count >= 2) return 'Budding Hamlet (LVL 2)';
+                        return 'Wilderness Camp (LVL 1)';
+                      })()}
+                    </div>
+                    <div className="text-[10px] text-zinc-500">
+                      Based on placed town structures (Total: {
+                        gameState?.objs.filter((o: any) => ['settler_shelter', 'town_house', 'town_workshop', 'storage_depot', 'merchant_stall', 'guard_post', 'farm_plot'].includes(o.type)).length || 0
+                      })
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Statistics Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-zinc-900/40 border border-white/5 p-4 rounded-2xl flex items-center gap-3">
+                  <span className="text-2xl">🪙</span>
+                  <div>
+                    <div className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider">Treasury Coins</div>
+                    <div className="text-base font-black text-yellow-400">{gameState?.pl.inv.gold_coins || 0}</div>
+                  </div>
+                </div>
+                <div className="bg-zinc-900/40 border border-white/5 p-4 rounded-2xl flex items-center gap-3">
+                  <span className="text-2xl">🛖</span>
+                  <div>
+                    <div className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider">Town Cabins</div>
+                    <div className="text-base font-black text-white">{gameState?.objs.filter((o: any) => o.type === 'settler_shelter').length || 0}</div>
+                  </div>
+                </div>
+                <div className="bg-zinc-900/40 border border-white/5 p-4 rounded-2xl flex items-center gap-3">
+                  <span className="text-2xl">🏪</span>
+                  <div>
+                    <div className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider">Trading Stalls</div>
+                    <div className="text-base font-black text-white">{gameState?.objs.filter((o: any) => o.type === 'merchant_stall').length || 0}</div>
+                  </div>
+                </div>
+                <div className="bg-zinc-900/40 border border-white/5 p-4 rounded-2xl flex items-center gap-3">
+                  <span className="text-2xl">🧑‍🌾</span>
+                  <div>
+                    <div className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider">Villager Companions</div>
+                    <div className="text-base font-black text-green-400">
+                      {gameState?.companions.filter((c: any) => c.role).length || 0}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Town Structures Blueprint Section */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-black uppercase tracking-widest text-zinc-400 border-b border-white/10 pb-1.5 flex items-center gap-1.5">
+                  📐 Settlement Construction Blueprints
+                </h3>
+                <p className="text-[11px] text-zinc-500 leading-relaxed max-w-4xl">
+                  Craft and place these buildings in your active zone to establish a thriving town. Hotbar-equip them and click the ground nearby to construct! Each placed building earns passive income or resources every few seconds.
+                </p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+                  {[
+                    { id: 'settler_shelter', n: 'Settler Shelter', ico: '🛖', desc: 'Rustic survival cabin. Attracts basic settlers. Generates +2 Gold Coins passively.', cost: '🪵15 Wood, 🪨10 Stone, 🌿10 Fiber' },
+                    { id: 'town_house', n: 'Town House', ico: '🏡', desc: 'A comfortable family residence. Attracts workers and residents. Earns +6 Gold Coins passively.', cost: '🪵30 Wood, 🪨20 Stone, 🌿15 Fiber, 🪙100 Coins' },
+                    { id: 'town_workshop', n: 'Town Workshop', ico: '🏭', desc: 'Advanced manufacturing center. Automatically crafts +1 Iron Bar over time.', cost: '🪨35 Stone, 🔩8 Iron Bars, 🪵20 Wood' },
+                    { id: 'storage_depot', n: 'Storage Depot', ico: '🏬', desc: 'Massive resource log depot. Gathers +2 Wood, +2 Stone, and +2 Fiber over time.', cost: '🪵40 Wood, 🪨30 Stone, 🔩4 Iron Bars' },
+                    { id: 'merchant_stall', n: 'Merchant Stall', ico: '🏪', desc: 'Trading post for local travelers. Generates +5 Gold Coins passively.', cost: '🪵20 Wood, 🌿15 Fiber, 🪙150 Coins' },
+                    { id: 'guard_post', n: 'Guard Post', ico: '🛡️', desc: 'Defensive post with lookouts. Boosts zone security. Spawns high health guards.', cost: '🪨20 Stone, 🔩5 Iron Bars, 🪵10 Wood' },
+                    { id: 'farm_plot', n: 'Farm Plot', ico: '🌾', desc: 'Irrigated soil garden. Automatically produces +1 Berry over time.', cost: '🪵8 Wood, 🌿12 Fiber, 🫐5 Berries' },
+                  ].map((b) => {
+                    const count = gameState?.objs.filter((o: any) => o.type === b.id).length || 0;
+                    return (
+                      <div key={b.id} className="bg-zinc-900/50 border border-white/5 hover:border-white/10 p-4 rounded-2xl space-y-2.5 flex flex-col justify-between">
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between items-center">
+                            <span className="text-2xl">{b.ico}</span>
+                            <span className="text-[9px] bg-green-500/10 text-green-400 font-bold px-1.5 py-0.5 rounded-md">
+                              {count} Placed
+                            </span>
+                          </div>
+                          <h4 className="font-extrabold text-sm text-white">{b.n}</h4>
+                          <p className="text-[10px] text-zinc-400 leading-normal">{b.desc}</p>
+                        </div>
+                        <div className="space-y-1 pt-1.5 border-t border-white/5">
+                          <div className="text-[8px] uppercase tracking-wider text-zinc-500 font-bold">Crafting Cost</div>
+                          <div className="text-[9px] text-amber-500 font-bold">{b.cost}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recruitment Section */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-black uppercase tracking-widest text-zinc-400 border-b border-white/10 pb-1.5 flex items-center gap-1.5">
+                  🤝 Recruit Settlement Villager Companions
+                </h3>
+                <p className="text-[11px] text-zinc-500 leading-relaxed max-w-4xl">
+                  Invite specialized survivors to move into your town and join your active survival party. They will follow you on the map, fight monsters, collect raw resources, or heal your wounds depending on their role!
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+                  {[
+                    {
+                      role: 'guard',
+                      name: 'Town Militia',
+                      ico: '🛡️',
+                      desc: 'Defensive melee fighter. Attacks nearby monsters with high health (120 HP) and heavy armor.',
+                      costDisplay: '🪙 100 Gold Coins, 🪨 15 Stone',
+                      cost: { gold_coins: 100, stone: 15 },
+                      hp: 120, dmg: 12, spd: 1.8
+                    },
+                    {
+                      role: 'hunter',
+                      name: 'Ranger Guard',
+                      ico: '🏹',
+                      desc: 'Ranged bow sniper. Attacks targets from a distance with high precision arrow damage (15 DMG).',
+                      costDisplay: '🪙 150 Gold Coins, 🪵 10 Wood',
+                      cost: { gold_coins: 150, wood: 10 },
+                      hp: 80, dmg: 15, spd: 2.1
+                    },
+                    {
+                      role: 'gatherer',
+                      name: 'Scavenger',
+                      ico: '🧑‍🌾',
+                      desc: 'Resource harvester. Follows you and automatically gathers wood, stone, flint, and fiber every 10 seconds.',
+                      costDisplay: '🪙 80 Gold Coins, 🫐 10 Berries',
+                      cost: { gold_coins: 80, berry: 10 },
+                      hp: 60, dmg: 5, spd: 2.0
+                    },
+                    {
+                      role: 'alchemist',
+                      name: 'Hedge Alchemist',
+                      ico: '🧙‍♀️',
+                      desc: 'Healer/Supporter. Casts protective spells to restore +20 HP whenever your health drops below 60%.',
+                      costDisplay: '🪙 200 Gold Coins, 💎 5 Crystal',
+                      cost: { gold_coins: 200, crystal: 5 },
+                      hp: 70, dmg: 8, spd: 1.9
+                    },
+                  ].map((v) => {
+                    const hasGold = (gameState?.pl.inv.gold_coins || 0) >= (v.cost.gold_coins || 0);
+                    const additionalKey = Object.keys(v.cost).find(k => k !== 'gold_coins') || '';
+                    const hasAdditional = !additionalKey || (gameState?.pl.inv[additionalKey] || 0) >= (v.cost[additionalKey] || 0);
+                    const canAfford = hasGold && hasAdditional;
+
+                    return (
+                      <div key={v.name} className="bg-zinc-900/50 border border-white/5 hover:border-white/10 p-4 rounded-2xl flex flex-col justify-between space-y-4">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-2xl">{v.ico}</span>
+                            <div>
+                              <h4 className="font-extrabold text-sm text-white">{v.name}</h4>
+                              <span className="text-[8px] bg-purple-500/10 text-purple-400 px-1 py-0.2 rounded font-bold uppercase tracking-wider">
+                                {v.role}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="text-[10px] text-zinc-400 leading-normal">{v.desc}</p>
+                        </div>
+
+                        <div className="space-y-2.5">
+                          <div className="pt-2 border-t border-white/5 space-y-1">
+                            <div className="text-[8px] uppercase tracking-wider text-zinc-500 font-bold">Recruit Fee</div>
+                            <div className="text-[10px] text-yellow-400 font-bold font-mono">{v.costDisplay}</div>
+                          </div>
+                          <button 
+                            onClick={() => recruitVillager(v.role, v.cost, v.name, v.ico, v.spd, v.dmg, v.hp)}
+                            disabled={!canAfford}
+                            className={`w-full py-2 text-xs font-black uppercase tracking-wider rounded-xl cursor-pointer transition-all active:scale-95 text-center ${
+                              canAfford 
+                                ? 'bg-green-500 hover:bg-green-400 text-black shadow-lg shadow-green-500/15' 
+                                : 'bg-zinc-800 text-zinc-500 border border-white/5 cursor-not-allowed'
+                            }`}
+                          >
+                            {canAfford ? `Hire ${v.name}` : 'Cannot Afford'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+            </div>
+          </motion.div>
+        )}
+
+        {showCharCustomizer && (
+          <motion.div 
+            key="char-customizer-modal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/95 flex flex-col font-mono"
+          >
+            <div className="p-4 sm:p-6 flex justify-between items-center border-b border-white/10 shrink-0">
+              <h2 className="text-xl font-bold tracking-widest text-purple-400 flex items-center gap-2">
+                👤 Customize Character Style & Professional Class
+              </h2>
+              <button 
+                onClick={() => setShowCharCustomizer(false)} 
+                className="p-2 hover:bg-white/10 rounded-full cursor-pointer transition-all active:scale-95 text-zinc-400 hover:text-white"
+              >
+                <X />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+              {(() => {
+                const s = stateRef.current;
+                if (!s) return null;
+                return <CharCustomizerPanel s={s} onClose={() => setShowCharCustomizer(false)} />;
+              })()}
+            </div>
+          </motion.div>
+        )}
+
         {showInv && (
           <motion.div 
             key="inventory-modal"
@@ -8247,6 +12135,7 @@ export default function SurvivalGame() {
                     { slot: 'legs', n: 'Legs', ico: '👖' },
                     { slot: 'feet', n: 'Feet', ico: '🥾' },
                     { slot: 'ring', n: 'Ring', ico: '💍' },
+                    { slot: 'back', n: 'Backpack', ico: '🎒' },
                   ].map(({ slot, n, ico }) => {
                     const itemKey = gameState?.pl.equip?.[slot];
                     const item = itemKey ? IT[itemKey] : null;
@@ -8416,6 +12305,8 @@ export default function SurvivalGame() {
                             <div 
                               key={k} 
                               onClick={() => setSelectedInvItem(k)}
+                              onMouseEnter={() => setHoveredItem(k)}
+                              onMouseLeave={() => setHoveredItem(null)}
                               draggable={true}
                               onDragStart={(e) => {
                                 e.dataTransfer.setData("text/plain", k);
@@ -8426,8 +12317,12 @@ export default function SurvivalGame() {
                                   ? 'border-green-400 bg-green-500/10 shadow-[0_0_12px_rgba(34,197,94,0.15)] scale-[1.02]' 
                                   : 'border-white/5 hover:border-white/10'
                               }`}
-                              title="Drag item down to Hotbar slot to assign it, or click to inspect details"
+                              title="Drag down to Hotbar or hover & press 1-8 to bind, click to inspect"
                             >
+                              <div className="absolute inset-0 bg-black/80 rounded-xl flex flex-col items-center justify-center text-[8px] text-yellow-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none uppercase tracking-wider text-center p-1 z-10">
+                                <span>Press 1-8</span>
+                                <span className="opacity-60 text-[7px] mt-0.5 font-normal normal-case text-zinc-300">to bind to slot</span>
+                              </div>
                               <div className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-60 transition-opacity text-[8px] text-zinc-400 select-none">
                                 ☰
                               </div>
@@ -9138,6 +13033,34 @@ export default function SurvivalGame() {
                       'Level 3: Enables crafting Recurve Bow and Beastmaster Armor',
                       'Level 5: Track clues to reveal nearby hidden wild animal positions'
                     ]
+                  },
+                  {
+                    id: 'smithing',
+                    n: 'Smithing',
+                    ico: '⚒️',
+                    color: 'from-blue-700 to-indigo-600',
+                    border: 'border-blue-500/30',
+                    bg: 'bg-blue-950/20',
+                    desc: 'Forging refined weapons, tools, plate armor, and solid metal ingots.',
+                    perks: [
+                      'Boosts crafted equipment durability / gear attributes',
+                      'Level 3: Enables crafting higher-tier Copper & Iron Pickaxes',
+                      'Level 6: Enables forging precious Gold & Mithril equipment'
+                    ]
+                  },
+                  {
+                    id: 'farming',
+                    n: 'Farming',
+                    ico: '🌱',
+                    color: 'from-lime-600 to-emerald-500',
+                    border: 'border-lime-500/30',
+                    bg: 'bg-lime-950/20',
+                    desc: 'Cultivating wild flora, picking botanical herbs, and harvesting high-yield fiber crops.',
+                    perks: [
+                      'Earn +10% bonus crop yield per level when gathering from the ground',
+                      'Level 4: High probability to obtain rare botanical seeds or glowing spores',
+                      'Level 10: Harvest magical flower variants'
+                    ]
                   }
                 ].map(sk => {
                   const data = gameState?.pl?.skills?.[sk.id] || { lvl: 1, xp: 0, xpNext: 100 };
@@ -9187,6 +13110,418 @@ export default function SurvivalGame() {
                             </li>
                           ))}
                         </ul>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {showQuests && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/95 flex flex-col font-mono"
+          >
+            {/* Header */}
+            <div className="p-6 flex justify-between items-center border-b border-white/10 shrink-0">
+              <div className="flex items-center gap-3">
+                <Compass className="text-emerald-400" />
+                <div>
+                  <h2 className="text-xl font-bold tracking-widest text-emerald-400">
+                    ADVENTURERS' GUILD BOARD
+                  </h2>
+                  <p className="text-[10px] opacity-40 uppercase tracking-widest">
+                    Accept bounties, claim tokens, and secure legendary provisions
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-6 text-sm">
+                <div className="flex items-center gap-2 bg-emerald-950/40 px-4 py-2 rounded-xl border border-emerald-500/20">
+                  <span className="text-xs font-bold text-emerald-300">GUILD TOKENS:</span>
+                  <span className="font-bold text-emerald-400 text-sm">🪙 {gameState?.pl.guildTokens || 0}</span>
+                </div>
+                <button onClick={() => setShowQuests(false)} className="p-2 hover:bg-white/10 rounded-full cursor-pointer transition-all">
+                  <X />
+                </button>
+              </div>
+            </div>
+
+            {/* Tab Selector */}
+            <div className="flex border-b border-white/5 bg-zinc-900/40 shrink-0">
+              <button 
+                onClick={() => setGuildTab('quests')}
+                className={`flex-1 py-4 text-center text-xs uppercase tracking-widest font-bold transition-all border-b-2 cursor-pointer ${guildTab === 'quests' ? 'border-emerald-500 text-emerald-400 bg-emerald-500/5' : 'border-transparent text-gray-400 hover:text-white'}`}
+              >
+                📜 Active Bounties & Quests
+              </button>
+              <button 
+                onClick={() => setGuildTab('store')}
+                className={`flex-1 py-4 text-center text-xs uppercase tracking-widest font-bold transition-all border-b-2 cursor-pointer ${guildTab === 'store' ? 'border-emerald-500 text-emerald-400 bg-emerald-500/5' : 'border-transparent text-gray-400 hover:text-white'}`}
+              >
+                🏪 Guild Armory & Provisions Shop
+              </button>
+            </div>
+
+            {/* Scrollable Content Container */}
+            <div className="flex-1 p-6 overflow-y-auto max-w-6xl mx-auto w-full">
+              {guildTab === 'quests' ? (
+                <div className="space-y-6">
+                  <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/10 text-xs opacity-80 leading-relaxed">
+                    Welcome to the Adventurers' Guild Board. Complete the hunting, resource gathering, or dangerous boss slaying contracts below to earn valuable <span className="text-emerald-400 font-bold">Guild Tokens</span> and precious resources. Active delivery quests automatically check your inventory. Slaying quests track active targets!
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {GUILD_QUESTS.map(q => {
+                      const isActive = !!gameState?.pl.activeQuests?.[q.id];
+                      const progress = gameState?.pl.activeQuestsProgress?.[q.id] || 0;
+                      const isComplete = progress >= q.targetCount;
+
+                      return (
+                        <div key={q.id} className={`p-5 rounded-2xl border transition-all ${isActive ? 'bg-emerald-950/10 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.05)]' : 'bg-zinc-900/30 border-white/5'}`}>
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-emerald-400">
+                                {q.isBoss ? '☠️ Legendary Boss Bounty' : '📜 Resource Contract'}
+                              </span>
+                              <h3 className="font-bold text-white text-lg mt-2">{q.n}</h3>
+                              <p className="text-xs text-gray-400 mt-1">{q.d}</p>
+                            </div>
+                            
+                            {isActive && (
+                              <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${isComplete ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse'}`}>
+                                {isComplete ? 'Ready to Claim' : 'Active'}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Progress bar if active */}
+                          {isActive && (
+                            <div className="mt-4">
+                              <div className="flex justify-between items-center text-[10px] text-gray-400 mb-1.5">
+                                <span>Objective: {IT[q.targetType]?.n || q.targetType} ({progress} / {q.targetCount})</span>
+                                <span>{Math.floor(Math.min(100, (progress / q.targetCount) * 100))}%</span>
+                              </div>
+                              <div className="h-2 w-full bg-white/5 border border-white/10 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-gradient-to-r from-emerald-600 to-green-500"
+                                  style={{ width: `${Math.min(100, (progress / q.targetCount) * 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Rewards */}
+                          <div className="mt-4 pt-3 border-t border-white/5 flex flex-wrap gap-x-6 gap-y-2 text-xs">
+                            <div className="flex items-center gap-1.5 text-gray-400">
+                              <span>Rewards:</span>
+                              <span className="text-emerald-400 font-bold">🪙 {q.rewardTokens} Guild Tokens</span>
+                            </div>
+                            {Object.entries(q.rewardItems).map(([itemKey, qty]) => (
+                              <div key={itemKey} className="flex items-center gap-1 text-gray-300">
+                                <span>{IT[itemKey]?.ico || '💎'}</span>
+                                <span>{IT[itemKey]?.n || itemKey} x{qty}</span>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Actions */}
+                          <div className="mt-5 flex gap-3">
+                            {!isActive ? (
+                              <button 
+                                onClick={() => handleAcceptQuest(q.id)}
+                                className="flex-1 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer shadow-md"
+                              >
+                                Accept Contract 📜
+                              </button>
+                            ) : (
+                              <>
+                                {isComplete ? (
+                                  <button 
+                                    onClick={() => handleClaimQuest(q.id)}
+                                    className="flex-1 py-2 bg-green-500 hover:bg-green-400 text-black font-bold rounded-xl text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer shadow-md shadow-green-500/15"
+                                  >
+                                    Claim Reward & Complete ✨
+                                  </button>
+                                ) : (
+                                  <button 
+                                    onClick={() => handleAbandonQuest(q.id)}
+                                    className="px-4 py-2 bg-zinc-800 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/5 hover:border-red-500/30 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
+                                  >
+                                    Abandon
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/10 text-xs opacity-80 leading-relaxed">
+                    Spend your earned <span className="text-emerald-400 font-bold">Guild Tokens</span> to procure epic tools, legendary gear, and celestial spells that cannot be crafted elsewhere!
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {[
+                      {
+                        key: 'phoenix_feather',
+                        name: 'Phoenix Feather',
+                        icon: '🔥',
+                        desc: 'Unmatched defensive item. Keeps you safe by auto-reviving you to 50% health, mana, and full stamina upon fatal damage! Consumes itself on trigger.',
+                        cost: 5,
+                        tier: 'Epic Artifact'
+                      },
+                      {
+                        key: 'scroll_meteor',
+                        name: 'Scroll of Meteor',
+                        icon: '☄️',
+                        desc: 'Unleash direct destruction! Call down celestial meteor fire dealing 250 flat fire damage to all nearby threats in a huge radius.',
+                        cost: 3,
+                        tier: 'Legendary Scroll'
+                      },
+                      {
+                        key: 'aegis_plate',
+                        name: 'Aegis Plate Armor',
+                        icon: '🛡️',
+                        desc: 'The legendary steel of the guild. Equippable armor that grants a massive +40 defense rating and boosts maximum HP by +80.',
+                        cost: 8,
+                        tier: 'Legendary Armor'
+                      },
+                      {
+                        key: 'mithril_pickaxe',
+                        name: 'Mithril Pickaxe',
+                        icon: '⛏️',
+                        desc: 'The pinnacle of subterranean prospecting. Cleaves rocks instantly, hitting for 6 flat mining damage. High attack damage.',
+                        cost: 10,
+                        tier: 'Legendary Tool'
+                      },
+                      {
+                        key: 'mithril_axe',
+                        name: 'Mithril Axe',
+                        icon: '🪓',
+                        desc: 'Masterfully forged felling tool. Chops down giant trees with 6 flat lumber damage. Superior attack speed and melee damage.',
+                        cost: 10,
+                        tier: 'Legendary Tool'
+                      }
+                    ].map(item => {
+                      const tokens = gameState?.pl.guildTokens || 0;
+                      const canAfford = tokens >= item.cost;
+                      const invQty = gameState?.pl.inv[item.key] || 0;
+
+                      return (
+                        <div key={item.key} className="p-5 rounded-2xl bg-zinc-900/30 border border-white/5 flex flex-col justify-between">
+                          <div>
+                            <div className="flex justify-between items-start">
+                              <span className="text-3xl">{item.icon}</span>
+                              <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded bg-zinc-800 border border-white/5 text-emerald-400">
+                                {item.tier}
+                              </span>
+                            </div>
+                            <h3 className="font-bold text-white text-base mt-3 flex items-center gap-2">
+                              {item.name}
+                              {invQty > 0 && <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/30 px-1.5 py-0.5 rounded border border-emerald-500/10">In Pack: {invQty}</span>}
+                            </h3>
+                            <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">{item.desc}</p>
+                          </div>
+
+                          <div className="mt-5 pt-4 border-t border-white/5">
+                            <div className="flex justify-between items-center mb-3">
+                              <span className="text-xs text-gray-400">Armory Cost:</span>
+                              <span className="text-emerald-400 font-bold text-sm">🪙 {item.cost} Tokens</span>
+                            </div>
+                            <button 
+                              onClick={() => handleBuyGuildStoreItem(item.key, item.cost)}
+                              disabled={!canAfford}
+                              className={`w-full py-2 font-bold rounded-xl text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer ${canAfford ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-md' : 'bg-zinc-800 text-gray-500 border border-white/5 cursor-not-allowed'}`}
+                            >
+                              {canAfford ? 'Purchase Item' : 'Need More Tokens'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {showMasteries && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/95 flex flex-col font-mono"
+          >
+            {/* Header */}
+            <div className="p-6 flex justify-between items-center border-b border-white/10 shrink-0">
+              <div className="flex items-center gap-3">
+                <Flame className="text-orange-500" />
+                <div>
+                  <h2 className="text-xl font-bold tracking-widest text-orange-500">
+                    MASTERIES & PASSIVES TRAINER
+                  </h2>
+                  <p className="text-[10px] opacity-40 uppercase tracking-widest">
+                    Invest Guild Tokens to permanently awaken specialized combat and gatherer potentials
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2 bg-orange-950/40 px-4 py-2 rounded-xl border border-orange-500/20">
+                  <span className="text-xs font-bold text-orange-300">GUILD TOKENS:</span>
+                  <span className="font-bold text-orange-400 text-sm">🪙 {gameState?.pl.guildTokens || 0}</span>
+                </div>
+                <button onClick={() => setShowMasteries(false)} className="p-2 hover:bg-white/10 rounded-full cursor-pointer transition-all">
+                  <X />
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable Content Container */}
+            <div className="flex-1 p-6 overflow-y-auto max-w-5xl mx-auto w-full">
+              <div className="p-4 mb-6 rounded-xl bg-orange-950/20 border border-orange-500/10 text-xs opacity-80 leading-relaxed">
+                Welcome to the Masteries Training chambers. Awaken your latent power by training the 6 high-tier mastery pathways. Each passive trait can be upgraded up to <span className="text-orange-400 font-bold">Level 3</span>. Training costs <span className="text-orange-400 font-bold">5 Guild Tokens per level</span> (Level 1: 5 Tokens, Level 2: 10 Tokens, Level 3: 15 Tokens).
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {[
+                  {
+                    id: 'adrenaline',
+                    name: 'Adrenaline Rush ⚡',
+                    desc: 'Grants raw speed when survival is on the line. When health drops below 40%, gain +10% extra movement speed per level.',
+                    color: 'from-amber-600 to-yellow-500',
+                    border: 'border-yellow-500/20',
+                    bg: 'bg-yellow-950/10',
+                    perks: [
+                      'Level 1: +10% Speed under 40% HP',
+                      'Level 2: +20% Speed under 40% HP',
+                      'Level 3: +30% Speed under 40% HP (Max)'
+                    ]
+                  },
+                  {
+                    id: 'double_harvest',
+                    name: 'Double Harvest 🌿',
+                    desc: 'Expertise in botanical botany and forestry. Gives +10% chance per level to double all herbalism, fiber, and wood felling yields.',
+                    color: 'from-green-600 to-emerald-500',
+                    border: 'border-emerald-500/20',
+                    bg: 'bg-emerald-950/10',
+                    perks: [
+                      'Level 1: +10% Double Harvest chance',
+                      'Level 2: +20% Double Harvest chance',
+                      'Level 3: +30% Double Harvest chance (Max)'
+                    ]
+                  },
+                  {
+                    id: 'lucky_miner',
+                    name: 'Lucky Miner 🪙',
+                    desc: 'Eye for glittering underground treasures. Gives +10% chance per level to double all mineral and ore felling drops.',
+                    color: 'from-sky-600 to-blue-500',
+                    border: 'border-sky-500/20',
+                    bg: 'bg-sky-950/10',
+                    perks: [
+                      'Level 1: +10% Double Mineral chance',
+                      'Level 2: +20% Double Mineral chance',
+                      'Level 3: +30% Double Mineral chance (Max)'
+                    ]
+                  },
+                  {
+                    id: 'toughened_hide',
+                    name: 'Toughened Hide 🛡️',
+                    desc: 'Thickened outer defenses. Permanently reduces all incoming damage from enemies by a flat amount (1 point per level).',
+                    color: 'from-indigo-600 to-violet-500',
+                    border: 'border-violet-500/20',
+                    bg: 'bg-violet-950/10',
+                    perks: [
+                      'Level 1: -1 flat damage from enemy hits',
+                      'Level 2: -2 flat damage from enemy hits',
+                      'Level 3: -3 flat damage from enemy hits (Max)'
+                    ]
+                  },
+                  {
+                    id: 'vampiric_strikes',
+                    name: 'Vampiric Strikes 🩸',
+                    desc: 'Siphon vitality directly from threats. Grants +5% chance per level on all melee attacks to restore +4 HP instantly.',
+                    color: 'from-red-600 to-rose-500',
+                    border: 'border-rose-500/20',
+                    bg: 'bg-rose-950/10',
+                    perks: [
+                      'Level 1: 5% chance to heal +4 HP on hit',
+                      'Level 2: 10% chance to heal +4 HP on hit',
+                      'Level 3: 15% chance to heal +4 HP on hit (Max)'
+                    ]
+                  },
+                  {
+                    id: 'sages_wisdom',
+                    name: 'Sage\'s Wisdom 🧿',
+                    desc: 'Awakened connection to the mystical ether. Permanently decreases the mana cost of all active spells by 10% per level.',
+                    color: 'from-purple-600 to-fuchsia-500',
+                    border: 'border-fuchsia-500/20',
+                    bg: 'bg-fuchsia-950/10',
+                    perks: [
+                      'Level 1: -10% spell mana cost, permanent +10 max MP',
+                      'Level 2: -20% spell mana cost, permanent +20 max MP',
+                      'Level 3: -30% spell mana cost, permanent +30 max MP (Max)'
+                    ]
+                  }
+                ].map(mst => {
+                  const currentLvl = gameState?.pl?.masteries?.[mst.id] || 0;
+                  const isMax = currentLvl >= 3;
+                  const cost = (currentLvl + 1) * 5;
+                  const tokens = gameState?.pl.guildTokens || 0;
+                  const canAfford = tokens >= cost && !isMax;
+
+                  return (
+                    <div key={mst.id} className={`p-5 rounded-2xl border ${mst.border} ${mst.bg} flex flex-col justify-between`}>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <h3 className="font-bold text-white text-base tracking-wide">{mst.name}</h3>
+                          <div className={`px-3 py-1 rounded-full border font-bold text-sm ${isMax ? 'bg-orange-500/20 border-orange-500/40 text-orange-400' : 'bg-white/10 border-white/5 text-gray-300'}`}>
+                            {isMax ? 'MAX LVL 3' : `LVL ${currentLvl}`}
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-2 leading-relaxed">{mst.desc}</p>
+
+                        <div className="mt-4 pt-3 border-t border-white/5">
+                          <h4 className="text-[10px] uppercase tracking-wider font-bold opacity-40 mb-1.5">Training Benefits:</h4>
+                          <ul className="space-y-1">
+                            {mst.perks.map((perk, pidx) => (
+                              <li key={pidx} className={`text-xs flex items-start gap-1 ${currentLvl > pidx ? 'text-orange-400 font-bold opacity-100' : 'opacity-50'}`}>
+                                <span>{currentLvl > pidx ? '✓' : '•'}</span>
+                                <span>{perk}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 pt-4 border-t border-white/5 flex items-center justify-between gap-4">
+                        {!isMax ? (
+                          <>
+                            <div className="text-xs">
+                              <span className="text-gray-400">Next Level Cost:</span>
+                              <div className="text-orange-400 font-bold text-sm mt-0.5">🪙 {cost} Tokens</div>
+                            </div>
+                            <button 
+                              onClick={() => handleUpgradeMastery(mst.id, cost, 3)}
+                              disabled={!canAfford}
+                              className={`flex-1 py-2 font-bold rounded-xl text-xs uppercase tracking-wider active:scale-95 transition-all cursor-pointer ${canAfford ? 'bg-orange-500 hover:bg-orange-400 text-black shadow-md' : 'bg-zinc-800 text-gray-500 border border-white/5 cursor-not-allowed'}`}
+                            >
+                              {canAfford ? 'Upgrade Mastery ⚡' : 'Cannot Afford'}
+                            </button>
+                          </>
+                        ) : (
+                          <div className="w-full text-center py-2 bg-orange-500/10 border border-orange-500/20 text-orange-400 font-bold rounded-xl text-xs uppercase tracking-wider">
+                            ✨ awakened potential reached ✨
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -10411,7 +14746,7 @@ export default function SurvivalGame() {
                           <div className="text-[10px] text-zinc-500 font-mono">Zone ({zc}, {zr})</div>
                           <div className="text-xs font-extrabold text-white mt-1 flex items-center gap-1.5">
                             <span>{M.n.split(' ').map((word: string) => word[0]).join('')}</span>
-                            <span className="text-lg">{M.n.includes('Desert') ? '🏜️' : M.n.includes('Forest') ? '🌲' : M.n.includes('Frozen') ? '❄️' : M.n.includes('Scorched') ? '🌋' : M.n.includes('Celestial') ? '🌌' : '🌾'}</span>
+                            <span className="text-lg">{M.n.includes('Desert') ? '🏜️' : M.n.includes('Forest') ? '🌲' : M.n.includes('Frozen') ? '❄️' : M.n.includes('Scorched') ? '🌋' : M.n.includes('Celestial') ? '🌌' : M.n.includes('Chrono') || M.n.includes('Rift') ? '⏳' : '🌾'}</span>
                           </div>
                           <div className="text-[9px] text-zinc-400 mt-1 truncate">{M.n}</div>
                         </div>
@@ -11063,6 +15398,44 @@ export default function SurvivalGame() {
       </AnimatePresence>
 
       <AnimatePresence>
+        {activeNPC && (
+          <NPCDialogue 
+            npc={activeNPC}
+            onClose={() => setActiveNPC(null)}
+            gameState={gameState}
+            setGameState={setGameState}
+            addLog={addLog}
+            spawnExplosion={(col, count, style) => {
+              const s = stateRef.current;
+              if (s) {
+                spawnExplosion(s, s.pl.x, s.pl.y, col, count, style);
+                setGameState({ ...s });
+              }
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showResearch && (
+          <ResearchTree 
+            onClose={() => setShowResearch(false)}
+            gameState={gameState}
+            setGameState={setGameState}
+            addLog={addLog}
+            spawnExplosion={(col, count, style) => {
+              const s = stateRef.current;
+              if (s) {
+                spawnExplosion(s, s.pl.x, s.pl.y, col, count, style);
+                setGameState({ ...s });
+              }
+            }}
+            setRecipes={setRecipes}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {showMusicMenu && (
           <motion.div 
             initial={{ opacity: 0 }}
@@ -11198,6 +15571,196 @@ export default function SurvivalGame() {
         )}
       </AnimatePresence>
 
+      {/* --- Supply Crate Storage UI Overlay --- */}
+      <AnimatePresence>
+        {activeCrateIndex !== null && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <div className="max-w-4xl w-full bg-zinc-950 border border-amber-500/30 rounded-3xl p-6 md:p-8 flex flex-col gap-6 shadow-[0_0_50px_rgba(245,158,11,0.1)] text-white font-mono pointer-events-auto">
+              <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-2xl">📦</span>
+                  <div>
+                    <h2 className="text-xl font-bold uppercase tracking-wider text-amber-400 font-mono">SUPPLY STORAGE CRATE</h2>
+                    <p className="text-[10px] opacity-50 uppercase mt-0.5 font-mono">Secure containment facility for storing resources and supplies</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setActiveCrateIndex(null)}
+                  className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all cursor-pointer text-zinc-400 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Two columns: Left is Crate Storage, Right is Player Backpack */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 overflow-hidden max-h-[60vh]">
+                {/* Left Column: Crate Storage */}
+                <div className="flex flex-col gap-3 bg-zinc-900/40 border border-white/5 rounded-2xl p-4 overflow-y-auto">
+                  <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                    <span className="text-xs font-bold text-amber-400">📦 CRATE CONTENTS</span>
+                    <button
+                      onClick={() => {
+                        const s = stateRef.current;
+                        if (!s || activeCrateIndex === null) return;
+                        const crate = s.objs[activeCrateIndex];
+                        if (!crate || !crate.items) return;
+                        // Move everything in crate to player inventory
+                        Object.entries(crate.items).forEach(([k, qty]: any) => {
+                          if (qty > 0) {
+                            s.pl.inv[k] = (s.pl.inv[k] || 0) + qty;
+                          }
+                        });
+                        crate.items = {};
+                        addLog("📦 Transferred all items to Backpack!", "#eab308");
+                        setGameState({ ...s });
+                      }}
+                      className="text-[9px] uppercase px-2 py-1 bg-amber-500/20 text-amber-300 rounded hover:bg-amber-500/30 active:scale-95 transition-all cursor-pointer"
+                    >
+                      Take All
+                    </button>
+                  </div>
+
+                  {/* Render storage slots */}
+                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 pb-2">
+                    {(() => {
+                      const crate = gameState?.objs?.[activeCrateIndex];
+                      const crateItems = crate?.items || {};
+                      const storedItems = Object.entries(crateItems).filter(([_, qty]: any) => qty > 0);
+
+                      if (storedItems.length === 0) {
+                        return (
+                          <div className="col-span-full py-12 text-center text-[10px] text-zinc-500 uppercase">
+                            Crate is empty. Click items in your backpack to store them here!
+                          </div>
+                        );
+                      }
+
+                      return storedItems.map(([k, qty]: any) => {
+                        const it = IT[k];
+                        return (
+                          <button
+                            key={k}
+                            onClick={() => {
+                              const s = stateRef.current;
+                              if (!s || activeCrateIndex === null) return;
+                              const targetCrate = s.objs[activeCrateIndex];
+                              if (!targetCrate || !targetCrate.items || !targetCrate.items[k]) return;
+                              
+                              // Withdraw 1 item
+                              targetCrate.items[k]--;
+                              s.pl.inv[k] = (s.pl.inv[k] || 0) + 1;
+                              if (targetCrate.items[k] <= 0) {
+                                delete targetCrate.items[k];
+                              }
+                              setGameState({ ...s });
+                            }}
+                            className="flex flex-col items-center justify-center p-2 rounded-xl bg-zinc-950 border border-white/5 hover:border-amber-500/40 hover:bg-zinc-900/50 active:scale-95 transition-all relative aspect-square cursor-pointer"
+                            title={`Click to withdraw 1 ${it?.n || k}`}
+                          >
+                            <span className="text-xl">{it?.ico || '📦'}</span>
+                            <span className="text-[8px] mt-1 text-zinc-400 truncate w-full text-center">{it?.n || k}</span>
+                            <span className="absolute top-1 right-1 bg-amber-500 text-zinc-950 text-[8px] font-black px-1 rounded-md min-w-[14px] text-center shadow">
+                              {qty}
+                            </span>
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+
+                {/* Right Column: Player Backpack */}
+                <div className="flex flex-col gap-3 bg-zinc-900/40 border border-white/5 rounded-2xl p-4 overflow-y-auto">
+                  <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                    <span className="text-xs font-bold text-emerald-400">🎒 BACKPACK INVENTORY</span>
+                    <button
+                      onClick={() => {
+                        const s = stateRef.current;
+                        if (!s || activeCrateIndex === null) return;
+                        const crate = s.objs[activeCrateIndex];
+                        if (!crate) return;
+                        if (!crate.items) crate.items = {};
+                        // Store all non-essential elements from backpack
+                        const nonEssentials = ['wood', 'stone', 'fiber', 'copper_ore', 'iron_ore', 'gold_ore', 'coal', 'sulfur', 'crystal', 'leather', 'feather', 'bone', 'resin', 'raw_meat', 'raw_fish', 'cooked_meat', 'cooked_fish'];
+                        let count = 0;
+                        nonEssentials.forEach((k) => {
+                          const qty = s.pl.inv[k] || 0;
+                          if (qty > 0) {
+                            crate.items[k] = (crate.items[k] || 0) + qty;
+                            s.pl.inv[k] = 0;
+                            count++;
+                          }
+                        });
+                        if (count > 0) {
+                          addLog("📦 Transferred all raw supplies to Crate!", "#10b981");
+                        }
+                        setGameState({ ...s });
+                      }}
+                      className="text-[9px] uppercase px-2 py-1 bg-emerald-500/20 text-emerald-300 rounded hover:bg-emerald-500/30 active:scale-95 transition-all cursor-pointer"
+                    >
+                      Store All Supplies
+                    </button>
+                  </div>
+
+                  {/* Render player inventory slots */}
+                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 pb-2">
+                    {(() => {
+                      const invItems = Object.entries(gameState?.pl?.inv || {}).filter(([k, qty]: any) => qty > 0 && k !== 'gold_coins');
+
+                      if (invItems.length === 0) {
+                        return (
+                          <div className="col-span-full py-12 text-center text-[10px] text-zinc-500 uppercase">
+                            Backpack is empty!
+                          </div>
+                        );
+                      }
+
+                      return invItems.map(([k, qty]: any) => {
+                        const it = IT[k];
+                        return (
+                          <button
+                            key={k}
+                            onClick={() => {
+                              const s = stateRef.current;
+                              if (!s || activeCrateIndex === null) return;
+                              const targetCrate = s.objs[activeCrateIndex];
+                              if (!targetCrate) return;
+                              if (!targetCrate.items) targetCrate.items = {};
+                              
+                              // Deposit 1 item
+                              s.pl.inv[k]--;
+                              targetCrate.items[k] = (targetCrate.items[k] || 0) + 1;
+                              setGameState({ ...s });
+                            }}
+                            className="flex flex-col items-center justify-center p-2 rounded-xl bg-zinc-950 border border-white/5 hover:border-emerald-500/40 hover:bg-zinc-900/50 active:scale-95 transition-all relative aspect-square cursor-pointer"
+                            title={`Click to deposit 1 ${it?.n || k}`}
+                          >
+                            <span className="text-xl">{it?.ico || '📦'}</span>
+                            <span className="text-[8px] mt-1 text-zinc-400 truncate w-full text-center">{it?.n || k}</span>
+                            <span className="absolute top-1 right-1 bg-emerald-500 text-zinc-950 text-[8px] font-black px-1 rounded-md min-w-[14px] text-center shadow">
+                              {qty}
+                            </span>
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900/50 border border-white/5 p-4 rounded-2xl text-[9px] text-zinc-500 uppercase leading-relaxed text-center">
+                💡 <span className="text-amber-400 font-bold">PRO-TIP:</span> Click any individual item inside either container to instantly transfer <span className="text-white font-black">1 unit</span> of it to the other container!
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* --- Death Screen --- */}
       <AnimatePresence>
         {showDeathScreen && (
@@ -11229,3 +15792,174 @@ export default function SurvivalGame() {
     </div>
   );
 }
+
+// --- Character Style and Profession Customizer Sub-Component ---
+interface CharCustomizerPanelProps {
+  s: any;
+  onClose: () => void;
+}
+
+const CharCustomizerPanel: React.FC<CharCustomizerPanelProps> = ({ s, onClose }) => {
+  const [name, setName] = useState(s.pl.charName || 'Hero');
+  const [selectedIco, setSelectedIco] = useState(s.pl.ico || '🧍');
+  const [selectedClass, setSelectedClass] = useState(s.pl.class || 'Survivor');
+
+  const emojis = ['🧍', '🧙‍♂️', '🛡️', '🥷', '🏹', '🧑‍🌾', '🧑‍🚀', '👩', '🧔', '🧝'];
+  const classes = [
+    { name: 'Survivor', desc: 'Balanced baseline survivor. No major disadvantages.', icon: '🧍', bonus: 'None' },
+    { name: 'Warrior', desc: 'A rugged melee brawler. Permanently gains +20 Max HP and +4 flat defense.', icon: '🛡️', bonus: '+20 Max HP, +4 Defense' },
+    { name: 'Wizard', desc: 'Master of spellcraft. Gains +20 Max Mana and generates +1 Mana every 2 seconds.', icon: '🧙‍♂️', bonus: '+20 Max MP, Mana Regen' },
+    { name: 'Ninja', desc: 'Silent agile operative. Permanently gains +15% extra movement speed.', icon: '🥷', bonus: '+15% Speed' },
+    { name: 'Ranger', desc: 'Expert marksman. Ranged bow attacks deal +12% flat bonus damage.', icon: '🏹', bonus: '+12% Ranged DMG' },
+    { name: 'Farmer', desc: 'Tamed companion whisperer. Double berry taming efficacy and gathers +1 extra log/stone from harvest.', icon: '🧑‍🌾', bonus: 'Harvest bonus, Tame rate x2' },
+  ];
+
+  const handleApply = () => {
+    s.pl.charName = name || 'Hero';
+    s.pl.ico = selectedIco;
+    
+    const oldClass = s.pl.class;
+    s.pl.class = selectedClass;
+    
+    if (selectedClass !== oldClass) {
+      // Revert old class bonuses
+      if (oldClass === 'Warrior') {
+        s.pl.mhp = Math.max(100, s.pl.mhp - 20);
+        s.pl.def = Math.max(0, s.pl.def - 4);
+      }
+      if (oldClass === 'Wizard') {
+        s.pl.mmp = Math.max(100, s.pl.mmp - 20);
+      }
+      
+      // Apply new bonuses
+      if (selectedClass === 'Warrior') {
+        s.pl.mhp += 20;
+        s.pl.hp = s.pl.mhp;
+        s.pl.def += 4;
+      }
+      if (selectedClass === 'Wizard') {
+        s.pl.mmp += 20;
+        s.pl.mp = s.pl.mmp;
+      }
+    }
+    
+    // Add nice global log
+    const logStr = `👤 Character Re-styled: Now playing as "${name}" the ${selectedClass}!`;
+    if (typeof window !== 'undefined' && (window as any).addGameLog) {
+      (window as any).addGameLog(logStr, '#c084fc');
+    }
+    
+    // Trigger visual blast particles
+    if (s.parts) {
+      s.parts.push({ x: s.pl.x, y: s.pl.y, vx: 0, vy: 0, life: 25, col: '#c084fc', sz: 8 });
+    }
+    
+    onClose();
+  };
+
+  return (
+    <div className="space-y-6 max-w-4xl mx-auto font-mono text-zinc-300">
+      
+      {/* Visual Avatar Preview */}
+      <div className="bg-zinc-900/60 border border-white/10 p-5 rounded-2xl flex flex-col sm:flex-row items-center gap-6">
+        <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-400 flex items-center justify-center text-4xl shadow-inner shadow-black/40 border border-purple-500/30 animate-pulse shrink-0">
+          {selectedIco}
+        </div>
+        <div className="space-y-1.5 flex-1 w-full text-center sm:text-start">
+          <div className="text-[10px] text-purple-400 uppercase font-extrabold tracking-widest">Character Preview</div>
+          <h3 className="text-xl font-black text-white">{name}</h3>
+          <p className="text-xs text-zinc-400 leading-normal">
+            Profession Role: <span className="text-purple-300 font-extrabold">{selectedClass}</span>
+          </p>
+        </div>
+      </div>
+
+      {/* Editing Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        {/* Left Side: Identity */}
+        <div className="bg-zinc-900/40 border border-white/5 p-5 rounded-2xl space-y-4">
+          <div className="space-y-2">
+            <label className="text-[10px] text-purple-400 font-extrabold tracking-widest uppercase">Character Name</label>
+            <input 
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={16}
+              className="bg-black/50 border border-white/10 hover:border-white/20 focus:border-purple-400/80 rounded-xl px-4 py-3 text-white font-bold tracking-wide outline-none w-full text-sm"
+            />
+          </div>
+
+          <div className="space-y-2.5">
+            <label className="text-[10px] text-purple-400 font-extrabold tracking-widest uppercase block">Select Map Sprite / Avatar</label>
+            <div className="grid grid-cols-5 gap-2">
+              {emojis.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => setSelectedIco(emoji)}
+                  className={`aspect-square text-2xl flex items-center justify-center rounded-xl transition-all cursor-pointer ${
+                    selectedIco === emoji 
+                      ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20 scale-105 border border-purple-400' 
+                      : 'bg-black/40 hover:bg-white/5 border border-white/5'
+                  }`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Side: Professional Class */}
+        <div className="bg-zinc-900/40 border border-white/5 p-5 rounded-2xl space-y-3.5">
+          <label className="text-[10px] text-purple-400 font-extrabold tracking-widest uppercase block">Assign Profession Class</label>
+          
+          <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+            {classes.map((cls) => (
+              <button
+                key={cls.name}
+                onClick={() => setSelectedClass(cls.name)}
+                className={`w-full p-3 rounded-xl border flex items-start gap-3 transition-all text-start cursor-pointer ${
+                  selectedClass === cls.name 
+                    ? 'bg-purple-950/20 border-purple-500 text-white' 
+                    : 'bg-black/20 border-white/5 hover:bg-white/5 text-zinc-400'
+                }`}
+              >
+                <span className="text-xl mt-0.5">{cls.icon}</span>
+                <div className="space-y-0.5">
+                  <div className="text-xs font-black flex items-center gap-2">
+                    <span>{cls.name}</span>
+                    {cls.bonus !== 'None' && (
+                      <span className="text-[8px] bg-purple-500/15 text-purple-300 font-bold px-1.5 py-0.2 rounded uppercase">
+                        {cls.bonus}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[10px] opacity-75 leading-normal">{cls.desc}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+      </div>
+
+      {/* Footer Controls */}
+      <div className="flex justify-end gap-3 pt-4 border-t border-white/10 shrink-0">
+        <button 
+          onClick={onClose}
+          className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-extrabold uppercase text-xs tracking-wider rounded-xl cursor-pointer transition-all active:scale-95"
+        >
+          Cancel
+        </button>
+        <button 
+          onClick={handleApply}
+          className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-black uppercase text-xs tracking-widest rounded-xl cursor-pointer transition-all active:scale-95 shadow-lg shadow-purple-500/20"
+        >
+          Apply & Save
+        </button>
+      </div>
+
+    </div>
+  );
+};

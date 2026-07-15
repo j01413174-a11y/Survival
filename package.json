@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "node --test tests/*.test.js && vitest run src/services/geminiService.test.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
