@@ -200,4 +200,8 @@ test('LITEPAPER.md contains no unresolved markdown link syntax pointing nowhere'
   }
 
   assert.deepEqual(emptyTargets, [], 'found markdown link(s) with empty targets');
+<<<<<<< HEAD
 });
+=======
+});
+>>>>>>> origin/main

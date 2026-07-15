@@ -77,4 +77,8 @@ test('README.md still describes the "Run Locally" setup steps unchanged by this 
   assert.match(content, /npm install/);
   assert.match(content, /GEMINI_API_KEY/);
   assert.match(content, /npm run dev/);
+<<<<<<< HEAD
 });
+=======
+});
+>>>>>>> origin/main
