@@ -43,7 +43,9 @@ export default function TownShop({ onClose, shopType: initialShopType, gameState
       { id: 'fiber', price: 4 },
       { id: 'leather', price: 15 },
       { id: 'torch', price: 10 },
-      { id: 'workbench', price: 40 }
+      { id: 'workbench', price: 40 },
+      { id: 'stone_wall', price: 15 },
+      { id: 'spike_trap_crafted', price: 30 }
     ],
     blacksmith: [
       { id: 'iron_ore', price: 12 },
@@ -209,7 +211,7 @@ export default function TownShop({ onClose, shopType: initialShopType, gameState
         
         // Match inventory items appropriate to selected merchant type for immersive logic
         if (shopType === 'general') {
-          return item.t === 'food' || item.t === 'pot' || ['wood', 'fiber', 'leather', 'bone', 'feather', 'silk'].includes(k);
+          return item.t === 'food' || item.t === 'pot' || item.t === 'struct' || ['wood', 'fiber', 'leather', 'bone', 'feather', 'silk'].includes(k);
         } else if (shopType === 'blacksmith') {
           return item.t === 'armor' || item.t === 'tool' || item.id || ['stone', 'iron_ore', 'copper_ore', 'gold_ore', 'mithril_ore', 'iron_bar', 'copper_bar', 'gold_bar', 'mithril_bar', 'coal', 'clay'].includes(k);
         } else {
