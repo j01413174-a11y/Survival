@@ -1,4 +1,4 @@
-function sanitizeGameState(gameState: any) {
+export function sanitizeGameState(gameState: any) {
   if (!gameState) return null;
   
   // Strip out huge procedural arrays like "world", "objs", "enemies", etc.
@@ -25,7 +25,7 @@ function sanitizeGameState(gameState: any) {
 
 // --- Client-side Procedural Fallbacks (for robust offline/glitch-free play) ---
 
-function getProceduralGuidance(gameState: any) {
+export function getProceduralGuidance(gameState: any) {
   const day = gameState?.day || 1;
   const lvl = gameState?.lvl || 1;
   const hp = gameState?.hp || 100;
@@ -58,7 +58,7 @@ function getProceduralGuidance(gameState: any) {
   };
 }
 
-function getProceduralWorldEvent(gameState: any) {
+export function getProceduralWorldEvent(gameState: any) {
   const plLvl = gameState?.pl?.lvl || gameState?.lvl || 1;
 
   const events = [
@@ -318,7 +318,7 @@ function getProceduralWorldEvent(gameState: any) {
   return selectedEvent;
 }
 
-function getProceduralSpellResult(spellName: string, gameState: any) {
+export function getProceduralSpellResult(spellName: string, gameState: any) {
   const currentBiomeName = gameState?.currentBiome?.n || "Forest";
   const plX = gameState?.pl?.x ? Math.floor(gameState.pl.x / 32) : 40;
   const plY = gameState?.pl?.y ? Math.floor(gameState.pl.y / 32) : 40;
