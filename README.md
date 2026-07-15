@@ -8,6 +8,10 @@ This contains everything you need to run your app locally.
 
 View your app in AI Studio: https://ai.studio/apps/5923f780-5752-4a60-8adb-996f13ce0d1d
 
+## Project paper
+
+See the repository litepaper at [LITEPAPER.md](./LITEPAPER.md).
+
 ## Run Locally
 
 **Prerequisites:**  Node.js
