@@ -5328,10 +5328,19 @@ export default function SurvivalGame() {
 
           if (t === TG) {
             // --- GRASS BIOME OVERHAUL ---
+            // High-resolution grass micro-texture layer
+            ctx.fillStyle = (x + y) % 2 === 0 ? 'rgba(21, 128, 61, 0.08)' : 'rgba(22, 163, 74, 0.08)';
+            ctx.fillRect(txCoord + 2, tyCoord + 2, TZ - 4, TZ - 4);
+            
+            // Soft foliage texture speckles
+            ctx.fillStyle = 'rgba(22, 101, 52, 0.12)';
+            ctx.fillRect(txCoord + (pSeed % 12), tyCoord + ((pSeed * 3) % 12), 2, 2);
+            ctx.fillRect(txCoord + 10 + (pSeed % 8), tyCoord + 8 + ((pSeed * 2) % 8), 1.5, 1.5);
+
             // Draw soft grass blades
-            ctx.strokeStyle = 'rgba(34, 197, 94, 0.35)';
+            ctx.strokeStyle = 'rgba(34, 197, 94, 0.45)';
             ctx.lineWidth = 1;
-            if (pSeed < 30) {
+            if (pSeed < 35) {
               const gx = txCoord + 4 + (pSeed % 12);
               const gy = tyCoord + 6 + (pSeed % 10);
               ctx.beginPath();
@@ -5342,7 +5351,7 @@ export default function SurvivalGame() {
               ctx.stroke();
             }
             // Tiny wild flowers
-            if (pSeed < 10) {
+            if (pSeed < 12) {
               const fx = txCoord + 6 + (pSeed * 2) % 14;
               const fy = tyCoord + 6 + (pSeed * 3) % 14;
               ctx.fillStyle = pSeed % 3 === 0 ? '#fbbf24' : pSeed % 3 === 1 ? '#f43f5e' : '#ffffff'; // yellow, rose, white
@@ -5357,6 +5366,11 @@ export default function SurvivalGame() {
             }
           } else if (t === TD) {
             // --- SOIL BIOME OVERHAUL ---
+            // High-res soil granules micro-texture layer
+            ctx.fillStyle = 'rgba(120, 53, 4, 0.08)'; // rich soil speckles
+            ctx.fillRect(txCoord + (pSeed % 14), tyCoord + ((pSeed * 2) % 14), 2, 2);
+            ctx.fillRect(txCoord + 8 + (pSeed % 8), tyCoord + 10 + ((pSeed * 3) % 6), 1, 1);
+
             // Small stones
             if (pSeed < 20) {
               const sx = txCoord + 5 + (pSeed * 2) % 12;
@@ -5367,7 +5381,7 @@ export default function SurvivalGame() {
               ctx.fill();
             }
             // Dirt crevices / plow-lines
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(txCoord + 3, tyCoord + TZ/2 + (pSeed % 6) - 3);
@@ -5375,8 +5389,14 @@ export default function SurvivalGame() {
             ctx.stroke();
           } else if (t === TS) {
             // --- STONE BIOME OVERHAUL ---
+            // High-fidelity stone grain noise micro-texture
+            ctx.fillStyle = 'rgba(71, 85, 105, 0.12)';
+            ctx.fillRect(txCoord + (pSeed % 12), tyCoord + ((pSeed * 4) % 12), 3, 3);
+            ctx.fillStyle = 'rgba(148, 163, 184, 0.08)';
+            ctx.fillRect(txCoord + 12 + (pSeed % 6), tyCoord + 2 + ((pSeed * 2) % 10), 2, 2);
+
             // Cobble fissures
-            ctx.strokeStyle = 'rgba(15, 23, 42, 0.25)';
+            ctx.strokeStyle = 'rgba(15, 23, 42, 0.3)';
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(txCoord + (pSeed % 8), tyCoord);
@@ -5386,15 +5406,20 @@ export default function SurvivalGame() {
 
             // Shaded crevices
             if (pSeed < 25) {
-              ctx.fillStyle = 'rgba(255, 255, 255, 0.04)'; // Highlights
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.05)'; // Highlights
               ctx.fillRect(txCoord + 2, tyCoord + 2, TZ - 4, 2);
-              ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'; // Shading
+              ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'; // Shading
               ctx.fillRect(txCoord + 2, tyCoord + TZ - 4, TZ - 4, 2);
             }
           } else if (t === TW) {
             // --- WATER BIOME OVERHAUL ---
+            // High-fidelity water reflection layer
+            const reflection = Math.sin(s.ticks * 0.025 + x * 0.5) * 0.15;
+            ctx.fillStyle = `rgba(255, 255, 255, ${0.06 + reflection})`;
+            ctx.fillRect(txCoord + 2, tyCoord + 2, TZ - 4, 3);
+
             // Dynamic waves
-            ctx.strokeStyle = 'rgba(56, 189, 248, 0.22)';
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.28)';
             ctx.lineWidth = 1;
             ctx.beginPath();
             const waveOffset = Math.sin(s.ticks * 0.04 + x + y) * 4;
@@ -5403,8 +5428,8 @@ export default function SurvivalGame() {
             ctx.stroke();
 
             // Water glint sparkling dots
-            if (pSeed < 8) {
-              const pulseGlint = 0.2 + Math.abs(Math.sin(s.ticks * 0.03 + pSeed)) * 0.6;
+            if (pSeed < 10) {
+              const pulseGlint = 0.2 + Math.abs(Math.sin(s.ticks * 0.035 + pSeed)) * 0.6;
               ctx.fillStyle = `rgba(255, 255, 255, ${pulseGlint})`;
               ctx.fillRect(txCoord + 6 + (pSeed % 12), tyCoord + 6 + (pSeed % 12), 1.5, 1.5);
             }
@@ -5441,6 +5466,10 @@ export default function SurvivalGame() {
             }
           } else if (t === TSA) {
             // --- SAND BIOME OVERHAUL ---
+            // Dune ripples and fine sand micro-texture
+            ctx.fillStyle = 'rgba(180, 83, 9, 0.06)';
+            ctx.fillRect(txCoord + (pSeed % 10), tyCoord + ((pSeed * 5) % 12), 2.5, 2.5);
+
             // Dune ripples
             ctx.strokeStyle = 'rgba(217, 119, 6, 0.22)';
             ctx.lineWidth = 1;
@@ -5457,6 +5486,12 @@ export default function SurvivalGame() {
             }
           } else if (t === TSN) {
             // --- SNOW BIOME OVERHAUL ---
+            // Ice crystal sparkles & shadows micro-texture
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+            ctx.fillRect(txCoord + (pSeed % 14), tyCoord + ((pSeed * 7) % 14), 2, 1.5);
+            ctx.fillStyle = 'rgba(203, 213, 225, 0.15)';
+            ctx.fillRect(txCoord + 10 + (pSeed % 8), tyCoord + 4 + ((pSeed * 3) % 8), 1.5, 2);
+
             // Frost contour shapes
             ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
             if (pSeed < 20) {
@@ -6083,6 +6118,48 @@ export default function SurvivalGame() {
           ctx.fillText(ico, ox, oy);
         }
 
+        // --- DYNAMIC REAL-TIME PROXIMITY LIGHTING OVERLAY ---
+        let lightingColor = null;
+        let lightingIntensity = 0;
+        
+        // 1. Player torch proximity lighting
+        const pDist = Math.hypot(o.tx * TZ + TZ/2 - s.pl.x, o.ty * TZ + TZ/2 - s.pl.y);
+        const isTorchActive = s.pl.hotbar[hotSlot] === 'torch' && (s.pl.inv['torch'] || 0) > 0;
+        if (isTorchActive && pDist < 160) {
+          lightingColor = 'rgba(251, 146, 60, 0.16)'; // warm torch orange
+          lightingIntensity = (1 - pDist / 160) * 0.16;
+        } else if (pDist < 100) {
+          lightingColor = 'rgba(255, 255, 255, 0.08)'; // cool ambient white
+          lightingIntensity = (1 - pDist / 100) * 0.08;
+        }
+
+        // 2. Campfire proximity flickering lighting
+        for (const otherO of s.objs) {
+          if (otherO.type === 'campfire' || otherO.type === 'camp_fire') {
+            const fDist = Math.hypot((o.tx - otherO.tx) * TZ, (o.ty - otherO.ty) * TZ);
+            if (fDist < 120) {
+              const campIntensity = (1 - fDist / 120) * (0.24 + Math.sin(s.ticks * 0.15) * 0.06);
+              if (campIntensity > lightingIntensity) {
+                lightingColor = 'rgba(249, 115, 22, 0.24)'; // flickering orange fire glow
+                lightingIntensity = campIntensity;
+              }
+            }
+          }
+        }
+
+        // Apply lighting tint overlay using source-atop
+        if (lightingColor && lightingIntensity > 0) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'source-atop';
+          ctx.fillStyle = lightingColor.replace(/[\d\.]+\)$/, `${lightingIntensity})`);
+          // Draw at both local (0,0) and camera space (ox, oy) to support translated and absolute sub-renderers safely
+          ctx.beginPath();
+          ctx.arc(0, 0, TZ * 2.2, 0, Math.PI * 2);
+          ctx.arc(ox, oy, TZ * 2.2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
         ctx.restore();
       }
 
@@ -6215,6 +6292,36 @@ export default function SurvivalGame() {
       const pxDraw = s.pl.x - s.cam.x;
       const pyDraw = s.pl.y - s.cam.y;
 
+      const plMoving = Math.abs(s.pl.vx) > 0.1 || Math.abs(s.pl.vy) > 0.1 || s.pl.isGridMoving;
+
+      // Update and maintain a position history trail for smooth motion blur trailing
+      if (!s.pl.trail) s.pl.trail = [];
+      if (s.pl.trail.length === 0 || s.pl.trail[s.pl.trail.length - 1].x !== s.pl.x || s.pl.trail[s.pl.trail.length - 1].y !== s.pl.y) {
+        s.pl.trail.push({ x: s.pl.x, y: s.pl.y });
+        if (s.pl.trail.length > 5) s.pl.trail.shift();
+      }
+
+      // Draw beautiful translucent motion blur trail ghosts if moving fast/sprinting
+      if (plMoving && s.pl.trail && s.pl.trail.length > 1) {
+        for (let i = 0; i < s.pl.trail.length - 1; i += 2) {
+          const trailPos = s.pl.trail[i];
+          const txDraw = trailPos.x - s.cam.x;
+          const tyDraw = trailPos.y - s.cam.y;
+          const trailAlpha = 0.12 * (i + 1) / s.pl.trail.length;
+          
+          ctx.save();
+          ctx.globalAlpha = trailAlpha;
+          ctx.translate(txDraw, tyDraw);
+          // Draw a modern glowing neon cyan/blue silhouette trail of the player character
+          ctx.fillStyle = '#06b6d4';
+          ctx.fillRect(-5, -3, 10, 11);
+          ctx.beginPath();
+          ctx.arc(0, -7, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
       // Draw shadow beneath player
       ctx.save();
       ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
@@ -6239,13 +6346,17 @@ export default function SurvivalGame() {
       ctx.save();
       ctx.translate(pxDraw, pyDraw);
 
-      // Walk cycle bounce/wiggle
-      const plMoving = Math.abs(s.pl.vx) > 0.1 || Math.abs(s.pl.vy) > 0.1;
+      // Idle breathing cycle or walk cycle bounce/wiggle
       const walkCycle = plMoving ? Math.sin(s.ticks * 0.2) * 2 : 0;
       const walkSway = plMoving ? Math.cos(s.ticks * 0.2) * 0.05 : 0;
       
       ctx.translate(0, walkCycle * 0.5);
       ctx.rotate(walkSway);
+
+      // Gentle vertical breathing cycle when idle
+      const breathScaleY = !plMoving ? 1 + Math.sin(s.ticks * 0.08) * 0.025 : 1;
+      const breathScaleX = !plMoving ? 1 - Math.sin(s.ticks * 0.08) * 0.012 : 1;
+      ctx.scale(breathScaleX, breathScaleY);
 
       // 1. Draw Backpack (Behind body)
       ctx.fillStyle = '#78350f'; // Leather brown backpack
@@ -6446,6 +6557,29 @@ export default function SurvivalGame() {
         ctx.fillText(s.pl.ico, 0, -16 + Math.sin(s.ticks * 0.08) * 1.5);
       }
 
+      // --- DYNAMIC FIRE/TORCH LIGHTING OVERLAY ON PLAYER ---
+      let pLightingColor = null;
+      let pLightingIntensity = 0;
+      for (const otherO of s.objs) {
+        if (otherO.type === 'campfire' || otherO.type === 'camp_fire') {
+          const fDist = Math.hypot(s.pl.x - (otherO.tx * TZ + TZ/2), s.pl.y - (otherO.ty * TZ + TZ/2));
+          if (fDist < 120) {
+            const campIntensity = (1 - fDist / 120) * (0.28 + Math.sin(s.ticks * 0.15) * 0.06);
+            if (campIntensity > pLightingIntensity) {
+              pLightingColor = 'rgba(249, 115, 22, 0.28)'; // Warm flickering fire glow
+              pLightingIntensity = campIntensity;
+            }
+          }
+        }
+      }
+      if (pLightingColor && pLightingIntensity > 0) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-atop';
+        ctx.fillStyle = pLightingColor.replace(/[\d\.]+\)$/, `${pLightingIntensity})`);
+        ctx.fillRect(-15, -25, 30, 40);
+        ctx.restore();
+      }
+
       ctx.restore();
       ctx.globalAlpha = 1;
 
@@ -6548,6 +6682,42 @@ export default function SurvivalGame() {
           ctx.beginPath();
           ctx.arc(0, -TZ * 0.94, 0.8, 0, Math.PI * 2);
           ctx.fill();
+        }
+
+        // --- DYNAMIC FIRE/TORCH LIGHTING OVERLAY ON ENEMY ---
+        let eLightingColor = null;
+        let eLightingIntensity = 0;
+        
+        // 1. Proximity to player's active torch
+        const pDist = Math.hypot(e.x - s.pl.x, e.y - s.pl.y);
+        const isTorchActive = s.pl.hotbar[hotSlot] === 'torch' && (s.pl.inv['torch'] || 0) > 0;
+        if (isTorchActive && pDist < 160) {
+          eLightingColor = 'rgba(251, 146, 60, 0.2)'; // Torchlight warm orange
+          eLightingIntensity = (1 - pDist / 160) * 0.2;
+        }
+
+        // 2. Proximity to campfires
+        for (const otherO of s.objs) {
+          if (otherO.type === 'campfire' || otherO.type === 'camp_fire') {
+            const fDist = Math.hypot(e.x - (otherO.tx * TZ + TZ/2), e.y - (otherO.ty * TZ + TZ/2));
+            if (fDist < 120) {
+              const campIntensity = (1 - fDist / 120) * (0.25 + Math.sin(s.ticks * 0.15) * 0.05);
+              if (campIntensity > eLightingIntensity) {
+                eLightingColor = 'rgba(249, 115, 22, 0.25)'; // camp fire warm orange
+                eLightingIntensity = campIntensity;
+              }
+            }
+          }
+        }
+
+        if (eLightingColor && eLightingIntensity > 0) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'source-atop';
+          ctx.fillStyle = eLightingColor.replace(/[\d\.]+\)$/, `${eLightingIntensity})`);
+          ctx.beginPath();
+          ctx.arc(0, -TZ/6, baseRad, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
         }
 
         ctx.restore();
@@ -6779,6 +6949,18 @@ export default function SurvivalGame() {
         ctx.fillStyle = pt.col || '#fff';
         ctx.globalAlpha = Math.max(0, Math.min(1, pt.life / (pt.maxLife || 30)));
         
+        // Apply beautiful glowing additive blending to sparks, rings, fire embers, or magical neon particles
+        const isGlowingColor = pt.col && (
+          pt.col.includes('rgba') ||
+          pt.col === '#38bdf8' || pt.col === '#06b6d4' || pt.col === '#60a5fa' ||
+          pt.col === '#fbbf24' || pt.col === '#f97316' || pt.col === '#f43f5e' ||
+          pt.col === '#a855f7' || pt.col === '#c084fc' || pt.col === '#10b981' ||
+          pt.col === '#ec4899'
+        );
+        if (pt.type === 'ring' || pt.type === 'spark' || isGlowingColor) {
+          ctx.globalCompositeOperation = 'screen';
+        }
+
         ctx.beginPath();
         if (pt.type === 'ring') {
           ctx.strokeStyle = pt.col || '#fff';
@@ -7128,6 +7310,17 @@ export default function SurvivalGame() {
       }
 
       ctx.restore();
+
+      // --- ADVANCED CINEMATIC VIGNETTE OVERLAY ---
+      // This applies a modern lens shading vignette to frame the game beautifully and enhance focus on the center
+      const vigGrad = ctx.createRadialGradient(
+        ctx.canvas.width / 2, ctx.canvas.height / 2, Math.min(ctx.canvas.width, ctx.canvas.height) * 0.45,
+        ctx.canvas.width / 2, ctx.canvas.height / 2, Math.max(ctx.canvas.width, ctx.canvas.height) * 0.78
+      );
+      vigGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      vigGrad.addColorStop(1, `rgba(0, 0, 0, ${0.32 + (nightA * 0.25)})`); // Darkens edges extra during nighttime
+      ctx.fillStyle = vigGrad;
+      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
       if (minimapCanvasRef.current && !isMinimapCollapsedRef.current) {
         drawMinimap(s);

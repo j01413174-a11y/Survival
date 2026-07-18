@@ -77,7 +77,7 @@ contract SurvivalNFT is ERC721URIStorage, Ownable {
 
         // Recreate the message hash signed by the backend
         bytes32 messageHash = keccak256(
-            abi.encode(to, tokenId, keccak256(bytes(tokenURI)), nonce, address(this), block.chainid)
+            abi.encodePacked(to, tokenId, tokenURI, nonce, address(this))
         );
         
         // Convert to Ethereum signed message hash
