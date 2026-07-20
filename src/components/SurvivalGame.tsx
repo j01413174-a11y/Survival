@@ -1575,6 +1575,7 @@ export default function SurvivalGame() {
   const [showSkills, setShowSkills] = useState(false);
   const [showTownHub, setShowTownHub] = useState(false);
   const [activeTownTab, setActiveTownTab] = useState<'management' | 'expansion' | 'diplomacy'>('management');
+  const [activeRaidSimulation, setActiveRaidSimulation] = useState<{ town: any, logs: string[], status: 'marching' | 'clashing' | 'looting' | 'won' | 'lost', partyPower: number, enemyPower: number } | null>(null);
   const [raidBattleReport, setRaidBattleReport] = useState<{ success: boolean; text: string; loot: string } | null>(null);
   const [showCharCustomizer, setShowCharCustomizer] = useState(false);
   const [customTownName, setCustomTownName] = useState('Camp Horizon');
@@ -4300,6 +4301,9 @@ export default function SurvivalGame() {
       const s = stateRef.current;
       if (!s) return;
 
+      const compModeBtn = document.getElementById('comp-mode-btn');
+      const cachedCompMode = (compModeBtn?.getAttribute('data-mode') || 'guard') as 'guard' | 'attack';
+
       if (!pausedRef.current) {
         // --- Inactivity Tracking ---
         if (joyRef.current.active) {
@@ -4916,26 +4920,207 @@ export default function SurvivalGame() {
         weatherHpDrain = 1.2;
         weatherStaDrain = 0.6;
         s.pl.slowTicks = Math.max(s.pl.slowTicks || 0, 10);
-        if (s.ticks % 20 === 0 && !isNearStructure('shelter')) {
-          const dragX = (Math.random() - 0.5) * 8;
-          const dragY = (Math.random() - 0.5) * 8;
-          s.pl.x = Math.max(10, Math.min(WW * TZ - 10, s.pl.x + dragX));
-          s.pl.y = Math.max(10, Math.min(WH * TZ - 10, s.pl.y + dragY));
-          if (s.ticks % 120 === 0) {
-            addLog("🌪️ The roaring tornado winds drag you off balance!", "#94a3b8");
+        
+        // Initialize dynamic tornadoes if they don't exist
+        if (!s.weather.tornadoes) {
+          s.weather.tornadoes = [
+            {
+              x: s.pl.x + (Math.random() - 0.5) * 400,
+              y: s.pl.y + (Math.random() - 0.5) * 400,
+              vx: (Math.random() - 0.5) * 2,
+              vy: (Math.random() - 0.5) * 2,
+              radius: 180,
+              pullForce: 4.2,
+              angle: 0
+            },
+            {
+              x: s.pl.x + (Math.random() - 0.5) * 900,
+              y: s.pl.y + (Math.random() - 0.5) * 900,
+              vx: (Math.random() - 0.5) * 2,
+              vy: (Math.random() - 0.5) * 2,
+              radius: 150,
+              pullForce: 3.2,
+              angle: Math.PI
+            }
+          ];
+          addLog("🌪️ Sudden atmospheric drop! Extreme Desert Dust Devils have spawned!", "#94a3b8");
+        }
+
+        // Update each active tornado vortex
+        s.weather.tornadoes.forEach((t: any) => {
+          // Slowly drift towards player to remain an interesting interactive hazard, mixed with random noise
+          const dxPl = s.pl.x - t.x;
+          const dyPl = s.pl.y - t.y;
+          const distPl = Math.hypot(dxPl, dyPl);
+          
+          const pullSpeed = distPl > 0 ? (dxPl / distPl) * 0.35 : 0;
+          const pullSpeedY = distPl > 0 ? (dyPl / distPl) * 0.35 : 0;
+          
+          t.vx = t.vx * 0.96 + pullSpeed + (Math.random() - 0.5) * 0.6;
+          t.vy = t.vy * 0.96 + pullSpeedY + (Math.random() - 0.5) * 0.6;
+          
+          // Cap velocities to prevent runaway
+          const spd = Math.hypot(t.vx, t.vy);
+          if (spd > 2.8) {
+            t.vx = (t.vx / spd) * 2.8;
+            t.vy = (t.vy / spd) * 2.8;
           }
+          
+          t.x = Math.max(50, Math.min(WW * TZ - 50, t.x + t.vx));
+          t.y = Math.max(50, Math.min(WH * TZ - 50, t.y + t.vy));
+          t.angle += 0.12;
+
+          // Spawn swirling dust particles around the tornado's active base
+          if (s.parts % 2 === 0 || Math.random() < 0.5) {
+            const pAngle = Math.random() * Math.PI * 2;
+            const pDist = Math.random() * t.radius;
+            s.parts.push({
+              x: t.x + Math.cos(pAngle) * pDist,
+              y: t.y + Math.sin(pAngle) * pDist,
+              vx: -Math.sin(pAngle) * 4.2 + t.vx,
+              vy: Math.cos(pAngle) * 4.2 + t.vy,
+              life: 45,
+              col: Math.random() > 0.55 ? '#94a3b8' : '#cbd5e1',
+              sz: 1.5 + Math.random() * 2.5
+            });
+          }
+
+          // 1. Pull Player
+          const dPl = Math.hypot(s.pl.x - t.x, s.pl.y - t.y);
+          if (dPl < t.radius && !isNearStructure('shelter')) {
+            const pullAng = Math.atan2(t.y - s.pl.y, t.x - s.pl.x);
+            const forceFactor = Math.pow(1 - dPl / t.radius, 1.4);
+            const pullAmt = forceFactor * t.pullForce;
+            
+            // Pull player inwards + rotate player around core (whirlpool effect!)
+            s.pl.x = Math.max(10, Math.min(WW * TZ - 10, s.pl.x + Math.cos(pullAng) * pullAmt + Math.sin(pullAng) * pullAmt * 0.75));
+            s.pl.y = Math.max(10, Math.min(WH * TZ - 10, s.pl.y + Math.sin(pullAng) * pullAmt - Math.cos(pullAng) * pullAmt * 0.75));
+            
+            if (dPl < 45 && s.ticks % 15 === 0) {
+              s.pl.hp = Math.max(0, s.pl.hp - 3);
+              s.pl.sta = Math.max(0, s.pl.sta - 6);
+              s.camShake = Math.max(s.camShake || 0, 14);
+              addLog("🌪️ Trapped in Tornado Vortex! HP declining!", "#f43f5e");
+              spawnExplosion(s, s.pl.x, s.pl.y, '#94a3b8', 6, 'spark');
+            }
+          }
+
+          // 2. Pull Enemies
+          for (const e of s.enemies) {
+            const dE = Math.hypot(e.x - t.x, e.y - t.y);
+            if (dE < t.radius) {
+              const pullAng = Math.atan2(t.y - e.y, t.x - e.x);
+              const forceFactor = Math.pow(1 - dE / t.radius, 1.4);
+              const pullAmt = forceFactor * t.pullForce * 1.35;
+              
+              e.x = Math.max(10, Math.min(WW * TZ - 10, e.x + Math.cos(pullAng) * pullAmt + Math.sin(pullAng) * pullAmt * 0.5));
+              e.y = Math.max(10, Math.min(WH * TZ - 10, e.y + Math.sin(pullAng) * pullAmt - Math.cos(pullAng) * pullAmt * 0.5));
+              
+              if (dE < 45 && s.ticks % 20 === 0) {
+                e.hp -= 10;
+                spawnExplosion(s, e.x, e.y, '#64748b', 4, 'spark');
+              }
+            }
+          }
+
+          // 3. Pull Companions
+          for (const c of s.companions) {
+            const dC = Math.hypot(c.x - t.x, c.y - t.y);
+            if (dC < t.radius) {
+              const pullAng = Math.atan2(t.y - c.y, t.x - c.x);
+              const forceFactor = Math.pow(1 - dC / t.radius, 1.4);
+              const pullAmt = forceFactor * t.pullForce * 1.1;
+              
+              c.x = Math.max(10, Math.min(WW * TZ - 10, c.x + Math.cos(pullAng) * pullAmt));
+              c.y = Math.max(10, Math.min(WH * TZ - 10, c.y + Math.sin(pullAng) * pullAmt));
+              
+              if (dC < 40 && s.ticks % 30 === 0) {
+                c.hp = Math.max(15, c.hp - 4);
+              }
+            }
+          }
+
+          // 4. Pull ground Resource Drops/items!
+          for (const o of s.objs) {
+            if (o.type === 'drop') {
+              const oX = o.tx * TZ + TZ/2;
+              const oY = o.ty * TZ + TZ/2;
+              const dO = Math.hypot(oX - t.x, oY - t.y);
+              if (dO < t.radius) {
+                const pullAng = Math.atan2(t.y - oY, t.x - oX);
+                const pullAmt = (1 - dO / t.radius) * 0.16;
+                o.tx += Math.cos(pullAng) * pullAmt;
+                o.ty += Math.sin(pullAng) * pullAmt;
+              }
+            }
+          }
+        });
+
+        if (s.ticks % 100 === 0 && !isNearStructure('shelter')) {
+          addLog("🌪️ The roaring tornado winds drag you off balance!", "#94a3b8");
         }
       } else if (wt === 'hurricane') {
         weatherHpDrain = 2.0; 
         weatherStaDrain = 0.9;
         weatherThMod = -0.5; // Torrential rainfall prevents thirst depletion!
         s.pl.slowTicks = Math.max(s.pl.slowTicks || 0, 15);
-        if (s.ticks % 10 === 0 && !isNearStructure('shelter')) {
-          const windPushX = (Math.random() - 0.2) * 6; // Pushes you sideways
-          s.pl.x = Math.max(10, Math.min(WW * TZ - 10, s.pl.x + windPushX));
-          if (s.ticks % 100 === 0) {
-            addLog("🌀 The howling hurricane gale winds shove you!", "#38bdf8");
+        
+        // Initialize hurricane stormwinds if they don't exist
+        if (!s.weather.stormWinds) {
+          s.weather.stormWinds = {
+            angle: Math.PI / 4, // Slanting wind direction down-right
+            intensity: 1.0
+          };
+          addLog("🌀 WARNING: A devastating Category 5 Hurricane is making landfall!", "#38bdf8");
+        }
+
+        const w = s.weather.stormWinds;
+        
+        if (!isNearStructure('shelter')) {
+          // Push player sideways in direction of gale wind
+          const pushX = Math.cos(w.angle) * 0.45;
+          const pushY = Math.sin(w.angle) * 0.45;
+          s.pl.x = Math.max(10, Math.min(WW * TZ - 10, s.pl.x + pushX));
+          s.pl.y = Math.max(10, Math.min(WH * TZ - 10, s.pl.y + pushY));
+
+          // Push enemies
+          for (const e of s.enemies) {
+            e.x = Math.max(10, Math.min(WW * TZ - 10, e.x + Math.cos(w.angle) * 0.16));
+            e.y = Math.max(10, Math.min(WH * TZ - 10, e.y + Math.sin(w.angle) * 0.16));
           }
+
+          // Blow items/drops!
+          for (const o of s.objs) {
+            if (o.type === 'drop') {
+              o.tx += Math.cos(w.angle) * 0.015;
+              o.ty += Math.sin(w.angle) * 0.015;
+            }
+          }
+        }
+
+        // Spawn beautiful slanted heavy rain particles
+        if (s.ticks % 2 === 0) {
+          const rx = s.pl.x + (Math.random() - 0.5) * 800;
+          const ry = s.pl.y - 300 - Math.random() * 150;
+          s.parts.push({
+            x: rx,
+            y: ry,
+            vx: Math.cos(w.angle) * 11.0,
+            vy: Math.sin(w.angle) * 11.0 + 5.0,
+            life: 35,
+            col: 'rgba(56, 189, 248, 0.45)', // Cyan torrential rain
+            sz: 1.2 + Math.random() * 2.0
+          });
+        }
+
+        // 0.35% chance of thunder/lightning strikes per tick inside the hurricane
+        if (Math.random() < 0.0035) {
+          triggerLightningStrike(s);
+          s.camShake = Math.max(s.camShake || 0, 16);
+        }
+
+        if (s.ticks % 100 === 0 && !isNearStructure('shelter')) {
+          addLog("🌀 The howling hurricane gale winds shove you!", "#38bdf8");
         }
       }
 
@@ -5407,7 +5592,7 @@ export default function SurvivalGame() {
         const angPl = Math.atan2(s.pl.y - c.y, s.pl.x - c.x);
         
         // Mode thresholds (synced with React state for logic)
-        const currentMode = (document.getElementById('comp-mode-btn')?.getAttribute('data-mode') || 'guard') as 'guard' | 'attack';
+        const currentMode = cachedCompMode;
         const maxDistFromPl = currentMode === 'guard' ? 150 : 400;
         const searchRange = currentMode === 'guard' ? 200 : 500;
 
@@ -6352,6 +6537,14 @@ export default function SurvivalGame() {
       // --- Draw ---
       ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
       
+      const campfires = s.objs.filter((o: any) => o.type === 'campfire' || o.type === 'camp_fire');
+      const lightSources = s.objs.filter((o: any) => 
+        o.type === 'campfire' || o.type === 'camp_fire' || 
+        o.type === 'town_merchant' || o.type === 'blacksmith_merchant' || o.type === 'alchemist_merchant' || 
+        o.type === 'fountain' || o.type === 'resource_trader' || 
+        o.type === 'cave_entrance' || o.type === 'magic_altar'
+      );
+
       ctx.save();
       
       // Apply game zoom
@@ -6401,15 +6594,16 @@ export default function SurvivalGame() {
             ctx.fillStyle = (x + y) % 2 === 0 ? 'rgba(21, 128, 61, 0.08)' : 'rgba(22, 163, 74, 0.08)';
             ctx.fillRect(txCoord + 2, tyCoord + 2, TZ - 4, TZ - 4);
             
-            // Soft foliage texture speckles
-            ctx.fillStyle = 'rgba(22, 101, 52, 0.12)';
-            ctx.fillRect(txCoord + (pSeed % 12), tyCoord + ((pSeed * 3) % 12), 2, 2);
-            ctx.fillRect(txCoord + 10 + (pSeed % 8), tyCoord + 8 + ((pSeed * 2) % 8), 1.5, 1.5);
+            // Soft foliage texture speckles (drawn only for a subset of tiles)
+            if (pSeed < 30) {
+              ctx.fillStyle = 'rgba(22, 101, 52, 0.12)';
+              ctx.fillRect(txCoord + (pSeed % 12), tyCoord + ((pSeed * 3) % 12), 1.5, 1.5);
+            }
 
-            // Draw soft grass blades
-            ctx.strokeStyle = 'rgba(34, 197, 94, 0.45)';
-            ctx.lineWidth = 1;
-            if (pSeed < 35) {
+            // Draw soft grass blades (drawn much less frequently to avoid heavy bezier/curve computations)
+            if (pSeed < 10) {
+              ctx.strokeStyle = 'rgba(34, 197, 94, 0.45)';
+              ctx.lineWidth = 1;
               const gx = txCoord + 4 + (pSeed % 12);
               const gy = tyCoord + 6 + (pSeed % 10);
               ctx.beginPath();
@@ -6419,8 +6613,8 @@ export default function SurvivalGame() {
               ctx.quadraticCurveTo(gx + 4, gy + 3, gx + 6, gy + 1);
               ctx.stroke();
             }
-            // Tiny wild flowers
-            if (pSeed < 12) {
+            // Tiny wild flowers (drawn much less frequently)
+            if (pSeed < 4) {
               const fx = txCoord + 6 + (pSeed * 2) % 14;
               const fy = tyCoord + 6 + (pSeed * 3) % 14;
               ctx.fillStyle = pSeed % 3 === 0 ? '#fbbf24' : pSeed % 3 === 1 ? '#f43f5e' : '#ffffff'; // yellow, rose, white
@@ -6436,12 +6630,13 @@ export default function SurvivalGame() {
           } else if (t === TD) {
             // --- SOIL BIOME OVERHAUL ---
             // High-res soil granules micro-texture layer
-            ctx.fillStyle = 'rgba(120, 53, 4, 0.08)'; // rich soil speckles
-            ctx.fillRect(txCoord + (pSeed % 14), tyCoord + ((pSeed * 2) % 14), 2, 2);
-            ctx.fillRect(txCoord + 8 + (pSeed % 8), tyCoord + 10 + ((pSeed * 3) % 6), 1, 1);
+            if (pSeed < 40) {
+              ctx.fillStyle = 'rgba(120, 53, 4, 0.08)'; // rich soil speckles
+              ctx.fillRect(txCoord + (pSeed % 14), tyCoord + ((pSeed * 2) % 14), 1.5, 1.5);
+            }
 
-            // Small stones
-            if (pSeed < 20) {
+            // Small stones (drawn less frequently)
+            if (pSeed < 6) {
               const sx = txCoord + 5 + (pSeed * 2) % 12;
               const sy = tyCoord + 5 + (pSeed * 3) % 12;
               ctx.fillStyle = '#4b5563';
@@ -6449,32 +6644,36 @@ export default function SurvivalGame() {
               ctx.ellipse(sx, sy, 2, 1.2, Math.PI / 4, 0, Math.PI * 2);
               ctx.fill();
             }
-            // Dirt crevices / plow-lines
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(txCoord + 3, tyCoord + TZ/2 + (pSeed % 6) - 3);
-            ctx.quadraticCurveTo(txCoord + TZ/2, tyCoord + TZ/2 + (pSeed % 4) - 2, txCoord + TZ - 3, tyCoord + TZ/2 + (pSeed % 6) - 3);
-            ctx.stroke();
+            // Dirt crevices / plow-lines (drawn less frequently to avoid curves)
+            if (pSeed < 12) {
+              ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(txCoord + 3, tyCoord + TZ/2 + (pSeed % 6) - 3);
+              ctx.quadraticCurveTo(txCoord + TZ/2, tyCoord + TZ/2 + (pSeed % 4) - 2, txCoord + TZ - 3, tyCoord + TZ/2 + (pSeed % 6) - 3);
+              ctx.stroke();
+            }
           } else if (t === TS) {
             // --- STONE BIOME OVERHAUL ---
             // High-fidelity stone grain noise micro-texture
-            ctx.fillStyle = 'rgba(71, 85, 105, 0.12)';
-            ctx.fillRect(txCoord + (pSeed % 12), tyCoord + ((pSeed * 4) % 12), 3, 3);
-            ctx.fillStyle = 'rgba(148, 163, 184, 0.08)';
-            ctx.fillRect(txCoord + 12 + (pSeed % 6), tyCoord + 2 + ((pSeed * 2) % 10), 2, 2);
+            if (pSeed < 40) {
+              ctx.fillStyle = 'rgba(71, 85, 105, 0.12)';
+              ctx.fillRect(txCoord + (pSeed % 12), tyCoord + ((pSeed * 4) % 12), 2, 2);
+            }
 
-            // Cobble fissures
-            ctx.strokeStyle = 'rgba(15, 23, 42, 0.3)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(txCoord + (pSeed % 8), tyCoord);
-            ctx.lineTo(txCoord + TZ/2 + (pSeed % 4), tyCoord + TZ/2);
-            ctx.lineTo(txCoord + (pSeed % 10), tyCoord + TZ);
-            ctx.stroke();
+            // Cobble fissures (drawn less frequently)
+            if (pSeed < 12) {
+              ctx.strokeStyle = 'rgba(15, 23, 42, 0.3)';
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(txCoord + (pSeed % 8), tyCoord);
+              ctx.lineTo(txCoord + TZ/2 + (pSeed % 4), tyCoord + TZ/2);
+              ctx.lineTo(txCoord + (pSeed % 10), tyCoord + TZ);
+              ctx.stroke();
+            }
 
-            // Shaded crevices
-            if (pSeed < 25) {
+            // Shaded crevices (drawn less frequently)
+            if (pSeed < 8) {
               ctx.fillStyle = 'rgba(255, 255, 255, 0.05)'; // Highlights
               ctx.fillRect(txCoord + 2, tyCoord + 2, TZ - 4, 2);
               ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'; // Shading
@@ -6487,17 +6686,19 @@ export default function SurvivalGame() {
             ctx.fillStyle = `rgba(255, 255, 255, ${0.06 + reflection})`;
             ctx.fillRect(txCoord + 2, tyCoord + 2, TZ - 4, 3);
 
-            // Dynamic waves
-            ctx.strokeStyle = 'rgba(56, 189, 248, 0.28)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            const waveOffset = Math.sin(s.ticks * 0.04 + x + y) * 4;
-            ctx.moveTo(txCoord + 4, tyCoord + TZ/2 + waveOffset);
-            ctx.quadraticCurveTo(txCoord + TZ/2, tyCoord + TZ/2 - 3 + waveOffset, txCoord + TZ - 4, tyCoord + TZ/2 + waveOffset);
-            ctx.stroke();
+            // Dynamic waves (drawn much less frequently to reduce quadratic curve overhead)
+            if (pSeed < 10) {
+              ctx.strokeStyle = 'rgba(56, 189, 248, 0.28)';
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              const waveOffset = Math.sin(s.ticks * 0.04 + x + y) * 4;
+              ctx.moveTo(txCoord + 4, tyCoord + TZ/2 + waveOffset);
+              ctx.quadraticCurveTo(txCoord + TZ/2, tyCoord + TZ/2 - 3 + waveOffset, txCoord + TZ - 4, tyCoord + TZ/2 + waveOffset);
+              ctx.stroke();
+            }
 
             // Water glint sparkling dots
-            if (pSeed < 10) {
+            if (pSeed < 5) {
               const pulseGlint = 0.2 + Math.abs(Math.sin(s.ticks * 0.035 + pSeed)) * 0.6;
               ctx.fillStyle = `rgba(255, 255, 255, ${pulseGlint})`;
               ctx.fillRect(txCoord + 6 + (pSeed % 12), tyCoord + 6 + (pSeed % 12), 1.5, 1.5);
@@ -6511,8 +6712,7 @@ export default function SurvivalGame() {
 
             if (hasNorthLand || hasSouthLand || hasWestLand || hasEastLand) {
               ctx.strokeStyle = `rgba(255, 255, 255, ${0.35 + Math.sin(s.ticks * 0.08) * 0.15})`;
-              ctx.lineWidth = 1.5;
-              ctx.setLineDash([4, 2]);
+              ctx.lineWidth = 1.0;
               ctx.beginPath();
               if (hasNorthLand) {
                 ctx.moveTo(txCoord, tyCoord);
@@ -6531,7 +6731,6 @@ export default function SurvivalGame() {
                 ctx.lineTo(txCoord + TZ, tyCoord + TZ);
               }
               ctx.stroke();
-              ctx.setLineDash([]);
             }
           } else if (t === TSA) {
             // --- SAND BIOME OVERHAUL ---
@@ -6539,16 +6738,18 @@ export default function SurvivalGame() {
             ctx.fillStyle = 'rgba(180, 83, 9, 0.06)';
             ctx.fillRect(txCoord + (pSeed % 10), tyCoord + ((pSeed * 5) % 12), 2.5, 2.5);
 
-            // Dune ripples
-            ctx.strokeStyle = 'rgba(217, 119, 6, 0.22)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(txCoord, tyCoord + 4);
-            ctx.quadraticCurveTo(txCoord + TZ/2, tyCoord + TZ/2, txCoord + TZ, tyCoord + TZ - 4);
-            ctx.stroke();
+            // Dune ripples (drawn less frequently)
+            if (pSeed < 10) {
+              ctx.strokeStyle = 'rgba(217, 119, 6, 0.22)';
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(txCoord, tyCoord + 4);
+              ctx.quadraticCurveTo(txCoord + TZ/2, tyCoord + TZ/2, txCoord + TZ, tyCoord + TZ - 4);
+              ctx.stroke();
+            }
 
             // Tiny sand sparkles
-            if (pSeed < 15) {
+            if (pSeed < 5) {
               const glint = 0.1 + Math.abs(Math.sin(s.ticks * 0.05 + pSeed)) * 0.7;
               ctx.fillStyle = `rgba(254, 240, 138, ${glint})`;
               ctx.fillRect(txCoord + (pSeed * 3) % TZ, tyCoord + (pSeed * 5) % TZ, 1, 1);
@@ -6562,14 +6763,14 @@ export default function SurvivalGame() {
             ctx.fillRect(txCoord + 10 + (pSeed % 8), tyCoord + 4 + ((pSeed * 3) % 8), 1.5, 2);
 
             // Frost contour shapes
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-            if (pSeed < 20) {
+            if (pSeed < 8) {
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
               ctx.beginPath();
               ctx.arc(txCoord + TZ/2, tyCoord + TZ/2, 3, 0, Math.PI * 2);
               ctx.fill();
             }
             // Tiny sparkling snow stars
-            if (pSeed < 12) {
+            if (pSeed < 4) {
               const spark = 0.2 + Math.abs(Math.sin(s.ticks * 0.04 + pSeed)) * 0.6;
               ctx.fillStyle = `rgba(255, 255, 255, ${spark})`;
               const sx = txCoord + (pSeed * 2) % (TZ - 4) + 2;
@@ -6582,25 +6783,30 @@ export default function SurvivalGame() {
             ctx.fillStyle = '#1c1917';
             ctx.fillRect(txCoord + 2, tyCoord + 2, TZ - 4, TZ - 4);
 
-            // Lava veins drawing pulsing energy
             const pulse = 0.5 + Math.sin(s.ticks * 0.05 + x + y) * 0.4;
-            ctx.fillStyle = `rgba(249, 115, 22, ${0.6 + pulse * 0.4})`;
-            ctx.beginPath();
-            ctx.arc(txCoord + TZ/2, tyCoord + TZ/2, 4 + pulse * 3, 0, Math.PI * 2);
-            ctx.fill();
+            
+            // Lava veins drawing pulsing energy (drawn less frequently)
+            if (pSeed < 10) {
+              ctx.fillStyle = `rgba(249, 115, 22, ${0.6 + pulse * 0.4})`;
+              ctx.beginPath();
+              ctx.arc(txCoord + TZ/2, tyCoord + TZ/2, 4 + pulse * 3, 0, Math.PI * 2);
+              ctx.fill();
+            }
 
-            // Glowing hot red highlights
-            ctx.strokeStyle = `rgba(239, 68, 68, ${0.4 + pulse * 0.4})`;
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(txCoord, tyCoord + TZ/2);
-            ctx.lineTo(txCoord + TZ, tyCoord + TZ/2);
-            ctx.moveTo(txCoord + TZ/2, tyCoord);
-            ctx.lineTo(txCoord + TZ/2, tyCoord + TZ);
-            ctx.stroke();
+            // Glowing hot red highlights (drawn less frequently)
+            if (pSeed < 12) {
+              ctx.strokeStyle = `rgba(239, 68, 68, ${0.4 + pulse * 0.4})`;
+              ctx.lineWidth = 1.5;
+              ctx.beginPath();
+              ctx.moveTo(txCoord, tyCoord + TZ/2);
+              ctx.lineTo(txCoord + TZ, tyCoord + TZ/2);
+              ctx.moveTo(txCoord + TZ/2, tyCoord);
+              ctx.lineTo(txCoord + TZ/2, tyCoord + TZ);
+              ctx.stroke();
+            }
 
             // Tiny heat ember sparks rising
-            if (pSeed < 5) {
+            if (pSeed < 2) {
               const sy = tyCoord + TZ - ((s.ticks + pSeed * 4) % TZ);
               ctx.fillStyle = '#facc15';
               ctx.fillRect(txCoord + 4 + (pSeed % 12), sy, 1.5, 1.5);
@@ -6608,7 +6814,7 @@ export default function SurvivalGame() {
           } else if (t === TSW) {
             // --- MURKY SWAMP OVERHAUL ---
             // Swamp lily pads
-            if (pSeed < 15) {
+            if (pSeed < 6) {
               const lx = txCoord + 6 + (pSeed % 10);
               const ly = tyCoord + 6 + (pSeed % 10);
               ctx.fillStyle = '#166534'; // rich dark green
@@ -6625,7 +6831,7 @@ export default function SurvivalGame() {
               }
             }
             // Bubbling swamp gas bubbles
-            if (pSeed < 10) {
+            if (pSeed < 4) {
               const bPulse = Math.abs(Math.sin(s.ticks * 0.04 + pSeed));
               const bx = txCoord + 4 + (pSeed * 3) % 14;
               const by = tyCoord + 4 + (pSeed * 2) % 14;
@@ -6643,7 +6849,7 @@ export default function SurvivalGame() {
             ctx.fillRect(txCoord, tyCoord, TZ, TZ);
 
             // Floating white-blue stars
-            if (pSeed < 12) {
+            if (pSeed < 4) {
               const stPulse = 0.2 + Math.abs(Math.sin(s.ticks * 0.06 + pSeed)) * 0.8;
               ctx.fillStyle = `rgba(56, 189, 248, ${stPulse})`; // sky blue sparkle
               const sx = txCoord + (pSeed * 3) % TZ;
@@ -6676,9 +6882,11 @@ export default function SurvivalGame() {
 
         if (o.type === 'tree') {
           // --- VECTOR TREE RENDERER ---
-          const bob = Math.sin(s.ticks * 0.03 + o.tx * 7) * 0.5; // gentle wind rustle sway
+          const activeWeatherType = s.weather?.type || 'clear';
+          const windAngleFactor = (activeWeatherType === 'hurricane' || activeWeatherType === 'tornado') ? 0.38 + Math.sin(s.ticks * 0.09 + o.tx * 3) * 0.18 : 0;
+          const bob = Math.sin(s.ticks * 0.03 + o.tx * 7) * 0.5 + windAngleFactor; // gentle wind rustle + heavy storm bending!
           ctx.translate(ox, oy + TZ/2 - 3);
-          ctx.rotate(bob * 0.04);
+          ctx.rotate(bob * 0.1);
 
           // Draw trunk
           ctx.fillStyle = '#78350f'; // Dark brown
@@ -7218,15 +7426,13 @@ export default function SurvivalGame() {
         }
 
         // 2. Campfire proximity flickering lighting
-        for (const otherO of s.objs) {
-          if (otherO.type === 'campfire' || otherO.type === 'camp_fire') {
-            const fDist = Math.hypot((o.tx - otherO.tx) * TZ, (o.ty - otherO.ty) * TZ);
-            if (fDist < 120) {
-              const campIntensity = (1 - fDist / 120) * (0.24 + Math.sin(s.ticks * 0.15) * 0.06);
-              if (campIntensity > lightingIntensity) {
-                lightingColor = 'rgba(249, 115, 22, 0.24)'; // flickering orange fire glow
-                lightingIntensity = campIntensity;
-              }
+        for (const otherO of campfires) {
+          const fDist = Math.hypot((o.tx - otherO.tx) * TZ, (o.ty - otherO.ty) * TZ);
+          if (fDist < 120) {
+            const campIntensity = (1 - fDist / 120) * (0.24 + Math.sin(s.ticks * 0.15) * 0.06);
+            if (campIntensity > lightingIntensity) {
+              lightingColor = 'rgba(249, 115, 22, 0.24)'; // flickering orange fire glow
+              lightingIntensity = campIntensity;
             }
           }
         }
@@ -7644,15 +7850,13 @@ export default function SurvivalGame() {
       // --- DYNAMIC FIRE/TORCH LIGHTING OVERLAY ON PLAYER ---
       let pLightingColor = null;
       let pLightingIntensity = 0;
-      for (const otherO of s.objs) {
-        if (otherO.type === 'campfire' || otherO.type === 'camp_fire') {
-          const fDist = Math.hypot(s.pl.x - (otherO.tx * TZ + TZ/2), s.pl.y - (otherO.ty * TZ + TZ/2));
-          if (fDist < 120) {
-            const campIntensity = (1 - fDist / 120) * (0.28 + Math.sin(s.ticks * 0.15) * 0.06);
-            if (campIntensity > pLightingIntensity) {
-              pLightingColor = 'rgba(249, 115, 22, 0.28)'; // Warm flickering fire glow
-              pLightingIntensity = campIntensity;
-            }
+      for (const otherO of campfires) {
+        const fDist = Math.hypot(s.pl.x - (otherO.tx * TZ + TZ/2), s.pl.y - (otherO.ty * TZ + TZ/2));
+        if (fDist < 120) {
+          const campIntensity = (1 - fDist / 120) * (0.28 + Math.sin(s.ticks * 0.15) * 0.06);
+          if (campIntensity > pLightingIntensity) {
+            pLightingColor = 'rgba(249, 115, 22, 0.28)'; // Warm flickering fire glow
+            pLightingIntensity = campIntensity;
           }
         }
       }
@@ -7781,15 +7985,13 @@ export default function SurvivalGame() {
         }
 
         // 2. Proximity to campfires
-        for (const otherO of s.objs) {
-          if (otherO.type === 'campfire' || otherO.type === 'camp_fire') {
-            const fDist = Math.hypot(e.x - (otherO.tx * TZ + TZ/2), e.y - (otherO.ty * TZ + TZ/2));
-            if (fDist < 120) {
-              const campIntensity = (1 - fDist / 120) * (0.25 + Math.sin(s.ticks * 0.15) * 0.05);
-              if (campIntensity > eLightingIntensity) {
-                eLightingColor = 'rgba(249, 115, 22, 0.25)'; // camp fire warm orange
-                eLightingIntensity = campIntensity;
-              }
+        for (const otherO of campfires) {
+          const fDist = Math.hypot(e.x - (otherO.tx * TZ + TZ/2), e.y - (otherO.ty * TZ + TZ/2));
+          if (fDist < 120) {
+            const campIntensity = (1 - fDist / 120) * (0.25 + Math.sin(s.ticks * 0.15) * 0.05);
+            if (campIntensity > eLightingIntensity) {
+              eLightingColor = 'rgba(249, 115, 22, 0.25)'; // camp fire warm orange
+              eLightingIntensity = campIntensity;
             }
           }
         }
@@ -8161,7 +8363,7 @@ export default function SurvivalGame() {
         ctx.fill();
 
         // Light around campfires, merchants, altars, and caves
-        for (const o of s.objs) {
+        for (const o of lightSources) {
           const ox = o.tx * TZ + TZ/2 - s.cam.x;
           const oy = o.ty * TZ + TZ/2 - s.cam.y;
           if (ox < -TZ || ox > (ctx.canvas.width / zoom) + TZ || oy < -TZ || oy > (ctx.canvas.height / zoom) + TZ) continue;
@@ -8189,7 +8391,7 @@ export default function SurvivalGame() {
 
         // Draw warm color lighting halos (additive ambient bloom)
         ctx.save();
-        for (const o of s.objs) {
+        for (const o of lightSources) {
           const ox = o.tx * TZ + TZ/2 - s.cam.x;
           const oy = o.ty * TZ + TZ/2 - s.cam.y;
           if (ox < -TZ || ox > (ctx.canvas.width / zoom) + TZ || oy < -TZ || oy > (ctx.canvas.height / zoom) + TZ) continue;
@@ -8432,42 +8634,120 @@ export default function SurvivalGame() {
           ctx.restore();
         }
       } else if (activeWeatherType === 'tornado') {
-        // Render swirling grey wind spirals
-        ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
-        ctx.lineWidth = 2.0;
-        for (let i = 0; i < 35; i++) {
-          const sx = ((Math.sin(i * 123.45) * 0.5 + 0.5) * viewW + s.ticks * 6.0) % viewW;
-          const sy = (i * 98.76 + s.ticks * 2.0) % viewH;
-          const actualSx = sx < 0 ? sx + viewW : sx;
-          ctx.beginPath();
-          ctx.arc(actualSx, sy, 10 + (s.ticks % 40) * 1.5, 0, Math.PI * 2);
-          ctx.stroke();
+        // Render 3D tapering funnel vectors for each active physical tornado
+        if (s.weather.tornadoes) {
+          s.weather.tornadoes.forEach((t: any) => {
+            const tx = t.x - s.cam.x;
+            const ty = t.y - s.cam.y;
+            
+            // Draw a spinning vortex shadow at the ground base
+            ctx.save();
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+            ctx.beginPath();
+            ctx.ellipse(tx, ty, 35, 12, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            // Render a stacked, bending, transparent, 3D rotating tornado funnel
+            const layers = 22;
+            ctx.save();
+            for (let l = 0; l < layers; l++) {
+              const h = l * 16; // height offset
+              // Bending funnel sway based on a sine wave propagating upwards
+              const sway = Math.sin(s.ticks * 0.05 + l * 0.22) * (l * 1.5);
+              const lx = tx + sway;
+              const ly = ty - h;
+              
+              // Funnel radius expands as we go up
+              const layerRad = 15 + l * 5.5;
+              const rotSpeed = s.ticks * 0.15 + l * 0.15;
+              const alpha = 0.45 * (1 - l / layers);
+              
+              // Draw filled core funnel band
+              ctx.fillStyle = `rgba(100, 116, 139, ${alpha * 0.55})`;
+              ctx.strokeStyle = `rgba(148, 163, 184, ${alpha * 0.9})`;
+              ctx.lineWidth = 1.5;
+              ctx.beginPath();
+              ctx.ellipse(lx, ly, layerRad, layerRad * 0.32, 0, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.stroke();
+
+              // Draw rotating debris elements (rocks, sand, leaves) spiraling in orbit around funnel walls
+              const particleCount = 3;
+              ctx.fillStyle = l % 3 === 0 ? '#15803d' : l % 3 === 1 ? '#475569' : '#78350f'; // green leaf, grey rock, brown wood
+              for (let p = 0; p < particleCount; p++) {
+                const angle = rotSpeed + (p * Math.PI * 2 / particleCount);
+                const px = lx + Math.cos(angle) * layerRad;
+                const py = ly + Math.sin(angle) * layerRad * 0.32;
+                
+                ctx.beginPath();
+                ctx.arc(px, py, 1.2 + Math.random() * 1.5, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+            ctx.restore();
+          });
         }
 
-        // Dark grey dust cloud overlay
-        const tornadoGrad = ctx.createRadialGradient(viewW / 2, viewH / 2, viewW / 4, viewW / 2, viewH / 2, viewW / 1.1);
-        tornadoGrad.addColorStop(0, 'rgba(71, 85, 105, 0)');
-        tornadoGrad.addColorStop(1, 'rgba(71, 85, 105, 0.28)');
-        ctx.fillStyle = tornadoGrad;
-        ctx.fillRect(0, 0, viewW, viewH);
-      } else if (activeWeatherType === 'hurricane') {
-        // Heavy diagonal dark-blue torrent lines
-        ctx.strokeStyle = 'rgba(30, 41, 59, 0.7)';
-        ctx.lineWidth = 2.2;
+        // Screenspace sweeping wind particles
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.25)';
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        for (let i = 0; i < 45; i++) {
-          const rx = ((Math.sin(i * 187.3) * 0.5 + 0.5) * viewW - s.ticks * 14.0) % viewW;
-          const ry = ((i * 111.2 + s.ticks * 9.5) % viewH);
-          const actualRx = rx < 0 ? rx + viewW : rx;
-          ctx.moveTo(actualRx, ry);
-          ctx.lineTo(actualRx - 20, ry + 30);
+        for (let i = 0; i < 20; i++) {
+          const sx = ((Math.sin(i * 123.45) * 0.5 + 0.5) * viewW + s.ticks * 7.5) % viewW;
+          const sy = (i * 98.76 + s.ticks * 1.5) % viewH;
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(sx + 25, sy + 3);
         }
         ctx.stroke();
 
-        // Dark blue storm warning vignette
-        const hurricaneGrad = ctx.createRadialGradient(viewW / 2, viewH / 2, viewW / 3, viewW / 2, viewH / 2, viewW / 1.3);
-        hurricaneGrad.addColorStop(0, 'rgba(15, 23, 42, 0)');
-        hurricaneGrad.addColorStop(1, 'rgba(15, 23, 42, 0.48)');
+        // Dark grey dust cloud overlay
+        const tornadoGrad = ctx.createRadialGradient(viewW / 2, viewH / 2, viewW / 4, viewW / 2, viewH / 2, viewW / 1.1);
+        tornadoGrad.addColorStop(0, 'rgba(64, 80, 95, 0.05)');
+        tornadoGrad.addColorStop(1, 'rgba(47, 55, 65, 0.38)');
+        ctx.fillStyle = tornadoGrad;
+        ctx.fillRect(0, 0, viewW, viewH);
+      } else if (activeWeatherType === 'hurricane') {
+        const stormWindAngle = s.weather?.stormWinds?.angle ?? (Math.PI / 4);
+        
+        // Swirling tropical cyclone eye overlay centered on the player
+        ctx.save();
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.12)';
+        ctx.lineWidth = 6;
+        for (let i = 1; i <= 4; i++) {
+          ctx.beginPath();
+          ctx.ellipse(viewW / 2, viewH / 2, 100 * i + Math.sin(s.ticks * 0.04) * 10, (50 * i + Math.sin(s.ticks * 0.04) * 10) * 0.5, s.ticks * 0.02, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        // Heavy slanted sheets of torrential rainfall
+        ctx.strokeStyle = 'rgba(38, 100, 160, 0.55)';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        for (let i = 0; i < 35; i++) {
+          const rx = ((Math.sin(i * 187.3) * 0.5 + 0.5) * viewW + s.ticks * 13.0) % viewW;
+          const ry = ((i * 111.2 + s.ticks * 10.5) % viewH);
+          ctx.moveTo(rx, ry);
+          ctx.lineTo(rx + Math.cos(stormWindAngle) * 22, ry + Math.sin(stormWindAngle) * 22);
+        }
+        ctx.stroke();
+
+        // Splash circles on ground matching slanted rain
+        ctx.strokeStyle = 'rgba(186, 230, 253, 0.3)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 15; i++) {
+          const sx = ((Math.sin(i * 321.4) * 0.5 + 0.5) * viewW + s.ticks * 8.0) % viewW;
+          const sy = ((i * 175.2 + s.ticks * 6.0) % viewH);
+          ctx.beginPath();
+          ctx.ellipse(sx, sy, 6 + (s.ticks % 25) * 0.3, 2 + (s.ticks % 25) * 0.1, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        // Dark deep oceanic warning vignette
+        const hurricaneGrad = ctx.createRadialGradient(viewW / 2, viewH / 2, viewW / 3, viewW / 2, viewH / 2, viewW / 1.25);
+        hurricaneGrad.addColorStop(0, 'rgba(8, 15, 30, 0.08)');
+        hurricaneGrad.addColorStop(1, 'rgba(3, 7, 18, 0.62)');
         ctx.fillStyle = hurricaneGrad;
         ctx.fillRect(0, 0, viewW, viewH);
       }
@@ -8609,6 +8889,253 @@ export default function SurvivalGame() {
 
     addLog(`✨ Recruited ${name}! They have joined your survival party.`, '#10b981');
     spawnExplosion(s, s.pl.x, s.pl.y, '#10b981', 15, 'spell');
+    setGameState({ ...s });
+  };
+
+  const upgradeTownComponent = (upgradeKey: 'walls' | 'barracks' | 'turrets' | 'vaults') => {
+    const s = stateRef.current;
+    if (!s) return;
+    const playerTown = s.towns.find((t: any) => t.id === 'town_player');
+    if (!playerTown) return;
+    if (!playerTown.upgrades) playerTown.upgrades = { walls: 1, barracks: 1 };
+    
+    const curLvl = playerTown.upgrades[upgradeKey] || 1;
+    if (curLvl >= 5) {
+      addLog(`⚠️ ${upgradeKey.toUpperCase()} is already at maximum level!`, '#fb923c');
+      return;
+    }
+
+    // Determine cost
+    const cost: { [key: string]: number } = {
+      walls: { wood: 50 * curLvl, stone: 40 * curLvl, gold_coins: 100 * curLvl },
+      barracks: { wood: 40 * curLvl, iron_bar: 10 * curLvl, gold_coins: 150 * curLvl },
+      turrets: { stone: 60 * curLvl, iron_bar: 15 * curLvl, gold_coins: 200 * curLvl },
+      vaults: { iron_bar: 20 * curLvl, gem: 3 * curLvl, gold_coins: 300 * curLvl }
+    }[upgradeKey];
+
+    // Check resources
+    const hasMats = Object.entries(cost).every(([k, v]) => (s.pl.inv[k] || 0) >= v);
+    if (!hasMats) {
+      addLog(`⚠️ Insufficient resources to upgrade ${upgradeKey.toUpperCase()}!`, '#ef4444');
+      return;
+    }
+
+    // Deduct
+    Object.entries(cost).forEach(([k, v]) => {
+      s.pl.inv[k] -= v;
+    });
+
+    // Upgrade
+    playerTown.upgrades[upgradeKey] = curLvl + 1;
+    
+    // Scale town health & defenses
+    if (upgradeKey === 'walls') {
+      playerTown.mhp += 500;
+      playerTown.hp += 500;
+      playerTown.defenses += 15;
+    } else if (upgradeKey === 'barracks') {
+      playerTown.population += 3;
+    } else if (upgradeKey === 'turrets') {
+      playerTown.defenses += 25;
+    } else if (upgradeKey === 'vaults') {
+      playerTown.incomeGold += 10;
+    }
+
+    addLog(`✨ SUCCESS: Upgraded ${upgradeKey.toUpperCase()} to Level ${curLvl + 1}!`, '#10b981');
+    spawnExplosion(s, s.pl.x, s.pl.y, '#10b981', 15, 'spell');
+    setGameState({ ...s });
+  };
+
+  const startRaidSimulation = (town: any) => {
+    const s = stateRef.current;
+    if (!s) return;
+    
+    // Calculate powers
+    const partyPower = (s.pl.lvl || 1) * 25 + s.companions.length * 45 + (s.pl.def || 0) * 5;
+    const enemyPower = (town.defenses || 20) + (town.lvl || 1) * 40;
+
+    const sim = {
+      town,
+      logs: [`🏁 Expedition launched! Your army is marching toward ${town.name}...`],
+      status: 'marching' as const,
+      partyPower,
+      enemyPower
+    };
+
+    setActiveRaidSimulation(sim);
+
+    // Sequence of logs and steps
+    setTimeout(() => {
+      setActiveRaidSimulation(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          status: 'clashing',
+          logs: [...prev.logs, `⚔️ Arrived at ${town.name}! Engaging outer defensive lines!`, `🛡️ Your party power: ${partyPower} VS Enemy defenses: ${enemyPower}`]
+        };
+      });
+    }, 1500);
+
+    setTimeout(() => {
+      setActiveRaidSimulation(prev => {
+        if (!prev) return null;
+        const roll = Math.random() * 60 - 30; // random offset
+        const success = (partyPower + roll) >= enemyPower;
+        
+        if (success) {
+          // Success loot and damage calculation
+          const lootCoins = Math.round(150 + Math.random() * 200 + (town.lvl * 50));
+          const lootWood = Math.round(40 + Math.random() * 60);
+          const lootStone = Math.round(30 + Math.random() * 50);
+          const lootIron = Math.round(5 + Math.random() * 10);
+          
+          return {
+            ...prev,
+            status: 'looting',
+            logs: [
+              ...prev.logs, 
+              `🔥 CRITICAL BREACH: Your forces overran the defenses!`, 
+              `💰 Gathering war booty from the town vault...`,
+              `🎉 VICTORY ACHIEVED! Plundered +${lootCoins} Gold, +${lootWood} Wood, +${lootStone} Stone, and +${lootIron} Iron Bars!`
+            ]
+          };
+        } else {
+          return {
+            ...prev,
+            status: 'lost',
+            logs: [
+              ...prev.logs,
+              `❌ REPELLED: Enemy defenses were too strong! Your forces had to retreat.`,
+              `💔 Losses sustained. Some companions returned wounded.`
+            ]
+          };
+        }
+      });
+    }, 3500);
+  };
+
+  const resolveRaidSimulation = (success: boolean) => {
+    const s = stateRef.current;
+    if (!s || !activeRaidSimulation) return;
+    const { town } = activeRaidSimulation;
+    
+    const targetTown = s.towns.find((t: any) => t.id === town.id);
+    if (targetTown) {
+      if (success) {
+        // Apply loot
+        const lootCoins = Math.round(150 + Math.random() * 200 + (targetTown.lvl * 50));
+        const lootWood = Math.round(40 + Math.random() * 60);
+        const lootStone = Math.round(30 + Math.random() * 50);
+        const lootIron = Math.round(5 + Math.random() * 10);
+
+        s.pl.inv.gold_coins = (s.pl.inv.gold_coins || 0) + lootCoins;
+        s.pl.inv.wood = (s.pl.inv.wood || 0) + lootWood;
+        s.pl.inv.stone = (s.pl.inv.stone || 0) + lootStone;
+        s.pl.inv.iron_bar = (s.pl.inv.iron_bar || 0) + lootIron;
+
+        // Damage the town
+        targetTown.defenses = Math.max(5, targetTown.defenses - 25);
+        targetTown.hp = Math.max(100, targetTown.hp - 400);
+        targetTown.faction = 'hostile'; // made hostile if raided
+
+        addLog(`⚔️ Plundered ${targetTown.name}: +${lootCoins} Coins, +${lootWood} Wood, +${lootStone} Stone`, '#10b981');
+      } else {
+        // Damaged companions slightly
+        s.companions.forEach((c: any) => {
+          c.hp = Math.max(20, c.hp - 30);
+        });
+        addLog(`⚔️ Raid failed at ${targetTown.name}. Party retreated.`, '#ef4444');
+      }
+    }
+    
+    setActiveRaidSimulation(null);
+    setGameState({ ...s });
+  };
+
+  const negotiatePeaceTreaty = (town: any) => {
+    const s = stateRef.current;
+    if (!s) return;
+    const cost = 150 * (town.lvl || 1);
+    if ((s.pl.inv.gold_coins || 0) < cost) {
+      addLog(`⚠️ Insufficient Gold Coins! Peace treaty costs ${cost} Gold Coins.`, '#ef4444');
+      return;
+    }
+    
+    // Deduct and align
+    s.pl.inv.gold_coins -= cost;
+    const target = s.towns.find((t: any) => t.id === town.id);
+    if (target) {
+      target.faction = 'friendly';
+      target.defenses = Math.min(100, target.defenses + 15); // help rebuild
+      addLog(`🕊️ PEACE ACCORD: You signed a non-aggression pact with ${town.name}! Hostilities ceased.`, '#3b82f6');
+      spawnExplosion(s, s.pl.x, s.pl.y, '#3b82f6', 15, 'spell');
+    }
+    setGameState({ ...s });
+  };
+
+  const launchTradeDelegation = (town: any) => {
+    const s = stateRef.current;
+    if (!s) return;
+    if ((s.pl.inv.wood || 0) < 50 || (s.pl.inv.stone || 0) < 50) {
+      addLog(`⚠️ Insufficient supplies! Trade delegations require 50 Wood and 50 Stone.`, '#ef4444');
+      return;
+    }
+
+    s.pl.inv.wood -= 50;
+    s.pl.inv.stone -= 50;
+
+    const goldProfit = Math.round(150 + Math.random() * 150 + (town.lvl * 40));
+    s.pl.inv.gold_coins = (s.pl.inv.gold_coins || 0) + goldProfit;
+
+    // occasionally reward rare materials
+    if (Math.random() < 0.4) {
+      s.pl.inv.iron_bar = (s.pl.inv.iron_bar || 0) + 2;
+      addLog(`🤝 Trade delegation to ${town.name} yielded +${goldProfit} Coins and +2 Iron Bars!`, '#10b981');
+    } else {
+      addLog(`🤝 Trade delegation to ${town.name} yielded +${goldProfit} Coins!`, '#10b981');
+    }
+    
+    spawnExplosion(s, s.pl.x, s.pl.y, '#f59e0b', 12, 'spell');
+    setGameState({ ...s });
+  };
+
+  const conquerAndAnnexTown = (town: any) => {
+    const s = stateRef.current;
+    if (!s) return;
+    if ((s.pl.inv.gold_coins || 0) < 200) {
+      addLog(`⚠️ You need 200 Gold Coins to establish a permanent garrison in ${town.name}!`, '#ef4444');
+      return;
+    }
+
+    s.pl.inv.gold_coins -= 200;
+    const target = s.towns.find((t: any) => t.id === town.id);
+    if (target) {
+      target.conquered = true;
+      target.faction = 'player';
+      target.name = `${s.pl.townName || 'Camp Horizon'}'s Outpost`;
+      target.defenses = 50; // garrison strength
+      target.hp = target.mhp; // fully repaired
+      addLog(`👑 ANNEXATION: ${town.name} is now governed by your empire! Passive taxes activated.`, '#06b6d4');
+      spawnExplosion(s, s.pl.x, s.pl.y, '#06b6d4', 25, 'spell');
+    }
+    setGameState({ ...s });
+  };
+
+  const decimateAndDestroyTown = (town: any) => {
+    const s = stateRef.current;
+    if (!s) return;
+    
+    const target = s.towns.find((t: any) => t.id === town.id);
+    if (target) {
+      target.destroyed = true;
+      s.pl.inv.wood = (s.pl.inv.wood || 0) + 400;
+      s.pl.inv.stone = (s.pl.inv.stone || 0) + 400;
+      s.pl.inv.iron_bar = (s.pl.inv.iron_bar || 0) + 30;
+      s.pl.inv.gold_coins = (s.pl.inv.gold_coins || 0) + 800;
+
+      addLog(`🔥 DECIMATION: You pillaged and completely razed ${town.name}! Salvaged wood, stone, iron, and gold.`, '#ef4444');
+      spawnExplosion(s, s.pl.x, s.pl.y, '#ef4444', 35, 'spell');
+    }
     setGameState({ ...s });
   };
 
@@ -13509,11 +14036,36 @@ export default function SurvivalGame() {
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 bg-black/95 flex flex-col font-mono"
           >
-            {/* Header */}
-            <div className="p-4 sm:p-6 flex justify-between items-center border-b border-white/10 shrink-0">
-              <h2 className="text-xl font-bold tracking-widest text-green-400 flex items-center gap-2">
-                🏘️ {gameState?.pl.townName || 'Camp Horizon'} Town Management
-              </h2>
+            {/* Header with Navigation Tabs */}
+            <div className="p-4 sm:p-6 flex flex-col md:flex-row justify-between items-start md:items-center border-b border-white/10 shrink-0 gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🏘️</span>
+                <h2 className="text-xl font-bold tracking-widest text-green-400">
+                  {gameState?.pl.townName || 'Camp Horizon'} Town Hub
+                </h2>
+              </div>
+              
+              {/* Tab Selector */}
+              <div className="flex bg-zinc-900 border border-white/10 p-1 rounded-xl">
+                {[
+                  { id: 'management', n: '🏡 Management' },
+                  { id: 'expansion', n: '📐 Expansion' },
+                  { id: 'diplomacy', n: '🗺️ Diplomacy & Warfare' }
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setActiveTownTab(t.id as any)}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                      activeTownTab === t.id
+                        ? 'bg-green-500 text-black font-black shadow-md'
+                        : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    {t.n}
+                  </button>
+                ))}
+              </div>
+
               <button 
                 onClick={() => setShowTownHub(false)} 
                 className="p-2 hover:bg-white/10 rounded-full cursor-pointer transition-all active:scale-95 text-zinc-400 hover:text-white"
@@ -13524,297 +14076,652 @@ export default function SurvivalGame() {
 
             {/* Content body */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
-              
-              {/* Town Naming and Level Section */}
-              <div className="bg-zinc-900/60 border border-white/10 p-4 sm:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex-1 space-y-2">
-                  <label className="text-[10px] text-green-400 font-extrabold tracking-widest uppercase">Settlement Name</label>
-                  <div className="flex gap-2">
-                    <input 
-                      type="text"
-                      value={customTownName}
-                      onChange={(e) => setCustomTownName(e.target.value)}
-                      maxLength={24}
-                      className="bg-black/50 border border-white/10 hover:border-white/20 focus:border-green-400/80 rounded-xl px-3 py-2 text-white font-bold tracking-wide outline-none flex-1 max-w-sm text-sm"
-                    />
-                    <button 
-                      onClick={() => {
-                        const s = stateRef.current;
-                        if (s && s.pl) {
-                          s.pl.townName = customTownName || 'Camp Horizon';
-                          addLog(`🏘️ Settlement successfully renamed to: "${s.pl.townName}"`, '#10b981');
-                          setGameState({ ...s });
-                        }
-                      }}
-                      className="px-4 py-2 bg-green-500 hover:bg-green-400 text-black font-black uppercase text-xs tracking-wider rounded-xl cursor-pointer transition-all active:scale-95 shadow-lg shadow-green-500/10"
-                    >
-                      Save Name
-                    </button>
-                  </div>
-                </div>
 
-                <div className="flex items-center gap-4 bg-black/40 border border-white/5 p-4 rounded-xl">
-                  <div className="text-3xl">🏘️</div>
-                  <div>
-                    <div className="text-[10px] text-zinc-400 uppercase font-extrabold tracking-widest">Town Status</div>
-                    <div className="text-sm font-black text-white">
-                      {(() => {
-                        const s = stateRef.current;
-                        if (!s) return 'Wilderness Camp (LVL 1)';
-                        const count = s.objs.filter((o: any) => ['settler_shelter', 'town_house', 'town_workshop', 'storage_depot', 'merchant_stall', 'guard_post', 'farm_plot'].includes(o.type)).length;
-                        if (count >= 9) return 'Survival Citadel (LVL 4)';
-                        if (count >= 5) return 'Thriving Village (LVL 3)';
-                        if (count >= 2) return 'Budding Hamlet (LVL 2)';
-                        return 'Wilderness Camp (LVL 1)';
-                      })()}
+              {/* ACTIVE RAID SIMULATION BANNER / COVER OVERLAY */}
+              {activeRaidSimulation ? (
+                <div className="bg-zinc-950 border border-red-500/30 rounded-2xl p-6 space-y-4 max-w-2xl mx-auto shadow-2xl">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="animate-pulse text-2xl">⚔️</span>
+                      <h3 className="text-lg font-black text-red-500 uppercase tracking-widest">
+                        Raid Campaign: {activeRaidSimulation.town.name}
+                      </h3>
                     </div>
-                    <div className="text-[10px] text-zinc-500">
-                      Based on placed town structures (Total: {
-                        gameState?.objs.filter((o: any) => ['settler_shelter', 'town_house', 'town_workshop', 'storage_depot', 'merchant_stall', 'guard_post', 'farm_plot'].includes(o.type)).length || 0
-                      })
-                    </div>
+                    <span className="text-[10px] bg-red-500/20 text-red-400 px-2.5 py-0.5 rounded font-mono font-bold uppercase tracking-wider animate-bounce">
+                      {activeRaidSimulation.status}
+                    </span>
                   </div>
-                </div>
-              </div>
 
-              {/* Statistics Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-zinc-900/40 border border-white/5 p-4 rounded-2xl flex items-center gap-3">
-                  <span className="text-2xl">🪙</span>
-                  <div>
-                    <div className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider">Treasury Coins</div>
-                    <div className="text-base font-black text-yellow-400">{gameState?.pl.inv.gold_coins || 0}</div>
-                  </div>
-                </div>
-                <div className="bg-zinc-900/40 border border-white/5 p-4 rounded-2xl flex items-center gap-3">
-                  <span className="text-2xl">🛖</span>
-                  <div>
-                    <div className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider">Town Cabins</div>
-                    <div className="text-base font-black text-white">{gameState?.objs.filter((o: any) => o.type === 'settler_shelter').length || 0}</div>
-                  </div>
-                </div>
-                <div className="bg-zinc-900/40 border border-white/5 p-4 rounded-2xl flex items-center gap-3">
-                  <span className="text-2xl">🏪</span>
-                  <div>
-                    <div className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider">Trading Stalls</div>
-                    <div className="text-base font-black text-white">{gameState?.objs.filter((o: any) => o.type === 'merchant_stall').length || 0}</div>
-                  </div>
-                </div>
-                <div className="bg-zinc-900/40 border border-white/5 p-4 rounded-2xl flex items-center gap-3">
-                  <span className="text-2xl">🧑‍🌾</span>
-                  <div>
-                    <div className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider">Villager Companions</div>
-                    <div className="text-base font-black text-green-400">
-                      {gameState?.companions.filter((c: any) => c.role).length || 0}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Town Structures Blueprint Section */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-black uppercase tracking-widest text-zinc-400 border-b border-white/10 pb-1.5 flex items-center gap-1.5">
-                  📐 Settlement Construction Blueprints
-                </h3>
-                <p className="text-[11px] text-zinc-500 leading-relaxed max-w-4xl">
-                  Craft and place these buildings in your active zone to establish a thriving town. Hotbar-equip them and click the ground nearby to construct! Each placed building earns passive income or resources every few seconds.
-                </p>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
-                  {[
-                    { id: 'settler_shelter', n: 'Settler Shelter', ico: '🛖', desc: 'Rustic survival cabin. Attracts basic settlers. Generates +2 Gold Coins passively.', cost: '🪵15 Wood, 🪨10 Stone, 🌿10 Fiber' },
-                    { id: 'town_house', n: 'Town House', ico: '🏡', desc: 'A comfortable family residence. Attracts workers and residents. Earns +6 Gold Coins passively.', cost: '🪵30 Wood, 🪨20 Stone, 🌿15 Fiber, 🪙100 Coins' },
-                    { id: 'town_workshop', n: 'Town Workshop', ico: '🏭', desc: 'Advanced manufacturing center. Automatically crafts +1 Iron Bar over time.', cost: '🪨35 Stone, 🔩8 Iron Bars, 🪵20 Wood' },
-                    { id: 'storage_depot', n: 'Storage Depot', ico: '🏬', desc: 'Massive resource log depot. Gathers +2 Wood, +2 Stone, and +2 Fiber over time.', cost: '🪵40 Wood, 🪨30 Stone, 🔩4 Iron Bars' },
-                    { id: 'merchant_stall', n: 'Merchant Stall', ico: '🏪', desc: 'Trading post for local travelers. Generates +5 Gold Coins passively.', cost: '🪵20 Wood, 🌿15 Fiber, 🪙150 Coins' },
-                    { id: 'guard_post', n: 'Guard Post', ico: '🛡️', desc: 'Defensive post with lookouts. Boosts zone security. Spawns high health guards.', cost: '🪨20 Stone, 🔩5 Iron Bars, 🪵10 Wood' },
-                    { id: 'farm_plot', n: 'Farm Plot', ico: '🌾', desc: 'Irrigated soil garden. Automatically produces +1 Berry over time.', cost: '🪵8 Wood, 🌿12 Fiber, 🫐5 Berries' },
-                  ].map((b) => {
-                    const count = gameState?.objs.filter((o: any) => o.type === b.id).length || 0;
-                    return (
-                      <div key={b.id} className="bg-zinc-900/50 border border-white/5 hover:border-white/10 p-4 rounded-2xl space-y-2.5 flex flex-col justify-between">
-                        <div className="space-y-1.5">
-                          <div className="flex justify-between items-center">
-                            <span className="text-2xl">{b.ico}</span>
-                            <span className="text-[9px] bg-green-500/10 text-green-400 font-bold px-1.5 py-0.5 rounded-md">
-                              {count} Placed
-                            </span>
-                          </div>
-                          <h4 className="font-extrabold text-sm text-white">{b.n}</h4>
-                          <p className="text-[10px] text-zinc-400 leading-normal">{b.desc}</p>
-                        </div>
-                        <div className="space-y-1 pt-1.5 border-t border-white/5">
-                          <div className="text-[8px] uppercase tracking-wider text-zinc-500 font-bold">Crafting Cost</div>
-                          <div className="text-[9px] text-amber-500 font-bold">{b.cost}</div>
-                        </div>
+                  {/* Simulation Battle Logs */}
+                  <div className="bg-black/80 border border-white/5 rounded-xl p-4 h-48 overflow-y-auto font-mono text-xs space-y-2 leading-relaxed">
+                    {activeRaidSimulation.logs.map((log, i) => (
+                      <div key={i} className="text-zinc-300">
+                        {log}
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
+
+                  {/* Battle status buttons */}
+                  <div className="flex gap-3 pt-2">
+                    {activeRaidSimulation.status === 'looting' && (
+                      <button
+                        onClick={() => resolveRaidSimulation(true)}
+                        className="flex-1 py-3 bg-green-500 hover:bg-green-400 text-black font-black uppercase text-xs tracking-wider rounded-xl cursor-pointer transition-all active:scale-95 text-center shadow-lg shadow-green-500/10"
+                      >
+                        🎉 Claim Plunder & Victory
+                      </button>
+                    )}
+                    {activeRaidSimulation.status === 'lost' && (
+                      <button
+                        onClick={() => resolveRaidSimulation(false)}
+                        className="flex-1 py-3 bg-red-500 hover:bg-red-400 text-white font-black uppercase text-xs tracking-wider rounded-xl cursor-pointer transition-all active:scale-95 text-center shadow-lg shadow-red-500/10"
+                      >
+                        💔 Retreat back to Capital
+                      </button>
+                    )}
+                    {['marching', 'clashing'].includes(activeRaidSimulation.status) && (
+                      <div className="w-full text-center py-3 bg-zinc-900 border border-white/5 text-zinc-500 text-xs font-bold uppercase tracking-wider rounded-xl animate-pulse">
+                        ⏳ Resolving tactical battle simulation...
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <>
+                  {/* --- TAB 1: SETTLEMENT MANAGEMENT --- */}
+                  {activeTownTab === 'management' && (
+                    <div className="space-y-6">
+                      {/* Town Naming and Level Section */}
+                      <div className="bg-zinc-900/60 border border-white/10 p-4 sm:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex-1 space-y-2">
+                          <label className="text-[10px] text-green-400 font-extrabold tracking-widest uppercase">Settlement Capital Name</label>
+                          <div className="flex gap-2">
+                            <input 
+                              type="text"
+                              value={customTownName}
+                              onChange={(e) => setCustomTownName(e.target.value)}
+                              maxLength={24}
+                              className="bg-black/50 border border-white/10 hover:border-white/20 focus:border-green-400/80 rounded-xl px-3 py-2 text-white font-bold tracking-wide outline-none flex-1 max-w-sm text-sm"
+                            />
+                            <button 
+                              onClick={() => {
+                                const s = stateRef.current;
+                                if (s && s.pl) {
+                                  s.pl.townName = customTownName || 'Camp Horizon';
+                                  addLog(`🏘️ Settlement successfully renamed to: "${s.pl.townName}"`, '#10b981');
+                                  setGameState({ ...s });
+                                }
+                              }}
+                              className="px-4 py-2 bg-green-500 hover:bg-green-400 text-black font-black uppercase text-xs tracking-wider rounded-xl cursor-pointer transition-all active:scale-95 shadow-lg shadow-green-500/10"
+                            >
+                              Save Name
+                            </button>
+                          </div>
+                        </div>
 
-              {/* Recruitment Section */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-black uppercase tracking-widest text-zinc-400 border-b border-white/10 pb-1.5 flex items-center gap-1.5">
-                  🤝 Recruit Settlement Villager Companions
-                </h3>
-                <p className="text-[11px] text-zinc-500 leading-relaxed max-w-4xl">
-                  Invite specialized survivors to move into your town and join your active survival party. They will follow you on the map, fight monsters, collect raw resources, or heal your wounds depending on their role!
-                </p>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
-                  {[
-                    {
-                      role: 'guard',
-                      name: 'Town Militia',
-                      ico: '🛡️',
-                      desc: 'Defensive melee fighter. Attacks nearby monsters with high health (120 HP) and heavy armor.',
-                      costDisplay: '🪙 100 Gold Coins, 🪨 15 Stone',
-                      cost: { gold_coins: 100, stone: 15 },
-                      hp: 120, dmg: 12, spd: 1.8
-                    },
-                    {
-                      role: 'hunter',
-                      name: 'Ranger Guard',
-                      ico: '🏹',
-                      desc: 'Ranged bow sniper. Attacks targets from a distance with high precision arrow damage (15 DMG).',
-                      costDisplay: '🪙 150 Gold Coins, 🪵 10 Wood',
-                      cost: { gold_coins: 150, wood: 10 },
-                      hp: 80, dmg: 15, spd: 2.1
-                    },
-                    {
-                      role: 'gatherer',
-                      name: 'Scavenger',
-                      ico: '🧑‍🌾',
-                      desc: 'Resource harvester. Follows you and automatically gathers wood, stone, flint, and fiber every 10 seconds.',
-                      costDisplay: '🪙 80 Gold Coins, 🫐 10 Berries',
-                      cost: { gold_coins: 80, berry: 10 },
-                      hp: 60, dmg: 5, spd: 2.0
-                    },
-                    {
-                      role: 'woodcutter',
-                      name: 'Forest Lumberjack',
-                      ico: '🪓',
-                      desc: 'Professional lumberjack. Regularly fells surrounding trees, producing large amounts of wood directly into your inventory.',
-                      costDisplay: '🪙 120 Gold Coins, 🪨 20 Stone',
-                      cost: { gold_coins: 120, stone: 20 },
-                      hp: 90, dmg: 8, spd: 1.9
-                    },
-                    {
-                      role: 'builder',
-                      name: 'Master Builder',
-                      ico: '🔨',
-                      desc: 'Architect companion. Automatically repairs all nearby structures (campfires, spikes, traps) and improves defensive ratings.',
-                      costDisplay: '🪙 180 Gold Coins, 🪵 40 Wood',
-                      cost: { gold_coins: 180, wood: 40 },
-                      hp: 100, dmg: 10, spd: 1.8
-                    },
-                    {
-                      role: 'fisherman',
-                      name: 'Coastal Angler',
-                      ico: '🎣',
-                      desc: 'Master fisher. Periodically catches fresh raw fish, high-grade cooked meat, and occasionally rare items/treasures!',
-                      costDisplay: '🪙 110 Gold Coins, 🪵 15 Wood',
-                      cost: { gold_coins: 110, wood: 15 },
-                      hp: 75, dmg: 6, spd: 2.0
-                    },
-                    {
-                      role: 'alchemist',
-                      name: 'Hedge Alchemist',
-                      ico: '🧙‍♀️',
-                      desc: 'Healer/Supporter. Casts protective spells to restore +20 HP whenever your health drops below 60%.',
-                      costDisplay: '🪙 200 Gold Coins, 💎 5 Crystal',
-                      cost: { gold_coins: 200, crystal: 5 },
-                      hp: 70, dmg: 8, spd: 1.9
-                    },
-                    {
-                      role: 'miner',
-                      name: 'Expert Miner',
-                      ico: '⛏️',
-                      desc: 'Elite mineral prospector. Follows you and systematically mines deep subterranean ground, discovering Coal, Iron, Gold, and rare Gems!',
-                      costDisplay: '🪙 140 Gold Coins, 🪨 30 Stone',
-                      cost: { gold_coins: 140, stone: 30 },
-                      hp: 85, dmg: 9, spd: 1.8
-                    },
-                    {
-                      role: 'sorcerer',
-                      name: 'Arcane Sorcerer',
-                      ico: '🧙‍♂️',
-                      desc: 'Weaver of elemental fire. Periodically launches blazing magical projectiles at targets, and channels +8 Mana directly to you!',
-                      costDisplay: '🪙 250 Gold Coins, 💎 8 Crystal',
-                      cost: { gold_coins: 250, crystal: 8 },
-                      hp: 80, dmg: 18, spd: 2.0
-                    },
-                    {
-                      role: 'beast',
-                      name: 'Tamed Wolf',
-                      ico: '🐺',
-                      desc: 'A loyal tamed wild alpha wolf companion. Attacks targets with fast claw strikes, and periodically hunts down game for raw hides and meat.',
-                      costDisplay: '🪙 120 Gold Coins, 🥩 15 Cooked Meat',
-                      cost: { gold_coins: 120, cooked_meat: 15 },
-                      hp: 95, dmg: 14, spd: 2.3
-                    },
-                    {
-                      role: 'merchant_envoy',
-                      name: 'Guild Merchant',
-                      ico: '🪙',
-                      desc: 'A traveling trade representative. Passively generates +25 Gold Coins, and occasionally negotiates barter agreements for high-tier materials.',
-                      costDisplay: '🪙 220 Gold Coins, 💎 3 Gem',
-                      cost: { gold_coins: 220, gem: 3 },
-                      hp: 75, dmg: 7, spd: 1.9
-                    },
-                    {
-                      role: 'scout',
-                      name: 'Expedition Scout',
-                      ico: '🧭',
-                      desc: 'Expert cartographer and pathfinder. Greatly expands map discovery range, plots rare materials and portals on radar, and highlights incoming off-screen enemies!',
-                      costDisplay: '🪙 160 Gold Coins, 🪵 20 Wood, 🥩 5 Cooked Meat',
-                      cost: { gold_coins: 160, wood: 20, cooked_meat: 5 },
-                      hp: 80, dmg: 10, spd: 2.2
-                    },
-                  ].map((v) => {
-                    const hasGold = (gameState?.pl.inv.gold_coins || 0) >= (v.cost.gold_coins || 0);
-                    const additionalKey = Object.keys(v.cost).find(k => k !== 'gold_coins') || '';
-                    const hasAdditional = !additionalKey || (gameState?.pl.inv[additionalKey] || 0) >= (v.cost[additionalKey] || 0);
-                    const canAfford = hasGold && hasAdditional;
-
-                    return (
-                      <div key={v.name} className="bg-zinc-900/50 border border-white/5 hover:border-white/10 p-4 rounded-2xl flex flex-col justify-between space-y-4">
-                        <div className="space-y-1.5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-2xl">{v.ico}</span>
-                            <div>
-                              <h4 className="font-extrabold text-sm text-white">{v.name}</h4>
-                              <span className="text-[8px] bg-purple-500/10 text-purple-400 px-1 py-0.2 rounded font-bold uppercase tracking-wider">
-                                {v.role}
-                              </span>
+                        <div className="flex items-center gap-4 bg-black/40 border border-white/5 p-4 rounded-xl">
+                          <div className="text-3xl">🏘️</div>
+                          <div>
+                            <div className="text-[10px] text-zinc-400 uppercase font-extrabold tracking-widest">Capital Tier</div>
+                            <div className="text-sm font-black text-white">
+                              {(() => {
+                                const s = stateRef.current;
+                                if (!s) return 'Wilderness Camp (LVL 1)';
+                                const count = s.objs.filter((o: any) => ['settler_shelter', 'town_house', 'town_workshop', 'storage_depot', 'merchant_stall', 'guard_post', 'farm_plot'].includes(o.type)).length;
+                                if (count >= 9) return 'Survival Citadel (LVL 4)';
+                                if (count >= 5) return 'Thriving Village (LVL 3)';
+                                if (count >= 2) return 'Budding Hamlet (LVL 2)';
+                                return 'Wilderness Camp (LVL 1)';
+                              })()}
+                            </div>
+                            <div className="text-[10px] text-zinc-500">
+                              Based on placed town structures (Total: {
+                                gameState?.objs.filter((o: any) => ['settler_shelter', 'town_house', 'town_workshop', 'storage_depot', 'merchant_stall', 'guard_post', 'farm_plot'].includes(o.type)).length || 0
+                              })
                             </div>
                           </div>
-                          <p className="text-[10px] text-zinc-400 leading-normal">{v.desc}</p>
-                        </div>
-
-                        <div className="space-y-2.5">
-                          <div className="pt-2 border-t border-white/5 space-y-1">
-                            <div className="text-[8px] uppercase tracking-wider text-zinc-500 font-bold">Recruit Fee</div>
-                            <div className="text-[10px] text-yellow-400 font-bold font-mono">{v.costDisplay}</div>
-                          </div>
-                          <button 
-                            onClick={() => recruitVillager(v.role, v.cost, v.name, v.ico, v.spd, v.dmg, v.hp)}
-                            disabled={!canAfford}
-                            className={`w-full py-2 text-xs font-black uppercase tracking-wider rounded-xl cursor-pointer transition-all active:scale-95 text-center ${
-                              canAfford 
-                                ? 'bg-green-500 hover:bg-green-400 text-black shadow-lg shadow-green-500/15' 
-                                : 'bg-zinc-800 text-zinc-500 border border-white/5 cursor-not-allowed'
-                            }`}
-                          >
-                            {canAfford ? `Hire ${v.name}` : 'Cannot Afford'}
-                          </button>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
+
+                      {/* Statistics Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="bg-zinc-900/40 border border-white/5 p-4 rounded-2xl flex items-center gap-3">
+                          <span className="text-2xl">🪙</span>
+                          <div>
+                            <div className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider">Treasury Coins</div>
+                            <div className="text-base font-black text-yellow-400">{gameState?.pl.inv.gold_coins || 0}</div>
+                          </div>
+                        </div>
+                        <div className="bg-zinc-900/40 border border-white/5 p-4 rounded-2xl flex items-center gap-3">
+                          <span className="text-2xl">🛖</span>
+                          <div>
+                            <div className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider">Town Cabins</div>
+                            <div className="text-base font-black text-white">{gameState?.objs.filter((o: any) => o.type === 'settler_shelter').length || 0}</div>
+                          </div>
+                        </div>
+                        <div className="bg-zinc-900/40 border border-white/5 p-4 rounded-2xl flex items-center gap-3">
+                          <span className="text-2xl">🏪</span>
+                          <div>
+                            <div className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider">Trading Stalls</div>
+                            <div className="text-base font-black text-white">{gameState?.objs.filter((o: any) => o.type === 'merchant_stall').length || 0}</div>
+                          </div>
+                        </div>
+                        <div className="bg-zinc-900/40 border border-white/5 p-4 rounded-2xl flex items-center gap-3">
+                          <span className="text-2xl">🧑‍🌾</span>
+                          <div>
+                            <div className="text-[9px] text-zinc-400 uppercase font-bold tracking-wider">Active Companions</div>
+                            <div className="text-base font-black text-green-400">
+                              {gameState?.companions.filter((c: any) => c.role).length || 0}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* NEW SECTION: Capital Upgrades */}
+                      <div className="space-y-3 bg-zinc-950/60 border border-white/5 rounded-2xl p-4 sm:p-5">
+                        <div className="border-b border-white/10 pb-2">
+                          <h3 className="text-xs font-black uppercase tracking-widest text-zinc-300 flex items-center gap-1.5">
+                            🏰 Structural & Defense Upgrades
+                          </h3>
+                          <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
+                            Reinforce your capital settlement with fortifications, training centers, defense networks, and secure trading vaults.
+                          </p>
+                        </div>
+
+                        {(() => {
+                          const playerTown = gameState?.towns?.find(t => t.id === 'town_player');
+                          const wLvl = playerTown?.upgrades?.walls || 1;
+                          const bLvl = playerTown?.upgrades?.barracks || 1;
+                          const tLvl = playerTown?.upgrades?.turrets || 1;
+                          const vLvl = playerTown?.upgrades?.vaults || 1;
+
+                          const upgradeOptions = [
+                            {
+                              key: 'walls' as const,
+                              name: 'Heavy Palisade Walls',
+                              ico: '🛡️',
+                              desc: 'Reinforces settlement perimeter. Drastically increases town defenses and Capital HP.',
+                              lvl: wLvl,
+                              costDisplay: `🪵${50 * wLvl} Wood, 🪨${40 * wLvl} Stone, 🪙${100 * wLvl} Coins`,
+                              canAfford: (gameState?.pl.inv.wood || 0) >= 50 * wLvl && 
+                                         (gameState?.pl.inv.stone || 0) >= 40 * wLvl && 
+                                         (gameState?.pl.inv.gold_coins || 0) >= 100 * wLvl
+                            },
+                            {
+                              key: 'barracks' as const,
+                              name: 'Military Barracks',
+                              ico: '⚔️',
+                              desc: 'Improves companion training. Boosts active garrison density and maximum population.',
+                              lvl: bLvl,
+                              costDisplay: `🪵${40 * bLvl} Wood, 🔩${10 * bLvl} Iron, 🪙${150 * bLvl} Coins`,
+                              canAfford: (gameState?.pl.inv.wood || 0) >= 40 * bLvl && 
+                                         (gameState?.pl.inv.iron_bar || 0) >= 10 * bLvl && 
+                                         (gameState?.pl.inv.gold_coins || 0) >= 150 * bLvl
+                            },
+                            {
+                              key: 'turrets' as const,
+                              name: 'Sentry Ballista Turrets',
+                              ico: '🏹',
+                              desc: 'Automated ballista towers. Significantly boosts passive defense rating to repel raids.',
+                              lvl: tLvl,
+                              costDisplay: `🪨${60 * tLvl} Stone, 🔩${15 * tLvl} Iron, 🪙${200 * tLvl} Coins`,
+                              canAfford: (gameState?.pl.inv.stone || 0) >= 60 * tLvl && 
+                                         (gameState?.pl.inv.iron_bar || 0) >= 15 * tLvl && 
+                                         (gameState?.pl.inv.gold_coins || 0) >= 200 * tLvl
+                            },
+                            {
+                              key: 'vaults' as const,
+                              name: 'Sovereign Treasury Vaults',
+                              ico: '💎',
+                              desc: 'Fortifies vaults against pilferage and expands passive coin generation rates.',
+                              lvl: vLvl,
+                              costDisplay: `🔩${20 * vLvl} Iron, 💎${3 * vLvl} Gem, 🪙${300 * vLvl} Coins`,
+                              canAfford: (gameState?.pl.inv.iron_bar || 0) >= 20 * vLvl && 
+                                         (gameState?.pl.inv.gem || 0) >= 3 * vLvl && 
+                                         (gameState?.pl.inv.gold_coins || 0) >= 300 * vLvl
+                            }
+                          ];
+
+                          return (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                              {upgradeOptions.map(opt => (
+                                <div key={opt.key} className="bg-zinc-900/40 border border-white/5 p-3 sm:p-4 rounded-xl flex flex-col justify-between space-y-3">
+                                  <div className="space-y-1">
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-xl">{opt.ico}</span>
+                                      <span className="text-[9px] bg-amber-500/10 text-amber-400 font-bold px-1.5 py-0.5 rounded">
+                                        LVL {opt.lvl} / 5
+                                      </span>
+                                    </div>
+                                    <h4 className="font-extrabold text-xs text-white">{opt.name}</h4>
+                                    <p className="text-[9px] text-zinc-400 leading-normal">{opt.desc}</p>
+                                  </div>
+
+                                  <div className="pt-2 border-t border-white/5 space-y-2">
+                                    <div className="text-[8px] uppercase tracking-wider text-zinc-500 font-bold">Upgrade Cost</div>
+                                    <div className="text-[9px] text-amber-500 font-bold font-mono">{opt.costDisplay}</div>
+                                    <button
+                                      disabled={opt.lvl >= 5 || !opt.canAfford}
+                                      onClick={() => upgradeTownComponent(opt.key)}
+                                      className={`w-full py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all active:scale-95 ${
+                                        opt.lvl >= 5
+                                          ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed'
+                                          : opt.canAfford
+                                            ? 'bg-amber-500 hover:bg-amber-400 text-black shadow'
+                                            : 'bg-zinc-800 text-zinc-500 border border-white/5 cursor-not-allowed'
+                                      }`}
+                                    >
+                                      {opt.lvl >= 5 ? 'MAX LEVEL' : 'UPGRADE'}
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Recruitment Section */}
+                      <div className="space-y-3">
+                        <div className="border-b border-white/10 pb-2">
+                          <h3 className="text-xs font-black uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
+                            🤝 Recruit Settlement Villager Companions
+                          </h3>
+                          <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
+                            Invite specialized survivors to move into your town and join your active party. They will follow you, collect raw materials, heal your wounds, or fight enemies!
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+                          {[
+                            {
+                              role: 'guard',
+                              name: 'Town Militia',
+                              ico: '🛡️',
+                              desc: 'Defensive melee fighter. Attacks nearby monsters with high health (120 HP) and heavy armor.',
+                              costDisplay: '🪙 100 Gold Coins, 🪨 15 Stone',
+                              cost: { gold_coins: 100, stone: 15 },
+                              hp: 120, dmg: 12, spd: 1.8
+                            },
+                            {
+                              role: 'hunter',
+                              name: 'Ranger Guard',
+                              ico: '🏹',
+                              desc: 'Ranged bow sniper. Attacks targets from a distance with high precision arrow damage (15 DMG).',
+                              costDisplay: '🪙 150 Gold Coins, 🪵 10 Wood',
+                              cost: { gold_coins: 150, wood: 10 },
+                              hp: 80, dmg: 15, spd: 2.1
+                            },
+                            {
+                              role: 'gatherer',
+                              name: 'Scavenger',
+                              ico: '🧑‍🌾',
+                              desc: 'Resource harvester. Follows you and automatically gathers wood, stone, flint, and fiber every 10 seconds.',
+                              costDisplay: '🪙 80 Gold Coins, 🫐 10 Berries',
+                              cost: { gold_coins: 80, berry: 10 },
+                              hp: 60, dmg: 5, spd: 2.0
+                            },
+                            {
+                              role: 'woodcutter',
+                              name: 'Forest Lumberjack',
+                              ico: '🪓',
+                              desc: 'Professional lumberjack. Regularly fells surrounding trees, producing large amounts of wood directly into your inventory.',
+                              costDisplay: '🪙 120 Gold Coins, 🪨 20 Stone',
+                              cost: { gold_coins: 120, stone: 20 },
+                              hp: 90, dmg: 8, spd: 1.9
+                            },
+                            {
+                              role: 'builder',
+                              name: 'Master Builder',
+                              ico: '🔨',
+                              desc: 'Architect companion. Automatically repairs all nearby structures (campfires, spikes, traps) and improves defensive ratings.',
+                              costDisplay: '🪙 180 Gold Coins, 🪵 40 Wood',
+                              cost: { gold_coins: 180, wood: 40 },
+                              hp: 100, dmg: 10, spd: 1.8
+                            },
+                            {
+                              role: 'fisherman',
+                              name: 'Coastal Angler',
+                              ico: '🎣',
+                              desc: 'Master fisher. Periodically catches fresh raw fish, high-grade cooked meat, and occasionally rare items/treasures!',
+                              costDisplay: '🪙 110 Gold Coins, 🪵 15 Wood',
+                              cost: { gold_coins: 110, wood: 15 },
+                              hp: 75, dmg: 6, spd: 2.0
+                            },
+                            {
+                              role: 'alchemist',
+                              name: 'Hedge Alchemist',
+                              ico: '🧙‍♀️',
+                              desc: 'Healer/Supporter. Casts protective spells to restore +20 HP whenever your health drops below 60%.',
+                              costDisplay: '🪙 200 Gold Coins, 💎 5 Crystal',
+                              cost: { gold_coins: 200, crystal: 5 },
+                              hp: 70, dmg: 8, spd: 1.9
+                            },
+                            {
+                              role: 'miner',
+                              name: 'Expert Miner',
+                              ico: '⛏️',
+                              desc: 'Elite mineral prospector. Follows you and systematically mines deep subterranean ground, discovering Coal, Iron, Gold, and rare Gems!',
+                              costDisplay: '🪙 140 Gold Coins, 🪨 30 Stone',
+                              cost: { gold_coins: 140, stone: 30 },
+                              hp: 85, dmg: 9, spd: 1.8
+                            },
+                            {
+                              role: 'sorcerer',
+                              name: 'Arcane Sorcerer',
+                              ico: '🧙‍♂️',
+                              desc: 'Weaver of elemental fire. Periodically launches blazing magical projectiles at targets, and channels +8 Mana directly to you!',
+                              costDisplay: '🪙 250 Gold Coins, 💎 8 Crystal',
+                              cost: { gold_coins: 250, crystal: 8 },
+                              hp: 80, dmg: 18, spd: 2.0
+                            },
+                            {
+                              role: 'beast',
+                              name: 'Tamed Wolf',
+                              ico: '🐺',
+                              desc: 'A loyal tamed wild alpha wolf companion. Attacks targets with fast claw strikes, and periodically hunts down game for raw hides and meat.',
+                              costDisplay: '🪙 120 Gold Coins, 🥩 15 Cooked Meat',
+                              cost: { gold_coins: 120, cooked_meat: 15 },
+                              hp: 95, dmg: 14, spd: 2.3
+                            },
+                            {
+                              role: 'merchant_envoy',
+                              name: 'Guild Merchant',
+                              ico: '🪙',
+                              desc: 'A traveling trade representative. Passively generates +25 Gold Coins, and occasionally negotiates barter agreements for high-tier materials.',
+                              costDisplay: '🪙 220 Gold Coins, 💎 3 Gem',
+                              cost: { gold_coins: 220, gem: 3 },
+                              hp: 75, dmg: 7, spd: 1.9
+                            },
+                            {
+                              role: 'scout',
+                              name: 'Expedition Scout',
+                              ico: '🧭',
+                              desc: 'Expert cartographer and pathfinder. Greatly expands map discovery range, plots rare materials and portals on radar, and highlights incoming off-screen enemies!',
+                              costDisplay: '🪙 160 Gold Coins, 🪵 20 Wood, 🥩 5 Cooked Meat',
+                              cost: { gold_coins: 160, wood: 20, cooked_meat: 5 },
+                              hp: 80, dmg: 10, spd: 2.2
+                            }
+                          ].map((v) => {
+                            const hasGold = (gameState?.pl.inv.gold_coins || 0) >= (v.cost.gold_coins || 0);
+                            const additionalKey = Object.keys(v.cost).find(k => k !== 'gold_coins') || '';
+                            const hasAdditional = !additionalKey || (gameState?.pl.inv[additionalKey] || 0) >= (v.cost[additionalKey] || 0);
+                            const canAfford = hasGold && hasAdditional;
+
+                            return (
+                              <div key={v.name} className="bg-zinc-900/50 border border-white/5 hover:border-white/10 p-4 rounded-2xl flex flex-col justify-between space-y-4">
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-2xl">{v.ico}</span>
+                                    <div>
+                                      <h4 className="font-extrabold text-sm text-white">{v.name}</h4>
+                                      <span className="text-[8px] bg-purple-500/10 text-purple-400 px-1 py-0.2 rounded font-bold uppercase tracking-wider">
+                                        {v.role}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <p className="text-[10px] text-zinc-400 leading-normal">{v.desc}</p>
+                                </div>
+
+                                <div className="space-y-2.5">
+                                  <div className="pt-2 border-t border-white/5 space-y-1">
+                                    <div className="text-[8px] uppercase tracking-wider text-zinc-500 font-bold">Recruit Fee</div>
+                                    <div className="text-[10px] text-yellow-400 font-bold font-mono">{v.costDisplay}</div>
+                                  </div>
+                                  <button 
+                                    onClick={() => recruitVillager(v.role, v.cost, v.name, v.ico, v.spd, v.dmg, v.hp)}
+                                    disabled={!canAfford}
+                                    className={`w-full py-2 text-xs font-black uppercase tracking-wider rounded-xl cursor-pointer transition-all active:scale-95 text-center ${
+                                      canAfford 
+                                        ? 'bg-green-500 hover:bg-green-400 text-black shadow-lg shadow-green-500/15' 
+                                        : 'bg-zinc-800 text-zinc-500 border border-white/5 cursor-not-allowed'
+                                    }`}
+                                  >
+                                    {canAfford ? `Hire ${v.name}` : 'Cannot Afford'}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* --- TAB 2: CONSTRUCTION & EXPANSION --- */}
+                  {activeTownTab === 'expansion' && (
+                    <div className="space-y-4 animate-fadeIn">
+                      <div className="border-b border-white/10 pb-2">
+                        <h3 className="text-xs font-black uppercase tracking-widest text-zinc-300 flex items-center gap-1.5">
+                          📐 Settlement Construction Blueprints
+                        </h3>
+                        <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed max-w-4xl">
+                          Craft and place these buildings in your active zone to establish a thriving town. Hotbar-equip them and click the ground nearby to construct! Each placed building earns passive income or resources every few seconds.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+                        {[
+                          { id: 'settler_shelter', n: 'Settler Shelter', ico: '🛖', desc: 'Rustic survival cabin. Attracts basic settlers. Generates +2 Gold Coins passively.', cost: '🪵15 Wood, 🪨10 Stone, 🌿10 Fiber' },
+                          { id: 'town_house', n: 'Town House', ico: '🏡', desc: 'A comfortable family residence. Attracts workers and residents. Earns +6 Gold Coins passively.', cost: '🪵30 Wood, 🪨20 Stone, 🌿15 Fiber, 🪙100 Coins' },
+                          { id: 'town_workshop', n: 'Town Workshop', ico: '🏭', desc: 'Advanced manufacturing center. Automatically crafts +1 Iron Bar over time.', cost: '🪨35 Stone, 🔩8 Iron Bars, 🪵20 Wood' },
+                          { id: 'storage_depot', n: 'Storage Depot', ico: '🏬', desc: 'Massive resource log depot. Gathers +2 Wood, +2 Stone, and +2 Fiber over time.', cost: '🪵40 Wood, 🪨30 Stone, 🔩4 Iron Bars' },
+                          { id: 'merchant_stall', n: 'Merchant Stall', ico: '🏪', desc: 'Trading post for local travelers. Generates +5 Gold Coins passively.', cost: '🪵20 Wood, 🌿15 Fiber, 🪙150 Coins' },
+                          { id: 'guard_post', n: 'Guard Post', ico: '🛡️', desc: 'Defensive post with lookouts. Boosts zone security. Spawns high health guards.', cost: '🪨20 Stone, 🔩5 Iron Bars, 🪵10 Wood' },
+                          { id: 'farm_plot', n: 'Farm Plot', ico: '🌾', desc: 'Irrigated soil garden. Automatically produces +1 Berry over time.', cost: '🪵8 Wood, 🌿12 Fiber, 🫐5 Berries' },
+                        ].map((b) => {
+                          const count = gameState?.objs.filter((o: any) => o.type === b.id).length || 0;
+                          return (
+                            <div key={b.id} className="bg-zinc-900/50 border border-white/5 hover:border-white/10 p-4 rounded-2xl space-y-2.5 flex flex-col justify-between">
+                              <div className="space-y-1.5">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-2xl">{b.ico}</span>
+                                  <span className="text-[9px] bg-green-500/10 text-green-400 font-bold px-1.5 py-0.5 rounded-md">
+                                    {count} Placed
+                                  </span>
+                                </div>
+                                <h4 className="font-extrabold text-sm text-white">{b.n}</h4>
+                                <p className="text-[10px] text-zinc-400 leading-normal">{b.desc}</p>
+                              </div>
+                              <div className="space-y-1 pt-1.5 border-t border-white/5">
+                                <div className="text-[8px] uppercase tracking-wider text-zinc-500 font-bold">Crafting Cost</div>
+                                <div className="text-[9px] text-amber-500 font-bold font-mono">{b.cost}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* --- TAB 3: WORLD DIPLOMACY & FACTIONS --- */}
+                  {activeTownTab === 'diplomacy' && (
+                    <div className="space-y-5 animate-fadeIn">
+                      <div className="border-b border-white/10 pb-2">
+                        <h3 className="text-xs font-black uppercase tracking-widest text-zinc-300 flex items-center gap-1.5">
+                          🗺️ Regional Diplomacy, Factions, & Warfare
+                        </h3>
+                        <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed max-w-4xl">
+                          Interact with neighboring settlements. Some are friendly and open to trade delegations; others are hostile outposts that periodically raid Camp Horizon. Build up military parity to raid, raze, or conquer and annex them!
+                        </p>
+                      </div>
+
+                      {/* Diplomacy Alignment indicators */}
+                      <div className="flex flex-wrap gap-4 bg-zinc-900/40 p-4 rounded-2xl border border-white/5 text-[10px]">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0"></span>
+                          <span className="text-zinc-300 font-bold">Friendly / Allied (Non-hostile, Trade Enabled)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0"></span>
+                          <span className="text-zinc-300 font-bold">Hostile (Raid Threat, Military Targets)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 shrink-0"></span>
+                          <span className="text-zinc-300 font-bold">Annexed Province (Generates Passive Tax Income)</span>
+                        </div>
+                      </div>
+
+                      {/* Towns List Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-20">
+                        {gameState?.towns?.filter(t => t.id !== 'town_player').map((t: any) => {
+                          if (t.destroyed) return null;
+
+                          const isHostile = t.faction === 'hostile';
+                          const isFriendly = t.faction === 'friendly';
+                          const isAnnexed = t.conquered;
+
+                          const treatyCost = 150 * (t.lvl || 1);
+                          const canAffordTreaty = (gameState?.pl.inv.gold_coins || 0) >= treatyCost;
+                          const canAffordTrade = (gameState?.pl.inv.wood || 0) >= 50 && (gameState?.pl.inv.stone || 0) >= 50;
+
+                          // Garrison details
+                          const defenseRating = (t.defenses || 20) + (t.lvl || 1) * 40;
+
+                          return (
+                            <div key={t.id} className="bg-zinc-900/50 border border-white/5 hover:border-white/10 rounded-2xl p-4 flex flex-col justify-between space-y-4">
+                              <div className="space-y-3">
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <h4 className="text-sm font-black text-white">{t.name}</h4>
+                                      <span className="text-[8px] bg-white/5 text-zinc-400 px-1.5 py-0.5 rounded font-mono font-bold uppercase tracking-wider">
+                                        TIER {t.lvl || 1}
+                                      </span>
+                                    </div>
+                                    <p className="text-[9px] text-zinc-500">Sector Region Index: {t.id}</p>
+                                  </div>
+
+                                  {/* Stance tag */}
+                                  {isAnnexed ? (
+                                    <span className="text-[8px] bg-cyan-500/15 text-cyan-400 border border-cyan-500/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest leading-none">
+                                      👑 ANNEXED PROVINCE
+                                    </span>
+                                  ) : isFriendly ? (
+                                    <span className="text-[8px] bg-blue-500/15 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest leading-none">
+                                      🕊️ FRIENDLY
+                                    </span>
+                                  ) : (
+                                    <span className="text-[8px] bg-red-500/15 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest leading-none animate-pulse">
+                                      ☠️ HOSTILE OUTPOST
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* HP / Defenses Status */}
+                                <div className="space-y-1.5 bg-black/40 p-2.5 rounded-xl border border-white/5 text-[10px] font-mono leading-relaxed">
+                                  <div className="flex justify-between text-zinc-400">
+                                    <span>Garrison Strength:</span>
+                                    <span className="text-white font-bold">{t.hp} / {t.mhp} HP</span>
+                                  </div>
+                                  <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                                    <div className="bg-red-500 h-full transition-all" style={{ width: `${(t.hp / t.mhp) * 100}%` }}></div>
+                                  </div>
+
+                                  <div className="flex justify-between text-zinc-400 pt-1">
+                                    <span>Defense Fortification Index:</span>
+                                    <span className="text-yellow-400 font-bold">{t.defenses} / 100</span>
+                                  </div>
+                                  <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                                    <div className="bg-yellow-500 h-full transition-all" style={{ width: `${t.defenses}%` }}></div>
+                                  </div>
+
+                                  <div className="flex justify-between text-zinc-500 pt-1 text-[8px] uppercase font-bold tracking-wider">
+                                    <span>Calculated Defense Parity:</span>
+                                    <span>Power Rating: {defenseRating}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Interactive Actions Footer */}
+                              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/5">
+                                {isAnnexed ? (
+                                  <div className="col-span-2 text-center p-2 bg-cyan-950/20 border border-cyan-500/10 text-cyan-400 text-[10px] rounded-xl font-bold">
+                                    💰 Generating +15 Gold Coins and local resources passively!
+                                  </div>
+                                ) : isFriendly ? (
+                                  <>
+                                    <button
+                                      disabled={!canAffordTrade}
+                                      onClick={() => launchTradeDelegation(t)}
+                                      className={`py-2 text-[10px] font-black uppercase tracking-wider rounded-xl cursor-pointer transition-all active:scale-95 text-center ${
+                                        canAffordTrade
+                                          ? 'bg-blue-500 hover:bg-blue-400 text-white'
+                                          : 'bg-zinc-800 text-zinc-500 border border-white/5 cursor-not-allowed'
+                                      }`}
+                                      title="Launch trading fleet. Costs 50 Wood & 50 Stone, yields massive coin profits."
+                                    >
+                                      🤝 Trade Delegation
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        const s = stateRef.current;
+                                        if (s) {
+                                          const target = s.towns.find((item: any) => item.id === t.id);
+                                          if (target) {
+                                            target.faction = 'hostile';
+                                            addLog(`⚔️ WAR DECLARED: You broke alliances with ${t.name}!`, '#ef4444');
+                                          }
+                                          setGameState({ ...s });
+                                        }
+                                      }}
+                                      className="py-2 text-[10px] border border-red-500/20 text-red-400 hover:bg-red-500/10 font-black uppercase tracking-wider rounded-xl cursor-pointer transition-all active:scale-95 text-center"
+                                    >
+                                      Declare War
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    {/* Peace and Raid options */}
+                                    <button
+                                      disabled={!canAffordTreaty}
+                                      onClick={() => negotiatePeaceTreaty(t)}
+                                      className={`py-2 text-[10px] font-black uppercase tracking-wider rounded-xl cursor-pointer transition-all active:scale-95 text-center ${
+                                        canAffordTreaty
+                                          ? 'bg-white/10 hover:bg-white/20 text-white'
+                                          : 'bg-zinc-800 text-zinc-500 border border-white/5 cursor-not-allowed'
+                                      }`}
+                                      title={`Pay gold to establish trade accords and end hostile bandit raids. Cost: ${treatyCost} Coins`}
+                                    >
+                                      🕊️ Peace Treaty ({treatyCost}g)
+                                    </button>
+                                    <button
+                                      onClick={() => startRaidSimulation(t)}
+                                      className="py-2 bg-red-500 hover:bg-red-400 text-white font-black uppercase text-[10px] tracking-wider rounded-xl cursor-pointer transition-all active:scale-95 text-center"
+                                    >
+                                      ⚔️ Military Raid
+                                    </button>
+
+                                    {/* Conquer options if defenses are low enough */}
+                                    {t.defenses <= 10 && (
+                                      <button
+                                        onClick={() => conquerAndAnnexTown(t)}
+                                        className="col-span-2 py-2.5 bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-black font-black uppercase text-[10px] tracking-widest rounded-xl cursor-pointer transition-all active:scale-95 text-center shadow-lg animate-pulse"
+                                      >
+                                        👑 Conquer & Annex Outpost (Costs 200 Gold)
+                                      </button>
+                                    )}
+
+                                    {/* Decimate if defenseless */}
+                                    {t.defenses <= 30 && (
+                                      <button
+                                        onClick={() => decimateAndDestroyTown(t)}
+                                        className="col-span-2 py-1.5 border border-red-500/30 text-red-400 hover:bg-red-500/10 text-[9px] font-bold uppercase rounded-xl transition-all active:scale-95"
+                                      >
+                                        🔥 Decimate & Raze Settlement (Pillages massive scrap)
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
 
             </div>
           </motion.div>
