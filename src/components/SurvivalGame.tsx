@@ -435,6 +435,8 @@ const ET: Record<string, any> = {
   shadow_beast: { n: 'Shadow Beast', ico: '🐺', hp: 180, spd: 2.3, dmg: 32, acd: 50, xp: 105, lo: { void_essence: 0.8, alpha_pelt: 0.5 }, ran: false },
   abyssal_crawler: { n: 'Abyssal Crawler', ico: '🦀', hp: 110, spd: 1.5, dmg: 18, acd: 60, xp: 65, lo: { abyssal_pearl: 0.6 }, ran: false },
   meteor_sentinel: { n: 'Meteor Sentinel', ico: '☄️', hp: 380, spd: 0.9, dmg: 45, acd: 90, xp: 190, lo: { meteorite_shard: 0.8, ancient_fossil: 0.3 }, ran: false, boss: 1 },
+  knight_guard: { n: 'Royal Knight Guard', ico: '🛡️', hp: 180, spd: 1.4, dmg: 18, acd: 60, xp: 80, lo: { gold_coins: 1.0, steel_bar: .4 }, ran: false },
+  lich_boss: { n: 'Lich Crypt Lord', ico: '💀', hp: 450, spd: 1.1, dmg: 35, acd: 70, xp: 200, lo: { void_crystal: .9, gem: .6, magic_essence: .9 }, ran: true, boss: 1 },
 };
 
 // --- Procedural Theme Definitions based on Biomes ---
@@ -1044,6 +1046,14 @@ const baseIT: Record<string, any> = {
   merchant_stall: { ico: '🏪', n: 'Merchant Stall', t: 'struct', desc: 'A market stall. Attracts a merchant companion who earns +5 gold coins every 10s.' },
   guard_post: { ico: '🛡️', n: 'Guard Post', t: 'struct', desc: 'A fortified command post. Spawns a resilient village Guard companion.' },
   farm_plot: { ico: '🌾', n: 'Farm Plot', t: 'struct', desc: 'An irrigated garden patch. Automatically harvests +1 Berry every 10s.' },
+  
+  excavator_shovel: { id: 'excavator_shovel', n: 'Excavator Shovel', ico: '🥄', dmg: 10, spd: 30, rng: 44, type: 'tool', desc: 'Dig canals! Click land within 4 tiles to turn it into Water, or fill Water tiles back into Land.' },
+  lumber_hut: { ico: '🪵', n: 'Lumber Hut', t: 'struct', desc: 'A dedicated logging cabin. Generates +10 Wood passively. Click to hire woodcutters instantly.' },
+  electric_dam: { ico: '🎛️', n: 'Electric Dam', t: 'struct', desc: 'Construct adjacent to Water tiles. Generates electricity to power nearby Tesla Coils or Auto-Crafters.' },
+  power_wire: { ico: '🔌', n: 'Power Wire', t: 'struct', desc: 'Transmits electricity. Place to expand and connect power grids.' },
+  tesla_coil: { ico: '⚡', n: 'Tesla Defense Coil', t: 'struct', desc: 'An advanced lightning-powered defensive tower. Attacks nearby enemies with 120 damage!' },
+  electric_crafter: { ico: '🏭', n: 'Electric Auto-Crafter', t: 'struct', desc: 'High-tech automated manufacturing. Generates +1 Steel Bar passively.' },
+  power_accumulator: { ico: '🔋', n: 'Power Accumulator', t: 'struct', desc: 'Stores electricity. Extends grid range and power storage.' },
 
   stone_pickaxe: { id: 'stone_pickaxe', n: 'Stone Pickaxe', ico: '⛏️', dmg: 12, spd: 30, rng: 44, type: 'melee', mp: 0 },
   copper_pickaxe: { id: 'copper_pickaxe', n: 'Copper Pickaxe', ico: '⛏️', dmg: 16, spd: 28, rng: 44, type: 'melee', mp: 0 },
@@ -1222,6 +1232,13 @@ const RC = [
   { n: 'Merchant Stall', out: 'merchant_stall', cnt: 1, cat: 'Structures', c: { wood: 20, fiber: 15, gold_coins: 150 }, req: 'workbench' },
   { n: 'Guard Post', out: 'guard_post', cnt: 1, cat: 'Structures', c: { stone: 20, iron_bar: 5, wood: 10 }, req: 'workbench' },
   { n: 'Farm Plot', out: 'farm_plot', cnt: 1, cat: 'Structures', c: { wood: 8, fiber: 12, berry: 5 }, req: 'workbench' },
+  { n: 'Excavator Shovel', out: 'excavator_shovel', cnt: 1, cat: 'Weapons', c: { iron_bar: 3, wood: 4, fiber: 2 }, req: 'workbench' },
+  { n: 'Lumber Hut', out: 'lumber_hut', cnt: 1, cat: 'Structures', c: { wood: 20, stone: 10, fiber: 5 }, req: 'workbench' },
+  { n: 'Electric Dam', out: 'electric_dam', cnt: 1, cat: 'Structures', c: { iron_bar: 10, copper_bar: 10, crystal: 5, gold_bar: 2 }, req: 'workbench', reqBld: 4 },
+  { n: 'Power Wire', out: 'power_wire', cnt: 1, cat: 'Structures', c: { copper_bar: 2, fiber: 2 }, req: 'workbench' },
+  { n: 'Tesla Defense Coil', out: 'tesla_coil', cnt: 1, cat: 'Structures', c: { steel_bar: 5, copper_bar: 10, crystal: 4, magic_essence: 5 }, req: 'magic_altar', reqBld: 8 },
+  { n: 'Electric Auto-Crafter', out: 'electric_crafter', cnt: 1, cat: 'Structures', c: { steel_bar: 8, iron_bar: 12, gold_bar: 4, crystal: 6 }, req: 'workbench', reqBld: 8 },
+  { n: 'Power Accumulator', out: 'power_accumulator', cnt: 1, cat: 'Structures', c: { steel_bar: 4, gold_bar: 4, crystal: 8 }, req: 'workbench', reqBld: 6 },
 
   { n: 'Stone Pickaxe', out: 'stone_pickaxe', cnt: 1, cat: 'Weapons', c: { stone: 3, stick: 2 } },
   { n: 'Wooden Club', out: 'wood_club', cnt: 1, cat: 'Weapons', c: { wood: 3 } },
@@ -1557,6 +1574,8 @@ export default function SurvivalGame() {
   const [recipeFilter, setRecipeFilter] = useState('All');
   const [showSkills, setShowSkills] = useState(false);
   const [showTownHub, setShowTownHub] = useState(false);
+  const [activeTownTab, setActiveTownTab] = useState<'management' | 'expansion' | 'diplomacy'>('management');
+  const [raidBattleReport, setRaidBattleReport] = useState<{ success: boolean; text: string; loot: string } | null>(null);
   const [showCharCustomizer, setShowCharCustomizer] = useState(false);
   const [customTownName, setCustomTownName] = useState('Camp Horizon');
   const [showQuests, setShowQuests] = useState(false);
@@ -1881,22 +1900,18 @@ export default function SurvivalGame() {
     autosaveEnabledRef.current = autosaveEnabled;
   }, [autosaveEnabled]);
 
-  // --- Automation Cores States & Refs ---
-  const [autoAttack, setAutoAttack] = useState(false);
-  const [autoCollect, setAutoCollect] = useState(false);
-  const [autoHarvest, setAutoHarvest] = useState(false);
-  const [autoPlay, setAutoPlay] = useState(false);
-
+  // --- Automation Cores States & Refs (Driven by Inactivity) ---
   const autoAttackRef = useRef(false);
   const autoCollectRef = useRef(false);
   const autoHarvestRef = useRef(false);
   const autoPlayRef = useRef(false);
+  const autoCraftStateRef = useRef(false);
   const pausedRef = useRef(false);
 
-  useEffect(() => { autoAttackRef.current = autoAttack; }, [autoAttack]);
-  useEffect(() => { autoCollectRef.current = autoCollect; }, [autoCollect]);
-  useEffect(() => { autoHarvestRef.current = autoHarvest; }, [autoHarvest]);
-  useEffect(() => { autoPlayRef.current = autoPlay; }, [autoPlay]);
+  const lastActiveTimeRef = useRef<number>(Date.now());
+  const lastSecRef = useRef<number>(0);
+  const wasInactiveRef = useRef<boolean>(false);
+  const [inactiveSeconds, setInactiveSeconds] = useState(0);
 
   // --- World Seed & Menu States ---
   const [showWorldMenu, setShowWorldMenu] = useState(false);
@@ -1979,11 +1994,6 @@ export default function SurvivalGame() {
       setGenFreqScale(1.1);
     }
   };
-
-  // --- Auto-Craft Core States ---
-  const [autoCraftState, setAutoCraftState] = useState(false);
-  const autoCraftStateRef = useRef(false);
-  useEffect(() => { autoCraftStateRef.current = autoCraftState; }, [autoCraftState]);
 
   // --- Collapsible Panel States ---
   const [isStatsCollapsed, setIsStatsCollapsed] = useState(false);
@@ -2140,6 +2150,141 @@ export default function SurvivalGame() {
       s.waveNum = data.waveNum ?? 0;
       s.waveTimer = data.waveTimer ?? 300;
       s.waveActive = data.waveActive ?? false;
+
+      // Restore Towns & Raids
+      s.towns = data.towns || [
+        {
+          id: 'town_player',
+          name: 'Camp Horizon',
+          zc: 1, zr: 0,
+          faction: 'player',
+          lvl: 1,
+          hp: 1000,
+          mhp: 1000,
+          population: 5,
+          defenses: 20,
+          incomeGold: 10,
+          buildings: {
+            settler_shelter: 1,
+            farm_plot: 1,
+          },
+          upgrades: {
+            walls: 1,
+            barracks: 1
+          },
+          conquered: true
+        },
+        {
+          id: 'town_thornval',
+          name: 'Thornval Post',
+          zc: 3, zr: 1,
+          faction: 'friendly',
+          lvl: 2,
+          hp: 2000,
+          mhp: 2000,
+          population: 15,
+          defenses: 50,
+          incomeGold: 25,
+          buildings: {
+            town_house: 2,
+            merchant_stall: 2,
+          },
+          upgrades: { walls: 2, barracks: 1 },
+          conquered: false
+        },
+        {
+          id: 'town_oak_haven',
+          name: 'Oak Haven',
+          zc: 0, zr: 5,
+          faction: 'friendly',
+          lvl: 2,
+          hp: 1500,
+          mhp: 1500,
+          population: 10,
+          defenses: 30,
+          incomeGold: 15,
+          buildings: {
+            settler_shelter: 2,
+            farm_plot: 3,
+          },
+          upgrades: { walls: 1, barracks: 1 },
+          conquered: false
+        },
+        {
+          id: 'town_scorched_outpost',
+          name: 'Scorched Outpost',
+          zc: 2, zr: 1,
+          faction: 'hostile',
+          lvl: 1,
+          hp: 800,
+          mhp: 800,
+          population: 8,
+          defenses: 15,
+          incomeGold: 0,
+          buildings: {
+            camp_tent: 2,
+          },
+          upgrades: { walls: 1, barracks: 1 },
+          conquered: false
+        },
+        {
+          id: 'town_bandit_citadel',
+          name: 'Bandit Citadel',
+          zc: 5, zr: 3,
+          faction: 'hostile',
+          lvl: 3,
+          hp: 3000,
+          mhp: 3000,
+          population: 25,
+          defenses: 80,
+          incomeGold: 0,
+          buildings: {
+            camp_tent: 5,
+          },
+          upgrades: { walls: 3, barracks: 3 },
+          conquered: false
+        },
+        {
+          id: 'town_shadow_spire',
+          name: 'Shadow Spire',
+          zc: 6, zr: 5,
+          faction: 'hostile',
+          lvl: 3,
+          hp: 2500,
+          mhp: 2500,
+          population: 20,
+          defenses: 70,
+          incomeGold: 0,
+          buildings: {
+            town_house: 1,
+          },
+          upgrades: { walls: 3, barracks: 2 },
+          conquered: false
+        },
+        {
+          id: 'town_eldoria',
+          name: 'Castle Eldoria',
+          zc: 3, zr: 0,
+          faction: 'friendly',
+          lvl: 4,
+          hp: 5000,
+          mhp: 5000,
+          population: 40,
+          defenses: 150,
+          incomeGold: 100,
+          buildings: {
+            town_house: 5,
+            town_workshop: 3,
+          },
+          upgrades: { walls: 5, barracks: 5 },
+          conquered: false
+        }
+      ];
+      s.raidState = data.raidState || 'standby';
+      s.nextRaidTicks = data.nextRaidTicks ?? 3500;
+      s.raidWarningTicks = data.raidWarningTicks ?? 0;
+      s.raidActiveTimer = data.raidActiveTimer ?? 0;
+      s.raidInitiator = data.raidInitiator || '';
       s.weather = data.weather || {
         type: 'clear',
         timer: 4500,
@@ -2194,8 +2339,10 @@ export default function SurvivalGame() {
             const mi = zr * ZCOLS + zc;
             const M = surfaceZoneMaps[mi];
             const ox = zc * ZW, oy = zr * ZH;
-            const isTownZone = (zc === 1 && zr === 0) || (zc === 4 && zr === 4) || (zc === 2 && zr === 6) || (zc === 7 && zr === 2);
+            const isTownZone = (zc === 1 && zr === 0) || (zc === 4 && zr === 4) || (zc === 2 && zr === 6) || (zc === 7 && zr === 2) || (zc === 3 && zr === 1) || (zc === 0 && zr === 5) || (zc === 5 && zr === 6);
             const isBanditZone = (zc === 2 && zr === 1) || (zc === 5 && zr === 3) || (zc === 6 && zr === 5);
+            const isCastleZone = (zc === 3 && zr === 0) || (zc === 6 && zr === 6) || (zc === 0 && zr === 2);
+            const isDungeonZone = (zc === 5 && zr === 1) || (zc === 2 && zr === 5) || (zc === 7 && zr === 7);
 
             for (let ly = 0; ly < ZH; ly++) {
               if (!surfaceWorld[oy + ly]) surfaceWorld[oy + ly] = [];
@@ -2204,6 +2351,10 @@ export default function SurvivalGame() {
                 const tileM = getDynamicBiomeAt(wx, wy, s.worldSeed, surfaceZoneMaps);
                 if (isTownZone && lx >= 34 && lx <= 46 && ly >= 34 && ly <= 46) {
                   surfaceWorld[wy][wx] = TS;
+                } else if (isCastleZone && lx >= 34 && lx <= 46 && ly >= 34 && ly <= 46) {
+                  surfaceWorld[wy][wx] = TS;
+                } else if (isDungeonZone && lx >= 34 && lx <= 46 && ly >= 34 && ly <= 46) {
+                  surfaceWorld[wy][wx] = TSN;
                 } else if (isBanditZone && lx >= 37 && lx <= 43 && ly >= 37 && ly <= 43) {
                   surfaceWorld[wy][wx] = TD;
                 } else {
@@ -2258,8 +2409,10 @@ export default function SurvivalGame() {
             const mi = zr * ZCOLS + zc;
             const M = s.zoneMaps[mi];
             const ox = zc * ZW, oy = zr * ZH;
-            const isTownZone = (zc === 1 && zr === 0) || (zc === 4 && zr === 4) || (zc === 2 && zr === 6) || (zc === 7 && zr === 2);
+            const isTownZone = (zc === 1 && zr === 0) || (zc === 4 && zr === 4) || (zc === 2 && zr === 6) || (zc === 7 && zr === 2) || (zc === 3 && zr === 1) || (zc === 0 && zr === 5) || (zc === 5 && zr === 6);
             const isBanditZone = (zc === 2 && zr === 1) || (zc === 5 && zr === 3) || (zc === 6 && zr === 5);
+            const isCastleZone = (zc === 3 && zr === 0) || (zc === 6 && zr === 6) || (zc === 0 && zr === 2);
+            const isDungeonZone = (zc === 5 && zr === 1) || (zc === 2 && zr === 5) || (zc === 7 && zr === 7);
 
             for (let ly = 0; ly < ZH; ly++) {
               if (!newWorldGrid[oy + ly]) newWorldGrid[oy + ly] = [];
@@ -2270,6 +2423,10 @@ export default function SurvivalGame() {
                 // Town plaza paved stone floor
                 if (isTownZone && lx >= 34 && lx <= 46 && ly >= 34 && ly <= 46) {
                   newWorldGrid[wy][wx] = TS; // Stone
+                } else if (isCastleZone && lx >= 34 && lx <= 46 && ly >= 34 && ly <= 46) {
+                  newWorldGrid[wy][wx] = TS; // Stone
+                } else if (isDungeonZone && lx >= 34 && lx <= 46 && ly >= 34 && ly <= 46) {
+                  newWorldGrid[wy][wx] = TSN; // Dark obsidian/snow stone
                 } else if (isBanditZone && lx >= 37 && lx <= 43 && ly >= 37 && ly <= 43) {
                   newWorldGrid[wy][wx] = TD; // Dirt floor
                 } else {
@@ -2379,6 +2536,12 @@ export default function SurvivalGame() {
           lastZc: s.surfacePlCoords?.lastZc ?? 0,
           lastZr: s.surfacePlCoords?.lastZr ?? 0
         } : null,
+        towns: s.towns || [],
+        raidState: s.raidState || 'standby',
+        nextRaidTicks: s.nextRaidTicks ?? 3500,
+        raidWarningTicks: s.raidWarningTicks ?? 0,
+        raidActiveTimer: s.raidActiveTimer ?? 0,
+        raidInitiator: s.raidInitiator || '',
         timestamp: Date.now()
       };
 
@@ -2726,6 +2889,12 @@ export default function SurvivalGame() {
           lastZc: s.surfacePlCoords?.lastZc ?? 0,
           lastZr: s.surfacePlCoords?.lastZr ?? 0
         } : null,
+        towns: s.towns || [],
+        raidState: s.raidState || 'standby',
+        nextRaidTicks: s.nextRaidTicks ?? 3500,
+        raidWarningTicks: s.raidWarningTicks ?? 0,
+        raidActiveTimer: s.raidActiveTimer ?? 0,
+        raidInitiator: s.raidInitiator || '',
         timestamp: Date.now()
       };
 
@@ -2951,10 +3120,10 @@ export default function SurvivalGame() {
   // Initialize Game Function
   const initGame = useCallback(() => {
     const initialPl = {
-      x: Math.floor(ZW / 2) * TZ + TZ / 2,
-      y: Math.floor(ZH / 2) * TZ + TZ / 2,
-      targetX: Math.floor(ZW / 2) * TZ + TZ / 2,
-      targetY: Math.floor(ZH / 2) * TZ + TZ / 2,
+      x: (ZW + 40) * TZ + TZ / 2,
+      y: 40 * TZ + TZ / 2,
+      targetX: (ZW + 40) * TZ + TZ / 2,
+      targetY: 40 * TZ + TZ / 2,
       isGridMoving: false,
       hp: 100, mhp: 100, hu: 100, th: 100, sta: 100, mp: 100, mmp: 100,
       ico: '🧍', class: 'Survivor', charName: 'Hero', townName: 'Camp Horizon', townLvl: 1,
@@ -3024,9 +3193,11 @@ export default function SurvivalGame() {
         const ox = zc * ZW, oy = zr * ZH;
         let spawnedNPCInZone = false;
 
-        const isTownZone = (zc === 1 && zr === 0) || (zc === 4 && zr === 4) || (zc === 2 && zr === 6) || (zc === 7 && zr === 2);
+        const isTownZone = (zc === 1 && zr === 0) || (zc === 4 && zr === 4) || (zc === 2 && zr === 6) || (zc === 7 && zr === 2) || (zc === 3 && zr === 1) || (zc === 0 && zr === 5) || (zc === 5 && zr === 6);
         const isBanditZone = (zc === 2 && zr === 1) || (zc === 5 && zr === 3) || (zc === 6 && zr === 5);
-        const isCaveZone = (zc === 0 && zr === 1) || (zc === 3 && zr === 3) || (zc === 5 && zr === 4) || (zc === 1 && zr === 5) || (zc === 6 && zr === 2) || (zc === 4 && zr === 7);
+        const isCaveZone = (zc === 0 && zr === 1) || (zc === 3 && zr === 3) || (zc === 5 && zr === 4) || (zc === 1 && zr === 5) || (zc === 6 && zr === 2) || (zc === 4 && zr === 7) || (zc === 2 && zr === 0) || (zc === 7 && zr === 4) || (zc === 1 && zr === 7) || (zc === 4 && zr === 3);
+        const isCastleZone = (zc === 3 && zr === 0) || (zc === 6 && zr === 6) || (zc === 0 && zr === 2);
+        const isDungeonZone = (zc === 5 && zr === 1) || (zc === 2 && zr === 5) || (zc === 7 && zr === 7);
 
         for (let ly = 0; ly < ZH; ly++) {
           if (!world[oy + ly]) world[oy + ly] = [];
@@ -3037,6 +3208,10 @@ export default function SurvivalGame() {
             // Town plaza paved stone floor
             if (isTownZone && lx >= 34 && lx <= 46 && ly >= 34 && ly <= 46) {
               world[wy][wx] = TS; // Stone
+            } else if (isCastleZone && lx >= 34 && lx <= 46 && ly >= 34 && ly <= 46) {
+              world[wy][wx] = TS; // Stone
+            } else if (isDungeonZone && lx >= 34 && lx <= 46 && ly >= 34 && ly <= 46) {
+              world[wy][wx] = TSN; // Dark obsidian/snow stone
             } else if (isBanditZone && lx >= 37 && lx <= 43 && ly >= 37 && ly <= 43) {
               world[wy][wx] = TD; // Dirt floor
             } else {
@@ -3044,10 +3219,12 @@ export default function SurvivalGame() {
             }
             
             const inTownPlaza = isTownZone && lx >= 32 && lx <= 48 && ly >= 32 && ly <= 48;
+            const inCastlePlaza = isCastleZone && lx >= 32 && lx <= 48 && ly >= 32 && ly <= 48;
+            const inDungeonPlaza = isDungeonZone && lx >= 32 && lx <= 48 && ly >= 32 && ly <= 48;
             const inBanditCamp = isBanditZone && lx >= 35 && lx <= 45 && ly >= 35 && ly <= 45;
 
             // Objects Placement
-            if (lx > 2 && lx < ZW - 2 && ly > 2 && ly < ZH - 2 && !inTownPlaza && !inBanditCamp) {
+            if (lx > 2 && lx < ZW - 2 && ly > 2 && ly < ZH - 2 && !inTownPlaza && !inCastlePlaza && !inDungeonPlaza && !inBanditCamp) {
               const randVal = rng();
               const tileType = world[wy][wx];
               
@@ -3322,6 +3499,73 @@ export default function SurvivalGame() {
           objs.push({ type: 'town_house', tx: cx + 5, ty: cy + 5, ico: '🏰', hp: 999 });
           objs.push({ type: 'tavern_bard', tx: cx, ty: cy + 2, hp: 999, mhp: 999, ico: '🪕' });
           objs.push({ type: 'resource_trader', tx: cx - 2, ty: cy + 2, hp: 999, mhp: 999, ico: '🤝' });
+          
+          // Add interactive items in towns!
+          objs.push({ type: 'lumber_hut', tx: cx - 5, ty: cy, hp: 999, mhp: 999, ico: '🪵' });
+          objs.push({ type: 'tavern_keg', tx: cx + 2, ty: cy + 2, hp: 999, mhp: 999, ico: '🍺' });
+          objs.push({ type: 'town_well', tx: cx - 3, ty: cy - 3, hp: 999, mhp: 999, ico: '⛲' });
+          objs.push({ type: 'town_bounty_board', tx: cx + 3, ty: cy + 3, hp: 999, mhp: 999, ico: '📋' });
+          objs.push({ type: 'wishing_well', tx: cx - 4, ty: cy + 4, hp: 999, mhp: 999, ico: '⛩️' });
+        }
+
+        if (isCastleZone) {
+          const cx = ox + 40;
+          const cy = oy + 40;
+          objs.push({ type: 'castle_throne', tx: cx, ty: cy, hp: 999, mhp: 999, ico: '👑' });
+          objs.push({ type: 'castle_treasurer', tx: cx - 2, ty: cy, hp: 999, mhp: 999, ico: '💰' });
+          objs.push({ type: 'castle_chest', tx: cx + 3, ty: cy - 3, hp: 1, mhp: 1, ico: '🧳' });
+          objs.push({ type: 'town_well', tx: cx - 4, ty: cy + 4, hp: 999, mhp: 999, ico: '⛲' });
+          
+          // Spawn royal knights guarding the castle!
+          const guards = ['knight_guard', 'knight_guard'];
+          guards.forEach((eid, idx) => {
+            initialEnemies.push({
+              id: Math.random() + idx + 200,
+              x: (cx + (idx === 0 ? -3 : 3)) * TZ + TZ/2,
+              y: (cy + 2) * TZ + TZ/2,
+              hp: 180,
+              mhp: 180,
+              eid: 'knight_guard',
+              spd: 1.4,
+              dmg: 18,
+              acd: 60,
+              cd: 0,
+              ran: false,
+              spawnZc: zc,
+              spawnZr: zr,
+              isCaveEnemy: false
+            });
+          });
+        }
+
+        if (isDungeonZone) {
+          const cx = ox + 40;
+          const cy = oy + 40;
+          objs.push({ type: 'dungeon_altar', tx: cx, ty: cy, hp: 999, mhp: 999, ico: '😈' });
+          objs.push({ type: 'dungeon_chest', tx: cx - 3, ty: cy + 3, hp: 1, mhp: 1, ico: '🏴‍☠️' });
+          objs.push({ type: 'dungeon_chest', tx: cx + 3, ty: cy + 3, hp: 1, mhp: 1, ico: '💀' });
+          
+          // Spawn elite dungeon monsters and a dungeon boss!
+          const guards = ['skeleton', 'dark_mage', 'lich_boss'];
+          guards.forEach((eid, idx) => {
+            const et = ET[eid] || { hp: 150, spd: 1.3, dmg: 16, acd: 60, ran: false };
+            initialEnemies.push({
+              id: Math.random() + idx + 300,
+              x: (cx + (idx === 0 ? -4 : idx === 1 ? 4 : 0)) * TZ + TZ/2,
+              y: (cy + (idx === 2 ? -4 : 4)) * TZ + TZ/2,
+              hp: eid === 'lich_boss' ? 450 : et.hp,
+              mhp: eid === 'lich_boss' ? 450 : et.hp,
+              eid,
+              spd: et.spd,
+              dmg: et.dmg,
+              acd: et.acd,
+              cd: 0,
+              ran: et.ran,
+              spawnZc: zc,
+              spawnZr: zr,
+              isCaveEnemy: false
+            });
+          });
         }
 
         if (isBanditZone) {
@@ -3409,7 +3653,140 @@ export default function SurvivalGame() {
       cam: { x: initialPl.x - (window.innerWidth / gameZoomRef.current) / 2, y: initialPl.y - (window.innerHeight / gameZoomRef.current) / 2 },
       camShake: 0,
       zoneMaps,
-      worldSeed: currentSeed
+      worldSeed: currentSeed,
+      towns: [
+        {
+          id: 'town_player',
+          name: 'Camp Horizon',
+          zc: 1, zr: 0,
+          faction: 'player',
+          lvl: 1,
+          hp: 1000,
+          mhp: 1000,
+          population: 5,
+          defenses: 20,
+          incomeGold: 10,
+          buildings: {
+            settler_shelter: 1,
+            farm_plot: 1,
+          },
+          upgrades: {
+            walls: 1,
+            barracks: 1
+          },
+          conquered: true
+        },
+        {
+          id: 'town_thornval',
+          name: 'Thornval Post',
+          zc: 3, zr: 1,
+          faction: 'friendly',
+          lvl: 2,
+          hp: 2000,
+          mhp: 2000,
+          population: 15,
+          defenses: 50,
+          incomeGold: 25,
+          buildings: {
+            town_house: 2,
+            merchant_stall: 2,
+          },
+          upgrades: { walls: 2, barracks: 1 },
+          conquered: false
+        },
+        {
+          id: 'town_oak_haven',
+          name: 'Oak Haven',
+          zc: 0, zr: 5,
+          faction: 'friendly',
+          lvl: 2,
+          hp: 1500,
+          mhp: 1500,
+          population: 10,
+          defenses: 30,
+          incomeGold: 15,
+          buildings: {
+            settler_shelter: 2,
+            farm_plot: 3,
+          },
+          upgrades: { walls: 1, barracks: 1 },
+          conquered: false
+        },
+        {
+          id: 'town_scorched_outpost',
+          name: 'Scorched Outpost',
+          zc: 2, zr: 1,
+          faction: 'hostile',
+          lvl: 1,
+          hp: 800,
+          mhp: 800,
+          population: 8,
+          defenses: 15,
+          incomeGold: 0,
+          buildings: {
+            camp_tent: 2,
+          },
+          upgrades: { walls: 1, barracks: 1 },
+          conquered: false
+        },
+        {
+          id: 'town_bandit_citadel',
+          name: 'Bandit Citadel',
+          zc: 5, zr: 3,
+          faction: 'hostile',
+          lvl: 3,
+          hp: 3000,
+          mhp: 3000,
+          population: 25,
+          defenses: 80,
+          incomeGold: 0,
+          buildings: {
+            camp_tent: 5,
+          },
+          upgrades: { walls: 3, barracks: 3 },
+          conquered: false
+        },
+        {
+          id: 'town_shadow_spire',
+          name: 'Shadow Spire',
+          zc: 6, zr: 5,
+          faction: 'hostile',
+          lvl: 3,
+          hp: 2500,
+          mhp: 2500,
+          population: 20,
+          defenses: 70,
+          incomeGold: 0,
+          buildings: {
+            town_house: 1,
+          },
+          upgrades: { walls: 3, barracks: 2 },
+          conquered: false
+        },
+        {
+          id: 'town_eldoria',
+          name: 'Castle Eldoria',
+          zc: 3, zr: 0,
+          faction: 'friendly',
+          lvl: 4,
+          hp: 5000,
+          mhp: 5000,
+          population: 40,
+          defenses: 150,
+          incomeGold: 100,
+          buildings: {
+            town_house: 5,
+            town_workshop: 3,
+          },
+          upgrades: { walls: 5, barracks: 5 },
+          conquered: false
+        }
+      ],
+      raidState: 'standby',
+      nextRaidTicks: 3500,
+      raidWarningTicks: 0,
+      raidActiveTimer: 0,
+      raidInitiator: ''
     };
 
     stateRef.current = newState;
@@ -3420,14 +3797,33 @@ export default function SurvivalGame() {
   useEffect(() => {
     initGame();
 
-    const handleKeyDown = (e: KeyboardEvent) => keysRef.current[e.key] = true;
-    const handleKeyUp = (e: KeyboardEvent) => keysRef.current[e.key] = false;
+    const handleActivity = () => {
+      lastActiveTimeRef.current = Date.now();
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      keysRef.current[e.key] = true;
+      handleActivity();
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      keysRef.current[e.key] = false;
+      handleActivity();
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('mousedown', handleActivity);
+    window.addEventListener('pointerdown', handleActivity);
+    window.addEventListener('pointermove', handleActivity);
+    window.addEventListener('touchstart', handleActivity, { passive: true });
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('mousedown', handleActivity);
+      window.removeEventListener('pointerdown', handleActivity);
+      window.removeEventListener('pointermove', handleActivity);
+      window.removeEventListener('touchstart', handleActivity);
     };
   }, [initGame]);
 
@@ -3905,6 +4301,39 @@ export default function SurvivalGame() {
       if (!s) return;
 
       if (!pausedRef.current) {
+        // --- Inactivity Tracking ---
+        if (joyRef.current.active) {
+          lastActiveTimeRef.current = Date.now();
+        }
+
+        const idleTime = Date.now() - lastActiveTimeRef.current;
+        const idleSec = Math.floor(idleTime / 1000);
+
+        if (idleSec !== lastSecRef.current) {
+          lastSecRef.current = idleSec;
+          setInactiveSeconds(idleSec);
+        }
+
+        const isInactive = idleSec >= 15;
+        
+        // Handle transitions for logs and effects
+        if (isInactive && !wasInactiveRef.current) {
+          wasInactiveRef.current = true;
+          addLog("🤖 Automation Core Online: Autoplay, Combat, Gathering, Vacuum, and Auto-Crafting are now active!", "#22d3ee");
+          spawnExplosion(s, s.pl.x, s.pl.y, '#22d3ee', 25, 'spark');
+        } else if (!isInactive && wasInactiveRef.current) {
+          wasInactiveRef.current = false;
+          addLog("👤 Manual Control Restored: Automation standby.", "#fbbf24");
+          spawnExplosion(s, s.pl.x, s.pl.y, '#fbbf24', 15, 'spark');
+        }
+
+        // Keep automation refs in sync with inactivity state
+        autoAttackRef.current = isInactive;
+        autoHarvestRef.current = isInactive;
+        autoCollectRef.current = isInactive;
+        autoCraftStateRef.current = isInactive;
+        autoPlayRef.current = isInactive;
+
         for (let tickCycle = 0; tickCycle < 3; tickCycle++) {
           // --- Update ---
           s.ticks++;
@@ -5283,6 +5712,50 @@ export default function SurvivalGame() {
 
       // --- Town Structures Income and Production Updates ---
       if (s.ticks % 200 === 0) { // Every 200 ticks (~6-7 seconds)
+        // 1. Reset power status for all structures
+        for (const o of s.objs) {
+          o.isPowered = false;
+        }
+
+        // 2. Identify active Power Sources (Electric Dams adjacent to deep water TW = 3)
+        const powerSources: any[] = [];
+        for (const o of s.objs) {
+          if (o.type === 'electric_dam') {
+            let nearWater = false;
+            for (let dx = -1; dx <= 1; dx++) {
+              for (let dy = -1; dy <= 1; dy++) {
+                const tx = o.tx + dx;
+                const ty = o.ty + dy;
+                if (s.world[ty] && s.world[ty][tx] === TW) {
+                  nearWater = true;
+                }
+              }
+            }
+            if (nearWater) {
+              o.isPowered = true;
+              powerSources.push(o);
+            }
+          }
+        }
+
+        // 3. Propagate power using BFS across electrical structures (up to 4 tiles range)
+        const queue: any[] = [...powerSources];
+        const electricalTypes = ['electric_dam', 'power_wire', 'power_accumulator', 'tesla_coil', 'electric_crafter'];
+        
+        while (queue.length > 0) {
+          const current = queue.shift();
+          for (const other of s.objs) {
+            if (electricalTypes.includes(other.type) && !other.isPowered) {
+              const distTiles = Math.max(Math.abs(current.tx - other.tx), Math.abs(current.ty - other.ty));
+              if (distTiles <= 4) { // Power grid range
+                other.isPowered = true;
+                queue.push(other);
+              }
+            }
+          }
+        }
+
+        // 4. Tick all structures based on their behaviors and power states
         for (const o of s.objs) {
           const ox = o.tx * TZ + TZ / 2;
           const oy = o.ty * TZ + TZ / 2;
@@ -5307,6 +5780,264 @@ export default function SurvivalGame() {
           } else if (o.type === 'farm_plot') {
             s.pl.inv.berry = (s.pl.inv.berry || 0) + 1;
             s.parts.push({ x: ox, y: oy, vx: 0, vy: -1.2, life: 25, col: '#10b981', sz: 4 });
+          } else if (o.type === 'lumber_hut') {
+            s.pl.inv.wood = (s.pl.inv.wood || 0) + 10;
+            s.parts.push({ x: ox, y: oy, vx: 0, vy: -1.2, life: 25, col: '#854d0e', sz: 5 });
+            addLog("🪵 Your Lumber Hut woodcutters gathered +10 Wood passively!", '#fb923c');
+          } else if (o.type === 'electric_dam') {
+            if (o.isPowered) {
+              s.parts.push({ x: ox, y: oy, vx: 0, vy: -0.8, life: 15, col: '#06b6d4', sz: 6 });
+              if (Math.random() < 0.2) {
+                addLog("🎛️ Electric Dam generating grid electricity from river flow!", '#06b6d4');
+              }
+            } else {
+              s.parts.push({ x: ox, y: oy, vx: 0, vy: -0.8, life: 15, col: '#ef4444', sz: 4 });
+            }
+          } else if (o.type === 'tesla_coil') {
+            if (o.isPowered) {
+              // Target nearest enemy
+              let nearestEnemy: any = null;
+              let minDist = 220; // attack radius
+              for (const enemy of s.enemies) {
+                const d = Math.hypot(enemy.x - ox, enemy.y - oy);
+                if (d < minDist) {
+                  minDist = d;
+                  nearestEnemy = enemy;
+                }
+              }
+              if (nearestEnemy) {
+                nearestEnemy.hp -= 120;
+                nearestEnemy.flashTicks = 15;
+                // Draw electric lightning bolts
+                for (let k = 0; k <= 10; k++) {
+                  const t = k / 10;
+                  const lx = ox + (nearestEnemy.x - ox) * t + (Math.random() - 0.5) * 8;
+                  const ly = oy + (nearestEnemy.y - oy) * t + (Math.random() - 0.5) * 8;
+                  s.parts.push({ x: lx, y: ly, vx: 0, vy: 0, life: 10, col: '#00ffff', sz: 2 });
+                }
+                spawnExplosion(s, nearestEnemy.x, nearestEnemy.y, '#00ffff', 12, 'spark');
+                addLog("⚡ Tesla Defense Coil discharged lightning on enemy! -120 HP!", '#00ffff');
+              } else {
+                if (Math.random() < 0.4) {
+                  s.parts.push({ x: ox + (Math.random() - 0.5) * 8, y: oy - 8, vx: 0, vy: -0.4, life: 10, col: '#00ffff', sz: 1.5 });
+                }
+              }
+            } else {
+              if (Math.random() < 0.2) {
+                s.parts.push({ x: ox, y: oy - 10, vx: 0, vy: -0.3, life: 12, col: '#ef4444', sz: 2 });
+              }
+            }
+          } else if (o.type === 'electric_crafter') {
+            if (o.isPowered) {
+              s.pl.inv.steel_bar = (s.pl.inv.steel_bar || 0) + 1;
+              s.parts.push({ x: ox, y: oy, vx: 0, vy: -1.2, life: 25, col: '#00ffff', sz: 5 });
+              addLog("🏭 Electric Auto-Crafter produced 1x Steel Bar using grid electricity!", '#00ffff');
+            } else {
+              s.parts.push({ x: ox, y: oy, vx: 0, vy: -0.6, life: 15, col: '#ef4444', sz: 3 });
+              if (Math.random() < 0.1) {
+                addLog("🏭 Electric Auto-Crafter is unpowered! Connect it to an Electric Dam grid.", '#ef4444');
+              }
+            }
+          } else if (o.type === 'power_accumulator') {
+            if (o.isPowered) {
+              if (Math.random() < 0.3) {
+                s.parts.push({ x: ox + (Math.random() - 0.5) * 6, y: oy - 6, vx: 0, vy: -0.4, life: 12, col: '#22c55e', sz: 2 });
+              }
+            }
+          }
+        }
+
+        // --- EMPIRE-WIDE PASSIVE TOWN RESOURCE COLLECTION (TAXES) ---
+        if (s.towns && s.towns.length > 0) {
+          let totalGoldTax = 0;
+          let addedItems: { [key: string]: number } = {};
+
+          s.towns.forEach((town: any) => {
+            if (town.faction === 'player' || town.conquered) {
+              // 1. Regional taxes based on level and conquest
+              let townTax = 10 * (town.lvl || 1);
+              if (town.id !== 'town_player') {
+                // Conquered/Governed town taxes!
+                townTax = 15 * (town.lvl || 1);
+              }
+              totalGoldTax += townTax;
+
+              // 2. Extra item generation based on region
+              if (town.id === 'town_scorched_outpost') {
+                addedItems.iron_bar = (addedItems.iron_bar || 0) + 1;
+              } else if (town.id === 'town_bandit_citadel') {
+                addedItems.iron_bar = (addedItems.iron_bar || 0) + 2;
+                addedItems.gold_coins = (addedItems.gold_coins || 0) + 20;
+              } else if (town.id === 'town_shadow_spire') {
+                addedItems.gem = (addedItems.gem || 0) + 1;
+              } else if (town.id === 'town_eldoria') {
+                addedItems.gold_bar = (addedItems.gold_bar || 0) + 1;
+                addedItems.gold_coins = (addedItems.gold_coins || 0) + 50;
+              } else if (town.id === 'town_thornval') {
+                addedItems.gold_coins = (addedItems.gold_coins || 0) + 15;
+              } else if (town.id === 'town_oak_haven') {
+                addedItems.berry = (addedItems.berry || 0) + 3;
+                addedItems.wood = (addedItems.wood || 0) + 10;
+              }
+            }
+          });
+
+          if (totalGoldTax > 0) {
+            s.pl.inv.gold_coins = (s.pl.inv.gold_coins || 0) + totalGoldTax;
+          }
+          Object.entries(addedItems).forEach(([item, qty]) => {
+            s.pl.inv[item] = (s.pl.inv[item] || 0) + qty;
+          });
+
+          if (Math.random() < 0.25) { // Log occasionally to not spam
+            let msg = `💰 Empire passive yield: +${totalGoldTax} Gold Coins`;
+            Object.entries(addedItems).forEach(([item, qty]) => {
+              const itemLabel = item.replace('_', ' ').toUpperCase();
+              msg += `, +${qty} ${itemLabel}`;
+            });
+            addLog(msg + "!", '#fcd34d');
+          }
+        }
+      }
+
+      // --- TOWN RAID AND INVASION MECHANICS ---
+      if (s.towns && s.towns.length > 0) {
+        if (!s.raidState) s.raidState = 'standby';
+        if (s.nextRaidTicks === undefined) s.nextRaidTicks = 3500;
+
+        if (s.raidState === 'standby') {
+          s.nextRaidTicks--;
+          if (s.nextRaidTicks <= 0) {
+            // Find a hostile or neutral town to launch the raid
+            const hostileTowns = s.towns.filter((t: any) => t.faction === 'hostile' && !t.conquered);
+            if (hostileTowns.length > 0) {
+              const selectedTown = hostileTowns[Math.floor(Math.random() * hostileTowns.length)];
+              s.raidInitiator = selectedTown.name;
+              s.raidState = 'warning';
+              s.raidWarningTicks = 1200; // ~40 seconds of warning
+              addLog(`🚨 WARNING: Scanner reports hostile raiders from ${selectedTown.name} are marching towards Camp Horizon! Defenses prepared in 40 seconds.`, '#f87171');
+              spawnExplosion(s, s.pl.x, s.pl.y, '#f87171', 20, 'spell');
+            } else {
+              // No hostile towns left! The world is fully conquered!
+              s.nextRaidTicks = 8000; // delay next check
+            }
+          }
+        } else if (s.raidState === 'warning') {
+          s.raidWarningTicks--;
+          if (s.raidWarningTicks % 300 === 0 && s.raidWarningTicks > 0) {
+            addLog(`⚠️ Raid Warning: Hostile forces approaching in ${Math.round(s.raidWarningTicks / 30)} seconds!`, '#fb923c');
+          }
+          if (s.raidWarningTicks <= 0) {
+            // Start the raid!
+            s.raidState = 'active';
+            s.raidActiveTimer = 3600; // 2 minutes max raid length
+
+            // Check if player is currently in the starting town zone (zc = 1, zr = 0)
+            const zoneC = Math.floor(s.pl.x / (ZW * TZ));
+            const zoneR = Math.floor(s.pl.y / (ZH * TZ));
+
+            if (zoneC === 1 && zoneR === 0) {
+              // Physically spawn a squad of raiders at the edge of the zone and let them attack the town!
+              const raiderIds = ['bandit', 'bandit', 'archer', 'orc', 'bandit_chief'];
+              // If player has upgraded town level, scale raid difficulty!
+              const playerTown = s.towns.find((t: any) => t.id === 'town_player');
+              const extraLevel = playerTown ? playerTown.lvl : 1;
+              if (extraLevel >= 2) raiderIds.push('orc');
+              if (extraLevel >= 3) raiderIds.push('orc_chief');
+              if (extraLevel >= 4) raiderIds.push('troll');
+
+              raiderIds.forEach((eid, idx) => {
+                const et = ET[eid];
+                if (et) {
+                  // Spawn them at some distance from town center
+                  const angle = (idx / raiderIds.length) * Math.PI * 2;
+                  const distance = 400 + Math.random() * 100;
+                  const rx = (1 * ZW + 40) * TZ + Math.cos(angle) * distance;
+                  const ry = 40 * TZ + Math.sin(angle) * distance;
+
+                  s.enemies.push({
+                    id: Math.random() + idx + 500,
+                    x: rx,
+                    y: ry,
+                    hp: et.hp * (1 + extraLevel * 0.15),
+                    mhp: et.hp * (1 + extraLevel * 0.15),
+                    eid,
+                    spd: et.spd * 1.1,
+                    dmg: Math.round(et.dmg * (1 + extraLevel * 0.1)),
+                    acd: et.acd,
+                    cd: 0,
+                    ran: et.ran,
+                    spawnZc: 1,
+                    spawnZr: 0,
+                    isRaidEnemy: true
+                  });
+                }
+              });
+
+              addLog(`⚔️ RAID ACTIVE: The raiders have breached the town perimeter of Camp Horizon! To arms!`, '#ef4444');
+              spawnExplosion(s, (1 * ZW + 40) * TZ, 40 * TZ, '#ef4444', 30, 'spell');
+            } else {
+              // Player is absent! Resolve the raid in the background using auto-calculation!
+              const playerTown = s.towns.find((t: any) => t.id === 'town_player');
+              const townLvl = playerTown ? playerTown.lvl : 1;
+              const wallsLvl = playerTown?.upgrades?.walls || 1;
+              const barracksLvl = playerTown?.upgrades?.barracks || 1;
+
+              // Guard post count
+              const guardPostCount = s.objs.filter((o: any) => o.type === 'guard_post').length;
+
+              // Defense strength calculation
+              const defensePower = (townLvl * 60) + (wallsLvl * 80) + (guardPostCount * 50) + (s.companions.length * 40);
+              // Raider attack power
+              const raiderPower = 120 + Math.random() * 200 + (townLvl * 30);
+
+              if (defensePower >= raiderPower) {
+                // Defense successful!
+                const lootGained = Math.round(50 + Math.random() * 100 + (barracksLvl * 20));
+                s.pl.inv.gold_coins = (s.pl.inv.gold_coins || 0) + lootGained;
+                addLog(`🛡️ Raid Repelled: While you were away, Camp Horizon repelled a raid from ${s.raidInitiator}! Town guards recovered +${lootGained} Gold Coins from fallen bandits.`, '#10b981');
+              } else {
+                // Defeated/Plundered!
+                const lootLost = Math.round(150 + Math.random() * 150 - (wallsLvl * 15));
+                const finalLoss = Math.max(50, Math.min(s.pl.inv.gold_coins || 0, lootLost));
+                s.pl.inv.gold_coins = Math.max(0, (s.pl.inv.gold_coins || 0) - finalLoss);
+                
+                // Damage some buildings in database
+                if (playerTown && Math.random() < 0.5) {
+                  playerTown.hp = Math.max(100, playerTown.hp - 200);
+                  addLog(`💔 Raid Plunder: Camp Horizon was overrun by raiders from ${s.raidInitiator}! Stole ${finalLoss} Gold Coins and severely damaged the town hall defenses!`, '#ef4444');
+                } else {
+                  addLog(`💔 Raid Plunder: Camp Horizon was overrun by raiders from ${s.raidInitiator}! They ransacked the vaults and stole ${finalLoss} Gold Coins.`, '#ef4444');
+                }
+              }
+
+              // Reset to standby
+              s.raidState = 'standby';
+              s.nextRaidTicks = 6000 + Math.random() * 4000;
+            }
+          }
+        } else if (s.raidState === 'active') {
+          s.raidActiveTimer--;
+
+          // Check if all raid enemies are defeated in the home town
+          const activeRaidEnemies = s.enemies.filter((e: any) => e.isRaidEnemy);
+          if (activeRaidEnemies.length === 0 || s.raidActiveTimer <= 0) {
+            // Victory or timeout repelled!
+            if (activeRaidEnemies.length === 0) {
+              const reward = 250 + Math.floor(Math.random() * 150);
+              s.pl.inv.gold_coins = (s.pl.inv.gold_coins || 0) + reward;
+              addLog(`🏆 RAID REPELLED! You have successfully repelled the raiders from ${s.raidInitiator}! Earned +${reward} Gold Coins.`, '#10b981');
+              spawnExplosion(s, s.pl.x, s.pl.y, '#10b981', 25, 'spell');
+            } else {
+              addLog(`⌛ Raid Ended: The raiders retreated after a fierce skirmish.`, '#fb923c');
+            }
+
+            // Clean up any remaining raid enemies
+            s.enemies = s.enemies.filter((e: any) => !e.isRaidEnemy);
+
+            // Reset
+            s.raidState = 'standby';
+            s.nextRaidTicks = 6000 + Math.random() * 4000; // 3-5 mins cooldown
           }
         }
       }
@@ -6453,7 +7184,22 @@ export default function SurvivalGame() {
           // Fallback simple emoji drawing with shadow
           const ico = o.ico || IT[o.type]?.ico || '?';
           ctx.font = `${TZ - 2}px serif`;
-          ctx.fillText(ico, ox, oy);
+          
+          if (o.isPowered) {
+            ctx.save();
+            ctx.shadowColor = '#00ffff';
+            ctx.shadowBlur = 12;
+            ctx.fillText(ico, ox, oy);
+            
+            // Draw a tiny electric bolt hovering above it!
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#00ffff';
+            ctx.font = '10px sans-serif';
+            ctx.fillText('⚡', ox, oy - TZ/2 - 4);
+            ctx.restore();
+          } else {
+            ctx.fillText(ico, ox, oy);
+          }
         }
 
         // --- DYNAMIC REAL-TIME PROXIMITY LIGHTING OVERLAY ---
@@ -8358,14 +9104,14 @@ export default function SurvivalGame() {
     if (!s) return;
     s.pl.hp = s.pl.mhp;
     s.pl.hu = 100;
-    s.pl.x = Math.floor(ZW / 2) * TZ + TZ / 2;
-    s.pl.y = Math.floor(ZH / 2) * TZ + TZ / 2;
+    s.pl.x = (ZW + 40) * TZ + TZ / 2;
+    s.pl.y = 40 * TZ + TZ / 2;
     s.pl.targetX = s.pl.x;
     s.pl.targetY = s.pl.y;
     s.pl.isGridMoving = false;
     s.enemies = [];
     setShowDeathScreen(false);
-    addLog("Respawned at start", "#88ccff");
+    addLog("⚓ Respawned safely back at Camp Horizon town plaza!", "#88ccff");
   };
 
   const handleTame = () => {
@@ -9184,6 +9930,105 @@ export default function SurvivalGame() {
     // Spend stamina
     s.pl.sta = Math.max(0, (s.pl.sta || 100) - 4);
 
+    const activeItemKey = s.pl.hotbar[hotSlot];
+    const activeItem = activeItemKey ? IT[activeItemKey] : null;
+
+    if (activeItemKey === 'excavator_shovel') {
+      const tileType = s.world[ty]?.[tx];
+      // Can't excavate a tile with an existing object on it
+      const objectOnTile = s.objs.some(o => o.tx === tx && o.ty === ty);
+      if (objectOnTile) {
+        addLog("Cannot excavate here: clear any structures, trees, or rocks first!", "#ff8888");
+        return;
+      }
+      
+      if (tileType === TW) {
+        // Fill water to land!
+        s.world[ty][tx] = TG; // turn into rich grass
+        addLog(`🥄 Used Excavator Shovel: Filled water to create fertile Grass land at [${tx}, ${ty}]!`, '#84cc16');
+        spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#84cc16', 15, 'spark');
+      } else if (tileType === TLV) {
+        addLog("🥄 Lava is too hot to fill with standard earth!", "#ff8888");
+      } else {
+        // Dig land to water!
+        s.world[ty][tx] = TW; // turn into water!
+        addLog(`🥄 Used Excavator Shovel: Dug land to create a Deep Water canal at [${tx}, ${ty}]!`, '#38bdf8');
+        spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#38bdf8', 15, 'spark');
+      }
+      return;
+    }
+
+    if (activeItem && activeItem.t === 'struct') {
+      // Check if the tile already has an object on it!
+      const objectOnTile = s.objs.some(o => o.tx === tx && o.ty === ty);
+      if (objectOnTile) {
+        addLog("Cannot build here: space is already occupied!", "#ff8888");
+        return;
+      }
+      
+      // Check if the tile is a blocked tile (like Deep Water, unless it's an electric dam!)
+      const tileType = s.world[ty]?.[tx];
+      if (tileType === TW && activeItemKey !== 'electric_dam') {
+        addLog("Cannot build here: deep water is blocking construction!", "#ff8888");
+        return;
+      }
+      if (tileType === TLV) {
+        addLog("Cannot build here: molten lava is burning hot!", "#ff8888");
+        return;
+      }
+
+      // Special check for Electric Dam: Must be adjacent to deep water!
+      if (activeItemKey === 'electric_dam') {
+        let adjToWater = false;
+        const adjacentCoords = [
+          {x: tx - 1, y: ty}, {x: tx + 1, y: ty},
+          {x: tx, y: ty - 1}, {x: tx, y: ty + 1}
+        ];
+        for (const coord of adjacentCoords) {
+          if (s.world[coord.y]?.[coord.x] === TW) {
+            adjToWater = true;
+            break;
+          }
+        }
+        if (!adjToWater) {
+          addLog("Electric Dam must be placed adjacent to a deep water tile!", "#ff8888");
+          return;
+        }
+      }
+
+      // Placing the structure at tx, ty!
+      const bldLvl = s.pl.skills?.building?.lvl || 1;
+      let baseHp = 10;
+      if (activeItemKey === 'stone_wall') baseHp = 25;
+      else if (activeItemKey === 'watch_tower') baseHp = 60;
+      else if (activeItemKey === 'lumber_hut') baseHp = 45;
+      else if (activeItemKey === 'electric_dam') baseHp = 80;
+      else if (activeItemKey === 'tesla_coil') baseHp = 100;
+      else if (activeItemKey === 'electric_crafter') baseHp = 90;
+      else if (activeItemKey === 'power_wire') baseHp = 15;
+      else if (activeItemKey === 'power_accumulator') baseHp = 65;
+      else if (activeItemKey === 'water_pump') baseHp = 40;
+      else if (activeItemKey === 'water_reservoir') baseHp = 40;
+      else if (activeItemKey === 'water_pipe') baseHp = 15;
+      else if (activeItemKey === 'supply_crate') baseHp = 30;
+      else if (activeItemKey === 'sentry_turret') baseHp = 35;
+      else if (activeItemKey === 'settler_shelter') baseHp = 50;
+      else if (activeItemKey === 'town_house') baseHp = 70;
+      else if (activeItemKey === 'town_workshop') baseHp = 90;
+      else if (activeItemKey === 'storage_depot') baseHp = 100;
+      else if (activeItemKey === 'merchant_stall') baseHp = 60;
+      else if (activeItemKey === 'guard_post') baseHp = 80;
+      else if (activeItemKey === 'farm_plot') baseHp = 30;
+
+      const finalHp = Math.round(baseHp * (1 + 0.25 * (bldLvl - 1)));
+      s.objs.push({ type: activeItemKey, tx, ty, hp: finalHp, mhp: finalHp, triggered: false });
+      s.pl.inv[activeItemKey]--;
+      addLog(`🔨 Constructed ${activeItem.n} at tile [${tx}, ${ty}] (Durability: ${finalHp}/${finalHp})`, '#10b981');
+      addSkillXPDirect(s, 'building', 35);
+      spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#10b981', 15, 'spark');
+      return;
+    }
+
     // Check if clicking on an object in s.objs
     let objGathered = false;
     for (let i = s.objs.length - 1; i >= 0; i--) {
@@ -9456,6 +10301,117 @@ export default function SurvivalGame() {
           enterCave(s, 'forgotten_cave');
         } else if (o.type === 'cave_exit') {
           exitCave(s);
+        } else if (o.type === 'lumber_hut') {
+          const goldCost = 100;
+          if ((s.pl.inv.gold_coins || 0) >= goldCost) {
+            s.pl.inv.gold_coins -= goldCost;
+            awardInvItem(s, 'wood', 50);
+            addLog("🪵 Hired expert lumberjacks! They immediately delivered +50 Wood logs to your backpack!", "#fb923c");
+            spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#fb923c', 15, 'spark');
+          } else {
+            addLog(`🪵 Lumber Hut: Hire lumberjacks for 🪙${goldCost} Gold Coins to get +50 Wood instantly!`, '#fb923c');
+          }
+        } else if (o.type === 'town_well') {
+          s.pl.th = 100;
+          let refilledCount = 0;
+          const canteenQty = s.pl.inv['canteen_empty'] || 0;
+          if (canteenQty > 0) {
+            s.pl.inv['canteen_empty'] = 0;
+            s.pl.inv['canteen_full'] = (s.pl.inv['canteen_full'] || 0) + canteenQty;
+            refilledCount = canteenQty;
+          }
+          addLog(` Fountain / Well: Drank from the sweet Town Well! Quenched thirst completely and refilled ${refilledCount} empty canteens!`, '#38bdf8');
+          spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#38bdf8', 12, 'spark');
+        } else if (o.type === 'wishing_well') {
+          if ((s.pl.inv.gold_coins || 0) >= 15) {
+            s.pl.inv.gold_coins -= 15;
+            const blessings = [
+              { n: "Healing Water", act: () => { s.pl.hp = s.pl.mhp; addLog("❤️ The well blesses you: health fully restored!", "#10b981"); } },
+              { n: "Mana Infusion", act: () => { s.pl.mp = s.pl.mmp; addLog("🔮 The well blesses you: mana fully restored!", "#a855f7"); } },
+              { n: "Gilded Pebble", act: () => { s.pl.inv.gold_bar = (s.pl.inv.gold_bar || 0) + 2; addLog("⭐ The well tosses back 2 Gold Bars!", "#fbbf24"); } },
+              { n: "Iron Shard", act: () => { s.pl.inv.iron_bar = (s.pl.inv.iron_bar || 0) + 3; addLog("🔩 The well tosses back 3 Iron Bars!", "#a1a1aa"); } },
+              { n: "Void Drop", act: () => { s.pl.inv.void_crystal = (s.pl.inv.void_crystal || 0) + 1; addLog("🔮 The well tosses back 1 Void Crystal!", "#ec4899"); } }
+            ];
+            const b = blessings[Math.floor(Math.random() * blessings.length)];
+            b.act();
+            spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#00ffff', 20, 'spark');
+          } else {
+            addLog("⛩️ Wishing Well: Toss 🪙15 Gold Coins into the well for a dynamic mystical blessing!", "#38bdf8");
+          }
+        } else if (o.type === 'tavern_keg') {
+          const goldCost = 10;
+          if ((s.pl.inv.gold_coins || 0) >= goldCost) {
+            s.pl.inv.gold_coins -= goldCost;
+            s.pl.hu = Math.min(100, (s.pl.hu || 100) + 25);
+            s.pl.sta = Math.min(100, (s.pl.sta || 100) + 30);
+            s.pl.hp = Math.min(s.pl.mhp, s.pl.hp + 15);
+            addLog("🍺 Chugged a mug of Frostmead Lute Stout! +25 Satiety, +30 Stamina, +15 HP!", "#fb923c");
+            spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#fbbf24', 10, 'spark');
+          } else {
+            addLog(`🍺 Tavern Keg: Buy a mug of Frostmead Lute Stout for 🪙${goldCost} Gold Coins to restore Stamina, Health, and Hunger!`, '#fb923c');
+          }
+        } else if (o.type === 'town_bounty_board') {
+          const woodQty = s.pl.inv.wood || 0;
+          const stoneQty = s.pl.inv.stone || 0;
+          if (woodQty >= 10 && stoneQty >= 10) {
+            s.pl.inv.wood -= 10;
+            s.pl.inv.stone -= 10;
+            s.pl.inv.gold_coins = (s.pl.inv.gold_coins || 0) + 75;
+            addLog("📋 Completed Town Contract: Delivered 10 Wood and 10 Stone for +🪙75 Gold Coins!", "#10b981");
+            spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#10b981', 15, 'spark');
+          } else {
+            addLog("📋 Town Bounty Board: Complete local construction contracts. Bring 10 Wood and 10 Stone for a 🪙75 Gold Coins payout!", "#67e8f9");
+          }
+        } else if (o.type === 'castle_throne') {
+          addLog("👑 You stand before the Ancient King's Throne. The kingdom of Antigravity is yours to defend!", "#fbbf24");
+          if (s.pl.lvl >= 10 && !s.pl.kingBlessing) {
+            s.pl.kingBlessing = true;
+            s.pl.mhp += 50;
+            s.pl.hp = s.pl.mhp;
+            addLog("👑 The King rewards your achievements! Max HP permanently increased by +50!", "#eab308");
+            spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#eab308', 25, 'spark');
+          } else if (!s.pl.kingBlessing) {
+            addLog("👑 The King's Throne: Reach Level 10 to receive the Royal Knight Blessing (+50 Max HP permanently!).", "#94a3b8");
+          }
+        } else if (o.type === 'castle_treasurer') {
+          const gems = s.pl.inv.gem || 0;
+          if (gems > 0) {
+            s.pl.inv.gem--;
+            s.pl.inv.gold_coins = (s.pl.inv.gold_coins || 0) + 250;
+            addLog("💰 Royal Treasurer: Traded 1 Jewel Gem for +🪙250 Gold Coins!", "#10b981");
+            spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#10b981', 12, 'spark');
+          } else {
+            addLog("💰 Royal Treasurer: 'Greetings, adventurer! Bring me any jewel Gems and I will purchase them for 🪙250 Gold Coins each!'", "#fbbf24");
+          }
+        } else if (o.type === 'castle_chest') {
+          s.objs.splice(i, 1);
+          const goldBonus = 400 + Math.floor(Math.random() * 400);
+          s.pl.inv.gold_coins = (s.pl.inv.gold_coins || 0) + goldBonus;
+          s.pl.inv.gold_bar = (s.pl.inv.gold_bar || 0) + 4;
+          s.pl.inv.steel_bar = (s.pl.inv.steel_bar || 0) + 3;
+          s.pl.inv.gem = (s.pl.inv.gem || 0) + 2;
+          addLog(`🧳 Opened Castle Treasury Chest! +🪙${goldBonus} Gold, +4 Gold Bars, +3 Steel Bars, +2 Gems!`, '#fbbf24');
+          spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#fbbf24', 20, 'spark');
+        } else if (o.type === 'dungeon_altar') {
+          if (s.pl.mp >= 30) {
+            s.pl.mp -= 30;
+            s.pl.inv.magic_essence = (s.pl.inv.magic_essence || 0) + 5;
+            s.pl.inv.void_crystal = (s.pl.inv.void_crystal || 0) + 1;
+            addLog("🔮 Channeled the Dungeon Altar: Consumed 30 MP to manifest +5 Magic Essence and +1 Void Crystal!", "#a855f7");
+            spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#c084fc', 18, 'spark');
+          } else {
+            addLog("🔮 Dungeon Altar: Requires 30 MP to channel. Channeling harvests high-tier Magic Essence and Void Crystals!", "#a855f7");
+          }
+        } else if (o.type === 'dungeon_chest') {
+          s.objs.splice(i, 1);
+          const goldBonus = 300 + Math.floor(Math.random() * 300);
+          s.pl.inv.gold_coins = (s.pl.inv.gold_coins || 0) + goldBonus;
+          s.pl.inv.void_crystal = (s.pl.inv.void_crystal || 0) + 4;
+          s.pl.inv.mana_crystal = (s.pl.inv.mana_crystal || 0) + 4;
+          s.pl.inv.celestial_shard = (s.pl.inv.celestial_shard || 0) + 2;
+          s.pl.inv.temporal_shard = (s.pl.inv.temporal_shard || 0) + 1;
+          addLog(`🏴‍☠️ Opened Dungeon Crypt Chest! +🪙${goldBonus} Gold, +4 Void Crystals, +4 Mana Crystals, +2 Celestial Shards, +1 Temporal Shard!`, '#ef4444');
+          spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#f43f5e', 22, 'spark');
         }
         break; // Process one object click per pointer down
       }
@@ -11033,7 +11989,7 @@ export default function SurvivalGame() {
 
       {/* --- HUD --- */}
       <div className={`absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none z-10 transition-all duration-300 ${isHUDHidden ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
-        <div className="flex flex-col gap-2 max-h-[85vh] overflow-y-auto pr-2 scrollbar-none pointer-events-none select-none">
+        <div className="flex flex-col gap-2 max-h-[85vh] overflow-y-auto pr-2 scrollbar-none pointer-events-none select-none mt-12">
           
           {/* Detailed, RPG-Style Survival Status Panel */}
           {isStatusCollapsed ? (
@@ -11250,7 +12206,9 @@ export default function SurvivalGame() {
           {/* Automation Cores Control Center */}
           {isAutoCollapsed ? (
             <div className="flex items-center justify-between p-2.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-lg pointer-events-auto w-[250px] select-none font-mono">
-              <span className="text-[10px] font-bold text-teal-400 uppercase tracking-wider flex items-center gap-1">🤖 Automation ({(autoAttack ? 1:0)+(autoHarvest ? 1:0)+(autoCollect ? 1:0)+(autoCraftState ? 1:0)}/4 CORES)</span>
+              <span className="text-[10px] font-bold text-teal-400 uppercase tracking-wider flex items-center gap-1">
+                🤖 AUTOMATION: {inactiveSeconds >= 15 ? 'ACTIVE' : `${Math.max(0, 15 - inactiveSeconds)}S`}
+              </span>
               <button 
                 onClick={() => setIsAutoCollapsed(false)} 
                 className="px-2 py-0.5 bg-zinc-900 border border-white/10 hover:border-teal-500/50 hover:bg-zinc-800 text-[9px] rounded-lg text-white font-bold cursor-pointer transition-all active:scale-95"
@@ -11259,10 +12217,10 @@ export default function SurvivalGame() {
               </button>
             </div>
           ) : (
-            <div className="flex flex-col gap-2 p-3.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto min-w-[250px] select-none text-white font-mono">
+            <div className="flex flex-col gap-2.5 p-3.5 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto min-w-[250px] select-none text-white font-mono">
               <div className="flex items-center gap-1.5 border-b border-white/10 pb-2 justify-between">
                 <span className="text-[10px] font-bold tracking-widest uppercase text-teal-400 flex items-center gap-1">
-                  🤖 Automation Cores
+                  🤖 Automation Center
                 </span>
                 <button 
                   onClick={() => setIsAutoCollapsed(true)} 
@@ -11272,86 +12230,92 @@ export default function SurvivalGame() {
                   ▼ HIDE
                 </button>
               </div>
-              <div className="flex flex-col gap-1">
-                <button
-                  onClick={() => setAutoAttack(prev => !prev)}
-                  className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase flex items-center justify-between transition-all border cursor-pointer ${
-                    autoAttack 
-                      ? 'bg-red-500/20 border-red-500/50 text-red-300 shadow-[0_0_10px_rgba(239,68,68,0.2)]' 
-                      : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
-                  }`}
-                >
-                  <span>⚔️ Combat Core</span>
-                  <span className={autoAttack ? 'text-red-400 animate-pulse font-black' : 'text-zinc-500'}>
-                    {autoAttack ? 'ON' : 'OFF'}
+
+              {/* Status Header */}
+              {inactiveSeconds >= 15 ? (
+                <div className="p-2.5 bg-cyan-500/10 border border-cyan-500/30 rounded-xl flex flex-col gap-1 text-center">
+                  <span className="text-[11px] font-black tracking-widest text-cyan-400 animate-pulse">
+                    ⚡ STATUS: ACTIVE (IDLE)
                   </span>
-                </button>
-                <button
-                  onClick={() => setAutoHarvest(prev => !prev)}
-                  className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase flex items-center justify-between transition-all border cursor-pointer ${
-                    autoHarvest 
-                      ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300 shadow-[0_0_10px_rgba(234,179,8,0.2)]' 
-                      : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
-                  }`}
-                >
-                  <span>🪵 Gathering Core</span>
-                  <span className={autoHarvest ? 'text-yellow-400 animate-pulse font-black' : 'text-zinc-500'}>
-                    {autoHarvest ? 'ON' : 'OFF'}
+                  <span className="text-[9px] text-zinc-400 leading-tight">
+                    Running fully automated survival because you have been inactive for {inactiveSeconds}s.
                   </span>
-                </button>
-                <button
-                  onClick={() => setAutoCollect(prev => !prev)}
-                  className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase flex items-center justify-between transition-all border cursor-pointer ${
-                    autoCollect 
-                      ? 'bg-green-500/20 border-green-500/50 text-green-300 shadow-[0_0_10px_rgba(34,197,94,0.2)]' 
-                      : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
-                  }`}
-                >
-                  <span>🧲 Vacuum Core</span>
-                  <span className={autoCollect ? 'text-green-400 animate-pulse font-black' : 'text-zinc-500'}>
-                    {autoCollect ? 'ON' : 'OFF'}
+                </div>
+              ) : (
+                <div className="p-2.5 bg-zinc-900/60 border border-white/5 rounded-xl flex flex-col gap-1 text-center">
+                  <span className="text-[11px] font-bold tracking-widest text-yellow-400">
+                    💤 STATUS: STANDBY
                   </span>
-                </button>
-                <button
-                  onClick={() => setAutoCraftState(prev => !prev)}
-                  className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase flex items-center justify-between transition-all border cursor-pointer ${
-                    autoCraftState 
-                      ? 'bg-orange-500/20 border-orange-500/50 text-orange-300 shadow-[0_0_10px_rgba(249,115,22,0.2)]' 
-                      : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
-                  }`}
-                >
-                  <span>🛠️ Auto-Craft Core</span>
-                  <span className={autoCraftState ? 'text-orange-400 animate-pulse font-black' : 'text-zinc-500'}>
-                    {autoCraftState ? 'ON' : 'OFF'}
+                  <span className="text-[9px] text-zinc-400 leading-tight">
+                    Activating automatically in <span className="text-white font-bold">{Math.max(0, 15 - inactiveSeconds)}s</span> of inactivity.
                   </span>
-                </button>
-                <button
-                  onClick={() => {
-                    setAutoPlay(prev => {
-                      const newVal = !prev;
-                      if (newVal) {
-                        setAutoAttack(true);
-                        setAutoHarvest(true);
-                        setAutoCollect(true);
-                        setAutoCraftState(true);
-                        addLog("🧠 Neural Autoplay Core Online: Full Autonomous Survival Active!", "#22d3ee");
-                      } else {
-                        addLog("🧠 Neural Autoplay Core Offline", "#a1a1aa");
-                      }
-                      return newVal;
-                    });
-                  }}
-                  className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider uppercase flex items-center justify-between transition-all border cursor-pointer ${
-                    autoPlay 
-                      ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.2)]' 
-                      : 'bg-zinc-900/60 border-white/5 text-zinc-400 hover:border-white/15'
-                  }`}
-                >
-                  <span className="flex items-center gap-1">🤖 Neural Autoplay</span>
-                  <span className={autoPlay ? 'text-cyan-400 animate-pulse font-black' : 'text-zinc-500'}>
-                    {autoPlay ? 'ON' : 'OFF'}
-                  </span>
-                </button>
+                  
+                  {/* Visual Progress Bar */}
+                  <div className="w-full bg-zinc-950 rounded-full h-1.5 mt-1 overflow-hidden border border-white/5">
+                    <div 
+                      className="bg-yellow-500 h-1.5 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.min(100, (inactiveSeconds / 15) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Automation Cores List (Non-interactive display) */}
+              <div className="flex flex-col gap-1 text-[9px] text-zinc-400">
+                <div className="text-[8px] uppercase tracking-wider text-zinc-500 border-b border-white/5 pb-1 mb-1 font-bold">
+                  Active Subsystems on Idle:
+                </div>
+                
+                <div className={`px-2.5 py-1.5 rounded-lg border flex items-center justify-between transition-all ${
+                  inactiveSeconds >= 15 
+                    ? 'bg-red-500/10 border-red-500/20 text-red-300' 
+                    : 'bg-zinc-900/30 border-white/5 opacity-50'
+                }`}>
+                  <span>⚔️ Combat Auto-Attack</span>
+                  <span className="font-bold">{inactiveSeconds >= 15 ? 'RUNNING' : 'READY'}</span>
+                </div>
+
+                <div className={`px-2.5 py-1.5 rounded-lg border flex items-center justify-between transition-all ${
+                  inactiveSeconds >= 15 
+                    ? 'bg-yellow-500/10 border-yellow-500/20 text-yellow-300' 
+                    : 'bg-zinc-900/30 border-white/5 opacity-50'
+                }`}>
+                  <span>🪵 Auto-Gathering</span>
+                  <span className="font-bold">{inactiveSeconds >= 15 ? 'RUNNING' : 'READY'}</span>
+                </div>
+
+                <div className={`px-2.5 py-1.5 rounded-lg border flex items-center justify-between transition-all ${
+                  inactiveSeconds >= 15 
+                    ? 'bg-green-500/10 border-green-500/20 text-green-300' 
+                    : 'bg-zinc-900/30 border-white/5 opacity-50'
+                }`}>
+                  <span>🧲 Vacuum Item Collection</span>
+                  <span className="font-bold">{inactiveSeconds >= 15 ? 'RUNNING' : 'READY'}</span>
+                </div>
+
+                <div className={`px-2.5 py-1.5 rounded-lg border flex items-center justify-between transition-all ${
+                  inactiveSeconds >= 15 
+                    ? 'bg-orange-500/10 border-orange-500/20 text-orange-300' 
+                    : 'bg-zinc-900/30 border-white/5 opacity-50'
+                }`}>
+                  <span>🛠️ Queue-Auto-Crafting</span>
+                  <span className="font-bold">{inactiveSeconds >= 15 ? 'RUNNING' : 'READY'}</span>
+                </div>
+
+                <div className={`px-2.5 py-1.5 rounded-lg border flex items-center justify-between transition-all ${
+                  inactiveSeconds >= 15 
+                    ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-300' 
+                    : 'bg-zinc-900/30 border-white/5 opacity-50'
+                }`}>
+                  <span>🧠 Neural Pathfinding & Autoplay</span>
+                  <span className="font-bold">{inactiveSeconds >= 15 ? 'RUNNING' : 'READY'}</span>
+                </div>
+              </div>
+
+              <div className="text-[8px] text-zinc-500 text-center leading-tight mt-1 border-t border-white/5 pt-1.5 italic">
+                {inactiveSeconds >= 15 
+                  ? "Press any key or click/move the mouse to instantly take manual control!" 
+                  : "To activate automation, do not press any keys or click for 15 seconds."}
               </div>
             </div>
           )}
@@ -11630,13 +12594,10 @@ export default function SurvivalGame() {
               </button>
             </div>
           )}
-        </div>
-      </div>
 
-      {/* --- MINIMAP OVERLAY PANEL --- */}
-      <div className={`transition-all duration-300 ${isHUDHidden ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
-        {!isMinimapCollapsed ? (
-        <div className="absolute top-[280px] sm:top-[220px] right-4 flex flex-col gap-2 p-3 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto w-[200px] select-none z-10">
+          {/* --- MINIMAP OVERLAY PANEL (Integrated inside the right column of the HUD to prevent overlaps!) --- */}
+          {!isMinimapCollapsed ? (
+            <div className="mt-2.5 flex flex-col gap-2 p-3 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto w-[200px] select-none text-left">
           <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-1">
             <span className="text-[10px] font-extrabold tracking-wider text-cyan-400 uppercase flex items-center gap-1">
               <Compass size={11} className="animate-spin text-cyan-400 [animation-duration:8s]" />
@@ -11903,7 +12864,7 @@ export default function SurvivalGame() {
           </div>
         </div>
       ) : (
-        <div className="absolute top-[280px] sm:top-[220px] right-4 flex flex-col gap-2 p-2 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-lg pointer-events-auto select-none z-10">
+        <div className="mt-2.5 flex flex-col gap-2 p-2 bg-zinc-950/85 border border-white/10 rounded-2xl backdrop-blur-md shadow-lg pointer-events-auto select-none text-right">
           <button 
             onClick={() => setIsMinimapCollapsed(false)} 
             className="px-2.5 py-1.5 bg-zinc-900 border border-white/10 hover:border-cyan-400 rounded-xl text-[9px] font-bold uppercase tracking-widest flex items-center gap-1 transition-all text-white cursor-pointer"
@@ -11913,7 +12874,8 @@ export default function SurvivalGame() {
           </button>
         </div>
       )}
-      </div>
+        </div> {/* closes right column of HUD */}
+      </div> {/* closes outer HUD container */}
 
       {/* --- Logs (Restored as a clean, sleek, auto-fading game console feed) --- */}
       {!isHUDHidden && logs && logs.length > 0 && (
@@ -14783,11 +15745,7 @@ export default function SurvivalGame() {
                                           const next = { ...prev };
                                           next[r.out] = !next[r.out];
                                           if (next[r.out]) {
-                                            if (!autoCraftState) {
-                                              addLog(`🛠️ Queued "${r.n}" for Auto-Craft. Enable "Auto-Craft Core" in the AUTOMATE panel!`, '#f97316');
-                                            } else {
-                                              addLog(`🛠️ Queued "${r.n}" for Auto-Craft.`, '#4ade80');
-                                            }
+                                            addLog(`🛠️ Queued "${r.n}" for Auto-Craft! (Activates automatically when inactive for 15s)`, '#f97316');
                                           } else {
                                             addLog(`🛠️ Removed "${r.n}" from Auto-Craft queue.`, '#94a3b8');
                                           }
