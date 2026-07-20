@@ -969,6 +969,15 @@ const baseIT: Record<string, any> = {
   void_essence: { ico: '🌀', n: 'Void Essence', t: 'mat' },
   silk: { ico: '🕸️', n: 'Silk', t: 'mat' },
   dragon_scale: { ico: '🛡️', n: 'Dragon Scale', t: 'mat' },
+  tile_grass: { n: 'Grass Block', ico: '🌱', t: 'tile', desc: 'Place on any tile to replace with rich green Grass.' },
+  tile_soil: { n: 'Dark Soil Block', ico: '🟫', t: 'tile', desc: 'Place on any tile to replace with dark fertile Soil.' },
+  tile_stone: { n: 'Stone Block', ico: '🪨', t: 'tile', desc: 'Place on any tile to replace with solid Obsidian Stone.' },
+  tile_water: { n: 'Water Block', ico: '🌊', t: 'tile', desc: 'Place on any tile to replace with Deep Water.' },
+  tile_sand: { n: 'Sand Block', ico: '🏜️', t: 'tile', desc: 'Place on any tile to replace with Dunes Sand.' },
+  tile_snow: { n: 'Snow Block', ico: '❄️', t: 'tile', desc: 'Place on any tile to replace with crisp Snow.' },
+  tile_lava: { n: 'Lava Bucket', ico: '🌋', t: 'tile', desc: 'Place on any tile to replace with Molten Lava.' },
+  tile_swamp: { n: 'Swamp Mud Block', ico: '🐊', t: 'tile', desc: 'Place on any tile to replace with Murky Swamp.' },
+  tile_void: { n: 'Astral Void Block', ico: '🌌', t: 'tile', desc: 'Place on any tile to replace with Astral Void.' },
   
    cooked_meat: { ico: '🍗', n: 'Cooked Meat', t: 'food', hu: 45, hp: 10 },
   raw_fish: { ico: '🐟', n: 'Raw Fish', t: 'food', hu: 15, hp: 5 },
@@ -1233,6 +1242,15 @@ const RC = [
   { n: 'Guard Post', out: 'guard_post', cnt: 1, cat: 'Structures', c: { stone: 20, iron_bar: 5, wood: 10 }, req: 'workbench' },
   { n: 'Farm Plot', out: 'farm_plot', cnt: 1, cat: 'Structures', c: { wood: 8, fiber: 12, berry: 5 }, req: 'workbench' },
   { n: 'Excavator Shovel', out: 'excavator_shovel', cnt: 1, cat: 'Weapons', c: { iron_bar: 3, wood: 4, fiber: 2 }, req: 'workbench' },
+  { n: 'Grass Block', out: 'tile_grass', cnt: 3, cat: 'Materials', c: { fiber: 3, wood: 1 }, req: 'workbench' },
+  { n: 'Dark Soil Block', out: 'tile_soil', cnt: 3, cat: 'Materials', c: { fiber: 2, wood: 2 }, req: 'workbench' },
+  { n: 'Stone Block', out: 'tile_stone', cnt: 3, cat: 'Materials', c: { stone: 3 }, req: 'workbench' },
+  { n: 'Water Block', out: 'tile_water', cnt: 3, cat: 'Materials', c: { ice_crystal: 1, magic_essence: 1 }, req: 'magic_altar' },
+  { n: 'Sand Block', out: 'tile_sand', cnt: 3, cat: 'Materials', c: { stone: 1, fiber: 1 }, req: 'workbench' },
+  { n: 'Snow Block', out: 'tile_snow', cnt: 3, cat: 'Materials', c: { ice_crystal: 1 }, req: 'workbench' },
+  { n: 'Lava Bucket', out: 'tile_lava', cnt: 3, cat: 'Materials', c: { sulfur: 2, coal: 2 }, req: 'forge' },
+  { n: 'Swamp Mud Block', out: 'tile_swamp', cnt: 3, cat: 'Materials', c: { tile_soil: 1, fiber: 2 }, req: 'workbench' },
+  { n: 'Astral Void Block', out: 'tile_void', cnt: 3, cat: 'Materials', c: { void_crystal: 1 }, req: 'magic_altar' },
   { n: 'Lumber Hut', out: 'lumber_hut', cnt: 1, cat: 'Structures', c: { wood: 20, stone: 10, fiber: 5 }, req: 'workbench' },
   { n: 'Electric Dam', out: 'electric_dam', cnt: 1, cat: 'Structures', c: { iron_bar: 10, copper_bar: 10, crystal: 5, gold_bar: 2 }, req: 'workbench', reqBld: 4 },
   { n: 'Power Wire', out: 'power_wire', cnt: 1, cat: 'Structures', c: { copper_bar: 2, fiber: 2 }, req: 'workbench' },
@@ -10460,28 +10478,103 @@ export default function SurvivalGame() {
     const activeItemKey = s.pl.hotbar[hotSlot];
     const activeItem = activeItemKey ? IT[activeItemKey] : null;
 
+    // --- CUSTOM MATERIAL PLACEMENT & REPLACEMENT MECHANICS ---
+    const TILE_ITEM_TO_TYPE: Record<string, number> = {
+      tile_grass: TG,
+      tile_soil: TD,
+      tile_stone: TS,
+      tile_water: TW,
+      tile_sand: TSA,
+      tile_snow: TSN,
+      tile_lava: TLV,
+      tile_swamp: TSW,
+      tile_void: TCR
+    };
+
+    if (activeItemKey && TILE_ITEM_TO_TYPE[activeItemKey] !== undefined) {
+      const targetTileType = TILE_ITEM_TO_TYPE[activeItemKey];
+      const tileType = s.world[ty]?.[tx];
+      const objectOnTile = s.objs.some(o => o.tx === tx && o.ty === ty && o.type !== 'drop');
+
+      if (objectOnTile) {
+        addLog("Cannot place here: space is already occupied by a structure, tree, or rock!", "#ff8888");
+        return;
+      }
+
+      if (tileType === targetTileType) {
+        addLog("This tile is already that material!", "#94a3b8");
+        return;
+      }
+
+      // Update the tile!
+      s.world[ty][tx] = targetTileType;
+      
+      // Consume item from inventory
+      if (s.pl.inv[activeItemKey] > 0) {
+        s.pl.inv[activeItemKey]--;
+      }
+
+      addLog(`🏗️ Replaced material: Placed ${activeItem.n} at [${tx}, ${ty}]!`, '#84cc16');
+      const colors: Record<number, string> = {
+        [TG]: '#84cc16', // Rich Grass
+        [TD]: '#78350f', // Dark Soil
+        [TS]: '#4b5563', // Obsidian Stone
+        [TW]: '#38bdf8', // Deep Water
+        [TSA]: '#fbbf24', // Dunes Sand
+        [TSN]: '#e2e8f0', // Crisp Snow
+        [TLV]: '#f97316', // Molten Lava
+        [TSW]: '#15803d', // Murky Swamp
+        [TCR]: '#a855f7'  // Astral Void
+      };
+      spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, colors[targetTileType] || '#ffffff', 15, 'spark');
+      return;
+    }
+
     if (activeItemKey === 'excavator_shovel') {
       const tileType = s.world[ty]?.[tx];
       // Can't excavate a tile with an existing object on it
-      const objectOnTile = s.objs.some(o => o.tx === tx && o.ty === ty);
+      const objectOnTile = s.objs.some(o => o.tx === tx && o.ty === ty && o.type !== 'drop');
       if (objectOnTile) {
         addLog("Cannot excavate here: clear any structures, trees, or rocks first!", "#ff8888");
         return;
       }
       
-      if (tileType === TW) {
-        // Fill water to land!
-        s.world[ty][tx] = TG; // turn into rich grass
-        addLog(`🥄 Used Excavator Shovel: Filled water to create fertile Grass land at [${tx}, ${ty}]!`, '#84cc16');
-        spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#84cc16', 15, 'spark');
-      } else if (tileType === TLV) {
-        addLog("🥄 Lava is too hot to fill with standard earth!", "#ff8888");
-      } else {
-        // Dig land to water!
-        s.world[ty][tx] = TW; // turn into water!
-        addLog(`🥄 Used Excavator Shovel: Dug land to create a Deep Water canal at [${tx}, ${ty}]!`, '#38bdf8');
-        spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, '#38bdf8', 15, 'spark');
+      const TILE_TYPE_TO_ITEM: Record<number, string> = {
+        [TG]: 'tile_grass',
+        [TD]: 'tile_soil',
+        [TS]: 'tile_stone',
+        [TW]: 'tile_water',
+        [TSA]: 'tile_sand',
+        [TSN]: 'tile_snow',
+        [TLV]: 'tile_lava',
+        [TSW]: 'tile_swamp',
+        [TCR]: 'tile_void'
+      };
+
+      // Give excavated material to player inventory
+      const itemToGive = TILE_TYPE_TO_ITEM[tileType];
+      if (itemToGive) {
+        s.pl.inv[itemToGive] = (s.pl.inv[itemToGive] || 0) + 1;
+        const itName = IT[itemToGive]?.n || 'Material';
+        addLog(`🥄 Excavated: Collected ${itName}! (+1 in inventory)`, '#fbbf24');
       }
+
+      // Determine new tile type
+      let nextTileType = TW; // Default: dig land to water canal!
+      if (tileType === TW || tileType === TLV) {
+        // If we dig water or lava, scoop it up and turn it into dry Soil basin!
+        nextTileType = TD;
+        addLog(`🥄 Scooped up liquid: Tile at [${tx}, [${ty}]] turned into dry Soil!`, '#f59e0b');
+      } else {
+        addLog(`🥄 Dug out canal: Tile at [${tx}, [${ty}]] turned into Deep Water!`, '#38bdf8');
+      }
+
+      s.world[ty][tx] = nextTileType;
+      const colors: Record<number, string> = {
+        [TG]: '#84cc16', [TD]: '#78350f', [TS]: '#4b5563', [TW]: '#38bdf8', 
+        [TSA]: '#fbbf24', [TSN]: '#e2e8f0', [TLV]: '#f97316', [TSW]: '#15803d', [TCR]: '#a855f7'
+      };
+      spawnExplosion(s, tx * TZ + TZ / 2, ty * TZ + TZ / 2, colors[tileType] || '#ffffff', 18, 'spark');
       return;
     }
 

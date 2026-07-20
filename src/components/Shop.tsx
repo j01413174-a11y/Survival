@@ -26,6 +26,14 @@ interface ShopProps {
   addLog: (msg: string, col?: string) => void;
 }
 
+const stringToHex = (str: string): string => {
+  let hex = '';
+  for (let i = 0; i < str.length; i++) {
+    hex += str.charCodeAt(i).toString(16).padStart(2, '0');
+  }
+  return '0x' + hex;
+};
+
 export default function Shop({ onClose, playerGold, onAwardNFTs, addLog }: ShopProps) {
   const [shopTab, setShopTab] = useState<'nfts' | 'gold'>('nfts');
   const [selectedBundle, setSelectedBundle] = useState<{
@@ -62,24 +70,56 @@ export default function Shop({ onClose, playerGold, onAwardNFTs, addLog }: ShopP
   const [walletAddress, setWalletAddress] = useState('');
   const [isUsingRealWeb3, setIsUsingRealWeb3] = useState(false);
 
-  // Check for pre-existing Web3 account on load
+  // Check for pre-existing Web3 account on load and setup listeners
   useEffect(() => {
+    if (typeof window === 'undefined' || !(window as any).ethereum) return;
+
+    const eth = (window as any).ethereum;
+
     const checkConnectedWallet = async () => {
-      if (typeof window !== 'undefined' && (window as any).ethereum) {
-        try {
-          const eth = (window as any).ethereum;
-          const accounts = await eth.request({ method: 'eth_accounts' });
-          if (accounts && accounts.length > 0) {
-            setWalletConnected(true);
-            setWalletAddress(accounts[0]);
-            setIsUsingRealWeb3(true);
-          }
-        } catch (e) {
-          console.error("Failed to check eth accounts", e);
+      try {
+        const accounts = await eth.request({ method: 'eth_accounts' });
+        if (accounts && accounts.length > 0) {
+          setWalletConnected(true);
+          setWalletAddress(accounts[0]);
+          setIsUsingRealWeb3(true);
         }
+      } catch (e) {
+        console.error("Failed to check eth accounts", e);
       }
     };
+
     checkConnectedWallet();
+
+    const handleAccounts = (newAccounts: string[]) => {
+      if (newAccounts.length > 0) {
+        setWalletAddress(newAccounts[0]);
+        setWalletConnected(true);
+        setIsUsingRealWeb3(true);
+        addLog(`🔌 Wallet Switched: ${newAccounts[0].slice(0, 6)}...${newAccounts[0].slice(-4)}`, '#10b981');
+      } else {
+        setWalletConnected(false);
+        setWalletAddress('');
+        setIsUsingRealWeb3(false);
+        addLog('🔌 Wallet Disconnected', '#f43f5e');
+      }
+    };
+
+    const handleChain = (chainId: string) => {
+      addLog(`🔌 Web3 Network Switched: Chain ID ${parseInt(chainId, 16)}`, '#38bdf8');
+    };
+
+    if (eth.on) {
+      eth.on('accountsChanged', handleAccounts);
+      eth.on('chainChanged', handleChain);
+    }
+
+    return () => {
+      if (eth.removeListener) {
+        eth.removeListener('accountsChanged', handleAccounts);
+        eth.removeListener('chainChanged', handleChain);
+      }
+    };
   }, []);
 
   const nftBundles = [
@@ -162,26 +202,9 @@ export default function Shop({ onClose, playerGold, onAwardNFTs, addLog }: ShopP
           setWalletAddress(accounts[0]);
           setIsUsingRealWeb3(true);
           addLog(`🔌 Securely connected MetaMask: ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}!`, '#22c55e');
-          
-          // Listen to account changes
-          eth.on('accountsChanged', (newAccounts: string[]) => {
-            if (newAccounts.length > 0) {
-              setWalletAddress(newAccounts[0]);
-            } else {
-              setWalletConnected(false);
-              setWalletAddress('');
-              setIsUsingRealWeb3(false);
-            }
-          });
         }
       } else {
-        // Fallback simulated connection
-        setTimeout(() => {
-          setWalletConnected(true);
-          setWalletAddress('0x71C7656EC7ab88b098defB751B7401B5f6d8976F');
-          setIsUsingRealWeb3(false);
-          addLog('🔌 Connected simulated Web3 Web3Wallet securely! (Provider not detected)', '#fbbf24');
-        }, 800);
+        addLog('❌ MetaMask Web3 provider not detected! Please install MetaMask or open the app in a tab with a Web3-compatible browser.', '#f43f5e');
       }
     } catch (err: any) {
       console.error(err);
@@ -199,22 +222,32 @@ export default function Shop({ onClose, playerGold, onAwardNFTs, addLog }: ShopP
       return;
     }
 
+    if (typeof window === 'undefined' || !(window as any).ethereum || !walletAddress) {
+      addLog('❌ Web3 Wallet not connected! Please connect your MetaMask Web3 wallet first.', '#f43f5e');
+      return;
+    }
+
     setIsProcessing(true);
-    
+    let currentTxHash = '';
+
     // Web3 Real Smart Contract Signature Simulation
-    if (isUsingRealWeb3 && walletAddress) {
-      try {
-        addLog("⏳ Requesting Smart Contract mint authorization from MetaMask...", "#a78bfa");
-        const message = `Authorize minting of ${selectedBundle.qty}x Procedural NFT Pack (${selectedBundle.name}) for ${selectedBundle.priceCoins} gold coins.\n\nAccount: ${walletAddress}\nTimestamp: ${Date.now()}`;
-        await (window as any).ethereum.request({
-          method: 'personal_sign',
-          params: [message, walletAddress],
-        });
-        addLog("✅ Smart Contract Signature Verified!", "#22c55e");
-      } catch (err: any) {
-        console.warn("User rejected Web3 signature", err);
-        addLog(`⚠️ Signature rejected: ${err.message || err}. Proceeding with standard offline state minting.`, '#f59e0b');
-      }
+    try {
+      addLog("⏳ Requesting Smart Contract mint authorization from MetaMask...", "#a78bfa");
+      const message = `Authorize minting of ${selectedBundle.qty}x Procedural NFT Pack (${selectedBundle.name}) for ${selectedBundle.priceCoins} gold coins.\n\nAccount: ${walletAddress}\nTimestamp: ${Date.now()}`;
+      const hexMessage = stringToHex(message);
+      
+      const signature = await (window as any).ethereum.request({
+        method: 'personal_sign',
+        params: [hexMessage, walletAddress],
+      });
+      currentTxHash = signature;
+      setTxHash(signature);
+      addLog("✅ Smart Contract Signature Verified!", "#22c55e");
+    } catch (err: any) {
+      console.warn("User rejected Web3 signature", err);
+      addLog(`❌ Signature rejected: ${err.message || err}. Transaction aborted.`, '#f43f5e');
+      setIsProcessing(false);
+      return; // Halt if real transaction fails/declines!
     }
 
     setTimeout(() => {
@@ -228,74 +261,72 @@ export default function Shop({ onClose, playerGold, onAwardNFTs, addLog }: ShopP
       onAwardNFTs(newlyMintedIds, selectedBundle.priceCoins);
       setMintedNfts(newlyMintedIds);
       setPurchasedGold(0);
-      const generatedHash = '0x' + Array.from({length: 64}, () => Math.floor(Math.random()*16).toString(16)).join('');
-      setTxHash(generatedHash);
       setIsProcessing(false);
       setCheckoutStep('success');
       
       addLog(`💎 Minted ${selectedBundle.qty}x Celestial NFTs successfully for 🪙${selectedBundle.priceCoins}!`, '#fbbf24');
-    }, 1800);
+    }, 1500);
   };
 
   const handlePurchaseGold = async () => {
     if (!selectedGoldBundle) return;
 
-    setIsProcessing(true);
-    let successfullySigned = false;
-
-    // Web3 Real MetaMask Transaction Trigger
-    if (isUsingRealWeb3 && walletAddress) {
-      try {
-        addLog(`⏳ Requesting MetaMask transaction approval of $${selectedGoldBundle.priceUSD} (${selectedGoldBundle.ethEquivalent}) to Vault...`, "#38bdf8");
-        
-        // Define standard dev/recipient treasury wallet
-        const recipient = '0x71C7656EC7ab88b098defB751B7401B5f6d8976F';
-        
-        // Dynamic ETH/MATIC Value mapping in Hex based on bundle selection
-        const valInHex = selectedGoldBundle.id === 'gold_small' 
-          ? '0x38d7ea4c68000'   // 0.001 ETH
-          : selectedGoldBundle.id === 'gold_medium' 
-          ? '0xaa87bee538000'  // 0.003 ETH
-          : '0x18d4a2d3e38000'; // 0.007 ETH
-
-        const transactionParameters = {
-          from: walletAddress,
-          to: recipient,
-          value: valInHex,
-          gasLimit: '0x5208', // 21000 Gwei
-        };
-
-        const tx = await (window as any).ethereum.request({
-          method: 'eth_sendTransaction',
-          params: [transactionParameters],
-        });
-
-        successfullySigned = true;
-        setTxHash(tx);
-        addLog(`✅ MetaMask Transaction Approved! Hash: ${tx.slice(0, 10)}...`, "#22c55e");
-      } catch (err: any) {
-        console.warn("Real MetaMask transaction failed/rejected", err);
-        addLog(`⚠️ MetaMask transaction declined: ${err.message || err}. Falling back to developer sandbox bypass...`, '#f59e0b');
-      }
+    if (typeof window === 'undefined' || !(window as any).ethereum || !walletAddress) {
+      addLog('❌ Web3 Wallet not connected! Please connect your MetaMask Web3 wallet first.', '#f43f5e');
+      return;
     }
 
-    // Process delivery (either via real success or sandbox simulation bypass)
+    setIsProcessing(true);
+    let currentTxHash = '';
+
+    // Web3 Real MetaMask Transaction Trigger
+    try {
+      addLog(`⏳ Requesting MetaMask transaction approval of $${selectedGoldBundle.priceUSD} (${selectedGoldBundle.ethEquivalent}) to Vault...`, "#38bdf8");
+      
+      // Define standard dev/recipient treasury wallet
+      const recipient = '0x71C7656EC7ab88b098defB751B7401B5f6d8976F';
+      
+      // Dynamic ETH/MATIC Value mapping in Hex based on bundle selection
+      const valInHex = selectedGoldBundle.id === 'gold_small' 
+        ? '0x38d7ea4c68000'   // 0.001 ETH
+        : selectedGoldBundle.id === 'gold_medium' 
+        ? '0xaa87bee538000'  // 0.003 ETH
+        : '0x18d4a2d3e38000'; // 0.007 ETH
+
+      const transactionParameters = {
+        from: walletAddress,
+        to: recipient,
+        value: valInHex,
+        gasLimit: '0x5208', // 21000 Gwei
+      };
+
+      const tx = await (window as any).ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [transactionParameters],
+      });
+
+      currentTxHash = tx;
+      setTxHash(tx);
+      addLog(`✅ MetaMask Transaction Approved! Hash: ${tx.slice(0, 10)}...`, "#22c55e");
+    } catch (err: any) {
+      console.warn("Real MetaMask transaction failed/rejected", err);
+      addLog(`❌ MetaMask transaction declined: ${err.message || err}. Transaction aborted.`, '#f43f5e');
+      setIsProcessing(false);
+      return; // Halt if real transaction fails/declines!
+    }
+
+    // Process delivery
     setTimeout(() => {
       // Award the Gold to player by passing negative goldCost (-amount)
       onAwardNFTs([], -selectedGoldBundle.amount);
       setPurchasedGold(selectedGoldBundle.amount);
       setMintedNfts([]);
       
-      if (!txHash) {
-        const generatedHash = '0x' + Array.from({length: 64}, () => Math.floor(Math.random()*16).toString(16)).join('');
-        setTxHash(generatedHash);
-      }
-
       setIsProcessing(false);
       setCheckoutStep('success');
       
       addLog(`🪙 Success! Purchased & credited 🪙${selectedGoldBundle.amount.toLocaleString()} Gold Coins to your inventory!`, '#10b981');
-    }, 2000);
+    }, 1500);
   };
 
   const resetCheckout = () => {
@@ -640,7 +671,7 @@ export default function Shop({ onClose, playerGold, onAwardNFTs, addLog }: ShopP
                           <div className="text-[11px] font-bold text-green-400 font-mono break-all">{walletAddress}</div>
                         </div>
                         <span className="text-[8px] bg-green-500/20 px-2 py-0.5 rounded text-green-300 font-extrabold uppercase shrink-0 self-start sm:self-center">
-                          {isUsingRealWeb3 ? 'METAMASK ACTIVE' : 'SIMULATED SYNC'}
+                          METAMASK ACTIVE
                         </span>
                       </div>
                     ) : (
@@ -659,7 +690,7 @@ export default function Shop({ onClose, playerGold, onAwardNFTs, addLog }: ShopP
                     )}
                     
                     <div className="text-[8px] opacity-40 uppercase mt-3 leading-relaxed">
-                      Chain ID: 137 (Polygon Network) or 1 (Ethereum Mainnet). Purchasing prompts standard MetaMask window authorization or instant simulated local confirmation.
+                      Chain ID: 137 (Polygon Network) or 1 (Ethereum Mainnet). Purchasing prompts standard MetaMask window authorization.
                     </div>
                   </div>
 
@@ -700,7 +731,15 @@ export default function Shop({ onClose, playerGold, onAwardNFTs, addLog }: ShopP
                   >
                     Back
                   </button>
-                  {selectedBundle ? (
+                  {!walletConnected ? (
+                    <button 
+                      onClick={handleConnectWallet}
+                      disabled={isProcessing}
+                      className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white font-bold py-2.5 rounded-xl text-[9px] sm:text-xs tracking-widest uppercase transition-all flex items-center justify-center gap-2 shadow-lg active:scale-95 disabled:opacity-50 cursor-pointer"
+                    >
+                      {isProcessing ? 'CONNECTING...' : 'CONNECT WALLET TO PROCEED'}
+                    </button>
+                  ) : selectedBundle ? (
                     <button 
                       onClick={handlePurchaseNFT}
                       disabled={isProcessing || playerGold < selectedBundle.priceCoins}
@@ -709,42 +748,27 @@ export default function Shop({ onClose, playerGold, onAwardNFTs, addLog }: ShopP
                       {isProcessing ? (
                         <span className="flex items-center gap-2">
                           <span className="w-3 h-3 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
-                          FORGING WITH CRYPTO CONTRACT...
+                          SIGNING CONTRACT...
                         </span>
                       ) : (
-                        <>MINT & OPEN BUNDLE (🪙{selectedBundle.priceCoins})</>
+                        <>MINT WITH SIGNATURE (🪙{selectedBundle.priceCoins})</>
                       )}
                     </button>
                   ) : selectedGoldBundle ? (
-                    <div className="flex-1 flex gap-2">
-                      {/* Real Wallet Purchase Button */}
-                      <button 
-                        onClick={handlePurchaseGold}
-                        disabled={isProcessing}
-                        className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white font-bold py-2.5 rounded-xl text-[9px] sm:text-xs tracking-widest uppercase transition-all flex items-center justify-center gap-1.5 shadow-lg active:scale-95 disabled:opacity-50 cursor-pointer"
-                      >
-                        {isProcessing ? (
-                          <span className="flex items-center gap-2">
-                            <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            TX PENDING...
-                          </span>
-                        ) : (
-                          <>PAY ${selectedGoldBundle.priceUSD} WITH METAMASK</>
-                        )}
-                      </button>
-
-                      {/* Fallback Sandbox Developer Button (For perfect testing in AI Studio Preview without wallet) */}
-                      {!isUsingRealWeb3 && (
-                        <button 
-                          onClick={handlePurchaseGold}
-                          disabled={isProcessing}
-                          className="px-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 font-bold py-2.5 rounded-xl text-[9px] uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-                          title="Sandbox Bypass for instant testing in preview frame"
-                        >
-                          🧪 sandbox buy
-                        </button>
+                    <button 
+                      onClick={handlePurchaseGold}
+                      disabled={isProcessing}
+                      className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white font-bold py-2.5 rounded-xl text-[9px] sm:text-xs tracking-widest uppercase transition-all flex items-center justify-center gap-1.5 shadow-lg active:scale-95 disabled:opacity-50 cursor-pointer"
+                    >
+                      {isProcessing ? (
+                        <span className="flex items-center gap-2">
+                          <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          TX PENDING...
+                        </span>
+                      ) : (
+                        <>PAY WITH METAMASK</>
                       )}
-                    </div>
+                    </button>
                   ) : null}
                 </div>
               </motion.div>
