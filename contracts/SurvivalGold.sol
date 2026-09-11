@@ -15,39 +15,74 @@ contract SurvivalGold is ERC20, ERC20Burnable, Pausable, Ownable {
     // Exchange rate: How many SGC tokens per 1 Native Coin (Wei)
     // E.g., if rate is 100,000, then 1 ETH/MATIC buys 100,000 SGC (scaled by 18 decimals)
     uint256 public buyRate;
+    
+    // Maximum total supply cap
+    uint256 public maxSupply;
+    
+    // Authorized minters (gaming engine backend)
+    mapping(address => bool) public authorizedMinters;
 
     event TokensPurchased(address indexed buyer, uint256 amountSpent, uint256 tokensReceived);
     event RateUpdated(uint256 oldRate, uint256 newRate);
+    event AuthorizedMinterUpdated(address indexed minter, bool authorized);
 
     constructor(uint256 _initialSupply, uint256 _initialRate) 
         ERC20("Survival Gold Coin", "SGC") 
         Ownable(msg.sender) 
     {
-        _mint(msg.sender, _initialSupply * 10 ** decimals());
+        require(_initialSupply > 0, "Initial supply must be greater than 0");
+        require(_initialRate > 0, "Initial rate must be greater than 0");
+        
+        uint256 initialAmount = _initialSupply * 10 ** decimals();
+        maxSupply = initialAmount;
+        _mint(msg.sender, initialAmount);
         buyRate = _initialRate;
+        
+        // Owner is an authorized minter by default
+        authorizedMinters[msg.sender] = true;
     }
 
     /**
      * @dev Sets a new exchange rate.
      */
     function setBuyRate(uint256 _newRate) external onlyOwner {
+        require(_newRate > 0, "Rate must be greater than 0");
         emit RateUpdated(buyRate, _newRate);
         buyRate = _newRate;
     }
 
     /**
+     * @dev Authorize or revoke minting permissions for an address.
+     */
+    function setAuthorizedMinter(address _minter, bool _authorized) external onlyOwner {
+        require(_minter != address(0), "Invalid minter address");
+        authorizedMinters[_minter] = _authorized;
+        emit AuthorizedMinterUpdated(_minter, _authorized);
+    }
+
+    /**
      * @dev Mint new SGC tokens. Reserved for authorized game backend / mechanics.
      */
-    function mint(address to, uint256 amount) external onlyOwner {
+    function mint(address to, uint256 amount) external {
+        require(authorizedMinters[msg.sender], "Not authorized to mint");
+        require(to != address(0), "Invalid recipient address");
+        require(amount > 0, "Amount must be greater than 0");
+        require(totalSupply() + amount <= maxSupply, "Exceeds max supply");
         _mint(to, amount);
     }
 
     /**
      * @dev Purchase tokens directly with Ether / MATIC.
+     * Correctly handles decimal scaling for token amount calculation.
      */
     function purchaseTokens() external payable whenNotPaused {
         require(msg.value > 0, "Must send native currency to purchase");
-        uint256 tokensToReceive = msg.value * buyRate;
+        
+        // Calculate tokens with proper decimal scaling: (native amount * rate) / 10^18
+        uint256 tokensToReceive = (msg.value * buyRate) / (10 ** decimals());
+        require(tokensToReceive > 0, "Purchase amount too small for current rate");
+        require(totalSupply() + tokensToReceive <= maxSupply, "Exceeds max supply");
+        
         _mint(msg.sender, tokensToReceive);
         emit TokensPurchased(msg.sender, msg.value, tokensToReceive);
     }
